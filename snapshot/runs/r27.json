@@ -1,0 +1,10 @@
+{
+  "from": "r22",
+  "kind": "go",
+  "label": "PBI-008 spec gate · round 3 (final)",
+  "lane": "plan",
+  "min": 4,
+  "seq": 27,
+  "tok": 97557,
+  "verdict": "APPROVE-WITH-NOTES"
+}

@@ -1,0 +1,9 @@
+{
+  "kind": "changes",
+  "label": "PBI-008 spec gate · round 1",
+  "lane": "plan",
+  "min": 6,
+  "seq": 18,
+  "tok": 107642,
+  "verdict": "CHANGES-REQUIRED · 1 High 5M"
+}

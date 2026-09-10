@@ -1,0 +1,10 @@
+{
+  "from": "r12",
+  "kind": "nogo",
+  "label": "PBI-003/004/005",
+  "lane": "cr",
+  "min": 7,
+  "seq": 16,
+  "tok": 101807,
+  "verdict": "NO-GO · 1 High (already fixed) 6L"
+}

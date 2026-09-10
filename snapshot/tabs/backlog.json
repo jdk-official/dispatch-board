@@ -1,0 +1,163 @@
+{
+  "board": "Nothing is on the BOARD: PBIs land under Proposed only after the plan gate passes, and its human leg is still open. Everything below was built on the engineering branch.",
+  "generatedAt": "2026-09-10T18:25:16+00:00",
+  "pbis": [
+    {
+      "commit": "4caa5dc",
+      "dependsOn": "[]",
+      "group": "tooling",
+      "id": "PBI-000",
+      "open": "",
+      "requiresSpec": "false",
+      "review": "GO-WITH-CONDITIONS, all applied",
+      "risk": "Low",
+      "state": "done",
+      "title": "Toolchain wiring: Tailwind plugin, base path, coverage, test-project split, `tsconfig.lib.json` + `typecheck:lib`, `validate` script, validator and font dependencies"
+    },
+    {
+      "commit": "4caa5dc",
+      "dependsOn": "[]",
+      "group": "logic-core",
+      "id": "PBI-001",
+      "open": "",
+      "requiresSpec": "false",
+      "review": "GO-WITH-CONDITIONS, then GO-WITH-NOTES; all applied",
+      "risk": "Medium",
+      "state": "done",
+      "title": "Library data model, shared errors, dependency graph resolution, test fixtures F1–F6"
+    },
+    {
+      "commit": "5238445",
+      "dependsOn": "[PBI-000, PBI-001]",
+      "group": "catalogue-data",
+      "id": "PBI-002",
+      "open": "",
+      "requiresSpec": "false",
+      "review": "GO-WITH-CONDITIONS; Lows applied",
+      "risk": "Low (runs alone: two declared cross-group touches)",
+      "state": "done",
+      "title": "Catalogue JSON Schema with vocabulary enums, fourteen illustrative services, build-time validator, `prebuild` hook, schema↔type drift test"
+    },
+    {
+      "commit": "4caa5dc",
+      "dependsOn": "[PBI-001]",
+      "group": "logic-core",
+      "id": "PBI-003",
+      "open": "",
+      "requiresSpec": "false",
+      "review": "NO-GO, fixed, then GO-WITH-NOTES",
+      "risk": "Medium",
+      "state": "done",
+      "title": "Composite availability with working, `formatAvailability`, NFR-1 benchmark"
+    },
+    {
+      "commit": "4caa5dc",
+      "dependsOn": "[PBI-001]",
+      "group": "logic-core",
+      "id": "PBI-004",
+      "open": "",
+      "requiresSpec": "false",
+      "review": "NO-GO, fixed, then GO-WITH-NOTES",
+      "risk": "Medium",
+      "state": "done",
+      "title": "Eligibility partitioning by team profile"
+    },
+    {
+      "commit": "4caa5dc",
+      "dependsOn": "[PBI-001]",
+      "group": "logic-core",
+      "id": "PBI-005",
+      "open": "",
+      "requiresSpec": "false",
+      "review": "NO-GO, fixed, then GO-WITH-NOTES",
+      "risk": "Medium",
+      "state": "done",
+      "title": "Lifecycle findings"
+    },
+    {
+      "commit": "4caa5dc",
+      "dependsOn": "[PBI-001, PBI-004, PBI-005]",
+      "group": "logic-core",
+      "id": "PBI-006",
+      "open": "",
+      "requiresSpec": "false",
+      "review": "GO-WITH-NOTES; attribution rule recorded as ledger row 31",
+      "risk": "Medium",
+      "state": "done",
+      "title": "Onboarding plan generation"
+    },
+    {
+      "commit": "4caa5dc",
+      "dependsOn": "[PBI-000, PBI-003, PBI-004, PBI-005, PBI-006]",
+      "group": "logic-core",
+      "id": "PBI-007",
+      "open": "",
+      "requiresSpec": "false",
+      "review": "GO-WITH-NOTES; all applied",
+      "risk": "Medium (High in rev 1; coverage wiring and `tsconfig.lib.json` moved to PBI-000)",
+      "state": "done",
+      "title": "Public entry point, DOM-free import test, no-`any` and no-content checks"
+    },
+    {
+      "commit": "b6a8d48",
+      "dependsOn": "[PBI-000, PBI-003]",
+      "group": "ui",
+      "id": "PBI-008",
+      "open": "",
+      "requiresSpec": "true",
+      "review": "Spec gate 3 rounds; code review GO-WITH-CONDITIONS, applied",
+      "risk": "Low",
+      "state": "done",
+      "title": "Design system: tokens, fonts, shell, hash router, ledger and stamp components, notice"
+    },
+    {
+      "commit": "b6a8d48",
+      "dependsOn": "[PBI-002, PBI-007, PBI-008]",
+      "group": "ui",
+      "id": "PBI-009",
+      "open": "Two Medium open: the shelf restyles the DEPRECATED stamp via text-data (CR-001); a JSDoc word re-emits the dead .hidden utility (CR-002). Ledger scroll wrapper not yet applied at 360px.",
+      "requiresSpec": "false",
+      "review": "GO-WITH-CONDITIONS",
+      "risk": "Medium",
+      "state": "conditions",
+      "title": "Catalogue loader (eager glob), browse, filter, service detail with composite working"
+    },
+    {
+      "commit": "b6a8d48",
+      "dependsOn": "[PBI-009]",
+      "group": "ui",
+      "id": "PBI-010",
+      "open": "Build agent killed by the rate limit: state.ts, profile.ts and reasons.ts written with tests; not wired into main.ts; the onboarding-plan view is not built.",
+      "requiresSpec": "false",
+      "review": "Not reviewed",
+      "risk": "Medium",
+      "state": "partial",
+      "title": "Team profile picker, eligibility marking, lifecycle findings, onboarding plan view with `advisory` policy"
+    },
+    {
+      "commit": "",
+      "dependsOn": "[PBI-010]",
+      "group": "ui",
+      "id": "PBI-011",
+      "open": "Delivery verification: offline navigation, axe, viewports, bundle budget.",
+      "requiresSpec": "false",
+      "review": "—",
+      "risk": "Medium",
+      "state": "todo",
+      "title": "Delivery verification: offline navigation, axe, viewports, bundle budget — with fixes"
+    },
+    {
+      "commit": "",
+      "dependsOn": "[PBI-011]",
+      "group": "tooling",
+      "id": "PBI-012",
+      "open": "GitHub Pages workflow file (authored, not run).",
+      "requiresSpec": "false",
+      "review": "—",
+      "risk": "Low",
+      "state": "todo",
+      "title": "GitHub Pages workflow file (authored, not run)"
+    }
+  ],
+  "source": "docs/backlog/specs/platform-catalogue.md (PBI list) + build state kept in scripts/export-board.py"
+}

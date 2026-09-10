@@ -1,0 +1,338 @@
+{
+  "generatedAt": "2026-09-10T18:25:16+00:00",
+  "humanList": [
+    1,
+    2,
+    3,
+    4,
+    6,
+    8,
+    9,
+    14,
+    15,
+    17,
+    21,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31
+  ],
+  "rows": [
+    {
+      "impact": "Low — loader and validator only",
+      "level": "Low",
+      "n": 1,
+      "needsYou": true,
+      "question": "Catalogue data format and layout (PRD A-1, pending)",
+      "resolution": "One JSON file per service + JSON Schema, eager `import.meta.glob`",
+      "source": "ADR-0001 (build agent, `proposed`)",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low — one config value and one UI string",
+      "level": "Low",
+      "n": 2,
+      "needsYou": true,
+      "question": "Deprecated dependency: block or warn (PRD A-3, pending)",
+      "resolution": "Site passes `advisory`; library requires the parameter",
+      "source": "ADR-0002 (build agent, `proposed`)",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low — additive later; O-1 partly unmet meanwhile",
+      "level": "Low",
+      "n": 3,
+      "needsYou": true,
+      "question": "Cost/chargeback in scope (PRD A-6, pending)",
+      "resolution": "Out of scope for v1",
+      "source": "ADR-0003 (build agent, `proposed`)",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low — data files only",
+      "level": "Low",
+      "n": 4,
+      "needsYou": true,
+      "question": "Which services to model (PRD A-8)",
+      "resolution": "Exactly the brief's fourteen; test-only fixtures never enter the catalogue",
+      "source": "Brief \"Suggested service set\"",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low — index and bundle cost if full-text is wanted",
+      "level": "Low",
+      "n": 5,
+      "needsYou": false,
+      "question": "Search vs filter",
+      "resolution": "Client-side substring filter over name/summary/tags; no index",
+      "source": "PRD S-7, S-11, FR-38",
+      "status": "RESOLVED (PRD default A-7, unconfirmed)"
+    },
+    {
+      "impact": "**Medium** — if redundancy is modelled as sibling groups instead, FR-7–9, AC-3, AC-9 rework spans `logic-core` **and** `catalogue-data` (schema gains a group construct)",
+      "level": "Medium",
+      "n": 6,
+      "needsYou": true,
+      "question": "Redundancy model in the composite formula",
+      "resolution": "Optional integer N per service; contribution `1-(1-a)^N`; instance failures independent",
+      "source": "PRD A-2 (author-chosen default), A-19 (owner confirmation of AC-3, AC-4, AC-10 advised before implementation)",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low",
+      "level": "Low",
+      "n": 7,
+      "needsYou": false,
+      "question": "Ownership / staleness",
+      "resolution": "`owner`, `reviewBy` in scope; enforcement out",
+      "source": "PRD S-13, FR-1, FR-41",
+      "status": "RESOLVED (PRD default A-5, unconfirmed)"
+    },
+    {
+      "impact": "Low — thresholds are config",
+      "level": "Low",
+      "n": 8,
+      "needsYou": true,
+      "question": "Numeric NFR targets (PRD A-12, A-13, A-14)",
+      "resolution": "Adopt the PRD's numbers as gate values",
+      "source": "PRD NFR-1, 3–7",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Medium in user experience, Low in rework (restyling is `ui` only)",
+      "level": "Medium",
+      "n": 9,
+      "needsYou": true,
+      "question": "How design quality (D-4) is gated (PRD A-15)",
+      "resolution": "Token-only colour (NFR-11) + `frontend-design` skill in PBI-008 + reviewer judgement on PBI-008's refined spec",
+      "source": "Planner default; the token proxy is necessary-not-sufficient",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "— (PBI-000 wires it)",
+      "level": "—",
+      "n": 10,
+      "needsYou": false,
+      "question": "Toolchain versions",
+      "resolution": "TypeScript **5.9.3** (`^5.7.2`), Vite 8.2, Vitest 5.0, Tailwind 4 (`@tailwindcss/vite` installed, **not yet wired**)",
+      "source": "`package-lock.json`; `vite.config.ts` has no Tailwind plugin, `base`, coverage or projects block",
+      "status": "RESOLVED"
+    },
+    {
+      "impact": "—",
+      "level": "—",
+      "n": 11,
+      "needsYou": false,
+      "question": "Overloaded term \"SLA\" vs \"availability\"",
+      "resolution": "Canonical **availability**; \"SLA\" once in the UI, linked to the glossary",
+      "source": "PRD FR-2, FR-9; brief uses \"SLA\" informally",
+      "status": "RESOLVED"
+    },
+    {
+      "impact": "—",
+      "level": "—",
+      "n": 12,
+      "needsYou": false,
+      "question": "Deprecation-policy vocabulary",
+      "resolution": "`blocking` | `advisory` (ADR-0002 text aligned in rev 2)",
+      "source": "PRD FR-33, AC-19, AC-20",
+      "status": "RESOLVED"
+    },
+    {
+      "impact": "Low — FR-18/AC-13 change; FR-16 unaffected",
+      "level": "Low",
+      "n": 13,
+      "needsYou": false,
+      "question": "Tie-break in prerequisite order",
+      "resolution": "Ascending service id among mutually independent services",
+      "source": "PRD FR-18, AC-13",
+      "status": "RESOLVED (PRD default A-9, unconfirmed)"
+    },
+    {
+      "impact": "Low",
+      "level": "Low",
+      "n": 14,
+      "needsYou": true,
+      "question": "Fixtures F1–F6",
+      "resolution": "Test-only, owned by PBI-001 at `src/lib/testing/fixtures.ts`; F1's ids coincide with catalogue ids but its values are PRD gate values, not content",
+      "source": "Planner default (review M2)",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low — one config value; re-verify AC-26 if a root/custom domain",
+      "level": "Low",
+      "n": 15,
+      "needsYou": true,
+      "question": "GitHub Pages base path",
+      "resolution": "`/platform-catalogue/` via Vite `base`",
+      "source": "Repo name; PRD A-18",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "—",
+      "level": "—",
+      "n": 16,
+      "needsYou": false,
+      "question": "Do any ASSUMED rows trigger a trust-model invariant?",
+      "resolution": "**No.** No row is security-sensitive, none breaches a blast-radius threshold (both unset in config), and the one Medium-impact row (6) is a two-group rework, not an invariant class. The plan gate is human because `plan_gate_requires_human = true`",
+      "source": "This ledger; `backlog-delivery.config` `[risk]`",
+      "status": "RESOLVED"
+    },
+    {
+      "impact": "Low — a data + schema edit if the real vocabularies differ, no TypeScript; Medium only if a *ranked* comparison model is required (eligibility.ts changes)",
+      "level": "Low",
+      "n": 17,
+      "needsYou": true,
+      "question": "Eligibility vocabularies (PRD A-16)",
+      "resolution": "Set-membership over plain strings; values are `schema.json` enums: classification `public` | `internal` | `confidential` | `regulated`; tier `tier-1` | `tier-2` | `tier-3`; `types.ts` carries no union (applied)",
+      "source": "PRD A-16 default adopted verbatim",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low",
+      "level": "Low",
+      "n": 18,
+      "needsYou": false,
+      "question": "Retired target blocks a plan (PRD A-4)",
+      "resolution": "Yes; retired state is the reason",
+      "source": "PRD FR-31, AC-18",
+      "status": "RESOLVED (PRD default A-4, unconfirmed)"
+    },
+    {
+      "impact": "Low — critical-path calc replaces the sum",
+      "level": "Low",
+      "n": 19,
+      "needsYou": false,
+      "question": "Plan duration aggregation (PRD A-10)",
+      "resolution": "Arithmetic sum, steps sequential",
+      "source": "PRD FR-29, AC-22",
+      "status": "RESOLVED (PRD default A-10, unconfirmed)"
+    },
+    {
+      "impact": "Low",
+      "level": "Low",
+      "n": 20,
+      "needsYou": false,
+      "question": "Eligibility propagates down the closure (PRD A-11)",
+      "resolution": "Yes; disqualifying dependency named",
+      "source": "PRD FR-22, AC-16",
+      "status": "RESOLVED (PRD default A-11, unconfirmed)"
+    },
+    {
+      "impact": "Low — content only",
+      "level": "Low",
+      "n": 21,
+      "needsYou": true,
+      "question": "Invented figures, approval routes, durations (PRD A-17)",
+      "resolution": "Plausible values chosen so composites are visibly non-trivial; at least one deprecated service in a live chain",
+      "source": "PRD A-17, D-2",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "—",
+      "level": "—",
+      "n": 22,
+      "needsYou": false,
+      "question": "Greenfield: no house design system or existing schema (PRD A-20)",
+      "resolution": "Confirmed: no design assets, no prior schema in the repo; `src/` was empty at planning time and now holds only this build's own PBI-000/001 output",
+      "source": "repository tree at `8467aa5` and the working tree",
+      "status": "RESOLVED"
+    },
+    {
+      "impact": "Low — one `git push` and one workflow run by the owner",
+      "level": "Low",
+      "n": 23,
+      "needsYou": true,
+      "question": "Deployment execution deferred",
+      "resolution": "Workflow file authored (PBI-012); nothing pushed or run by the build. Narrows PRD S-5 \"deployed\" to \"deployable\"",
+      "source": "Overnight-build guardrail agreed with brief author",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low–Medium — adding a SW later is additive; switching to history routing needs a 404 fallback",
+      "level": "Low–Medium",
+      "n": 24,
+      "needsYou": true,
+      "question": "Routing and offline model",
+      "resolution": "Hash routing; eager glob; single bundle; no service worker. In-session navigation after first load is proven by construction; offline **reload** is unsupported — narrows PRD S-5/C-1 as recorded in Out-of-scope",
+      "source": "Planner (review M4, N7)",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low — a CI Lighthouse step is additive",
+      "level": "Low",
+      "n": 25,
+      "needsYou": true,
+      "question": "How NFR-4 (FCP at 4× throttle) is measured",
+      "resolution": "Manual gate: the owner runs Lighthouse against the deployed site; not automated in v1",
+      "source": "No Lighthouse harness in the dependency list",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low — each is dev-time except the latin font subsets, which are counted against NFR-3; the pin is one `package.json` line",
+      "level": "Low",
+      "n": 26,
+      "needsYou": true,
+      "question": "Dependency additions and runtime",
+      "resolution": "The eight packages listed in Key decisions; **no script-runner package** — Node native type stripping, pinned `engines.node >= 22.18` (local: 24.16); nothing else",
+      "source": "Planner (review L6, N6, N17)",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low — adding `@playwright/test` later automates them additively",
+      "level": "Low",
+      "n": 27,
+      "needsYou": true,
+      "question": "Verification of layout-dependent criteria",
+      "resolution": "AC-32 and NFR-8 (no horizontal scroll at 360/768/1280/1920), the network-disabled half of AC-26, and NFR-4 are **manual owner gates** on the deployed build; AC-31 runs under happy-dom with `color-contrast` excluded (no layout engine), NFR-9 is discharged by PBI-008's token-contrast test",
+      "source": "Planner (review N2); no real-browser harness in row 26",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low — UI shows one more list; no logic rework",
+      "level": "Low",
+      "n": 28,
+      "needsYou": true,
+      "question": "Eligibility partition of a service whose closure cannot be resolved (cycle / unknown dependency)",
+      "resolution": "A third bucket `unresolvable` (id + GraphError) so a broken graph is visible, never silently dropped; PBI-010 must render it",
+      "source": "Planner refinement of PRD FR-20 (code-review follow-up on PBI-004)",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low — either module flips with a two-line reorder",
+      "level": "Low",
+      "n": 29,
+      "needsYou": true,
+      "question": "Precedence of a domain verdict over a graph error",
+      "resolution": "Eligibility decides a target's OWN failure before walking its graph (a target failing its own control is `ineligible` even on a cycle); lifecycle and availability walk the graph first (a cycle is a catalogue defect and wins). Recorded as the one rule: *own-requirement verdicts that need no traversal come first; every traversal-dependent verdict yields to a graph error*",
+      "source": "Planner (code-review follow-up on PBI-004/005)",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low — one blocker kind; PBI-010 renders it like an ineligible blocker",
+      "level": "Low",
+      "n": 30,
+      "needsYou": true,
+      "question": "A `retired` service that is a plan STEP but not the target",
+      "resolution": "Attached as a `retired-dependency` blocker regardless of deprecation policy (you cannot onboard a retired service); not additionally a finding, since PRD FR-32 names deprecated steps only",
+      "source": "Planner (PBI-006 build note; PRD FR-31 covers only retired targets)",
+      "status": "ASSUMED"
+    },
+    {
+      "impact": "Low — emitting a second blocker on the dependant is a three-line change",
+      "level": "Low",
+      "n": 31,
+      "needsYou": true,
+      "question": "Blocker attribution in an onboarding plan when a step passes its own requirements but a dependency step fails (PRD FR-22 vs FR-30)",
+      "resolution": "The failing dependency step carries the `ineligible` blocker; the dependant step carries none (no duplicate blame; `blocked` is still true). PBI-010 must mark the dependant ineligible in the catalogue view (FR-22) while its plan row shows the dependency's blocker",
+      "source": "Planner (final library code review CR-R2-2)",
+      "status": "ASSUMED"
+    }
+  ],
+  "source": "docs/backlog/specs/platform-catalogue.md"
+}

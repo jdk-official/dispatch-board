@@ -1,0 +1,10 @@
+{
+  "group": "B",
+  "kind": "done",
+  "label": "PBI-002 schema, 14 services, validator",
+  "lane": "cw",
+  "min": 11,
+  "seq": 20,
+  "tok": 98189,
+  "verdict": "DONE · 55 tests"
+}

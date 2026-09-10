@@ -1,0 +1,612 @@
+{
+  "byModel": [
+    {
+      "cacheRead": 68348570,
+      "cacheWrite": 3874459,
+      "effective": 18443268,
+      "input": 11748,
+      "label": "Fable 5.1",
+      "model": "claude-fable-5-1",
+      "output": 769549,
+      "requests": 430
+    },
+    {
+      "cacheRead": 24495199,
+      "cacheWrite": 965172,
+      "effective": 5469245,
+      "input": 786,
+      "label": "Opus 5",
+      "model": "claude-opus-5",
+      "output": 217719,
+      "requests": 78
+    }
+  ],
+  "generatedAt": "2026-09-10T18:54:38+00:00",
+  "groups": [
+    {
+      "effective": 8273590,
+      "key": "subagents",
+      "label": "Subagents (the agent fleet)"
+    },
+    {
+      "effective": 7838405,
+      "key": "reread",
+      "label": "Re-reading instructions and history"
+    },
+    {
+      "effective": 232990,
+      "key": "think",
+      "label": "Thinking and replies"
+    },
+    {
+      "effective": 4933720,
+      "key": "files",
+      "label": "Files and shell commands"
+    },
+    {
+      "effective": 273577,
+      "key": "browser",
+      "label": "Browser checks"
+    },
+    {
+      "effective": 134797,
+      "key": "artifact",
+      "label": "Publishing this dashboard"
+    },
+    {
+      "effective": 1167408,
+      "key": "dispatch",
+      "label": "Dispatching agents"
+    },
+    {
+      "effective": 288092,
+      "key": "skills",
+      "label": "Loading skills and tools"
+    },
+    {
+      "effective": 731452,
+      "key": "loop",
+      "label": "Overnight loop scheduling"
+    },
+    {
+      "effective": 35341,
+      "key": "ask",
+      "label": "Questions to you"
+    },
+    {
+      "effective": 3141,
+      "key": "connectors",
+      "label": "Connectors (Microsoft Learn)"
+    }
+  ],
+  "hourly": [
+    {
+      "hour": "2026-09-09T19",
+      "main": 628092,
+      "sub": 25984
+    },
+    {
+      "hour": "2026-09-09T20",
+      "main": 3662547,
+      "sub": 4798412
+    },
+    {
+      "hour": "2026-09-09T21",
+      "main": 194594,
+      "sub": 206475
+    },
+    {
+      "hour": "2026-09-09T22",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-09T23",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T00",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T01",
+      "main": 1693110,
+      "sub": 1303075
+    },
+    {
+      "hour": "2026-09-10T02",
+      "main": 2013842,
+      "sub": 1939644
+    },
+    {
+      "hour": "2026-09-10T03",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T04",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T05",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T06",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T07",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T08",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T09",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T10",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T11",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T12",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T13",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T14",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T15",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T16",
+      "main": 0,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T17",
+      "main": 1645292,
+      "sub": 0
+    },
+    {
+      "hour": "2026-09-10T18",
+      "main": 5801446,
+      "sub": 0
+    }
+  ],
+  "limits": [
+    {
+      "firstAt": "2026-09-09T21:02:39.160Z",
+      "refused": 3,
+      "resetsAt": "2026-09-10T01:40:00+00:00",
+      "type": "five_hour"
+    },
+    {
+      "firstAt": "2026-09-10T02:31:39.798Z",
+      "refused": 6,
+      "resetsAt": "2026-09-10T06:40:00+00:00",
+      "type": "five_hour"
+    }
+  ],
+  "overage": "Extra usage beyond the limit is turned off for your organisation, so work paused until each reset.",
+  "source": "Claude Code transcripts for this session and its 31 subagents, on this computer",
+  "span": {
+    "first": "2026-09-09T19:46:54.489Z",
+    "last": "2026-09-10T18:54:33.026Z"
+  },
+  "subagents": [
+    {
+      "agentType": "review-agents:code-reviewer",
+      "description": "Code-review gate PBI-008",
+      "effective": 387923,
+      "end": "2026-09-10T02:15:27.670Z",
+      "id": "a002bec40e8f6252b",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 7,
+      "start": "2026-09-10T02:09:31.723Z",
+      "type": "code-reviewer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "Apply review LOWs to PBI-003/004/005",
+      "effective": 195590,
+      "end": "2026-09-09T20:55:39.341Z",
+      "id": "a042a6ff54ebd0931",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 11,
+      "start": "2026-09-09T20:52:12.656Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "review-agents:code-reviewer",
+      "description": "Code-review gate PBI-003/004/005",
+      "effective": 281017,
+      "end": "2026-09-09T20:50:12.599Z",
+      "id": "a0e876c38d55a3bc2",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 6,
+      "start": "2026-09-09T20:44:48.463Z",
+      "type": "code-reviewer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "Apply PBI-001 review notes CR-3..CR-6",
+      "effective": 263399,
+      "end": "2026-09-09T20:56:49.685Z",
+      "id": "a0fc49248d15982b6",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 19,
+      "start": "2026-09-09T20:50:06.997Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "review-agents:code-reviewer",
+      "description": "Code-review gate PBI-002",
+      "effective": 7442,
+      "end": "2026-09-09T21:02:33.099Z",
+      "id": "a2036ced8f86ab432",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 1,
+      "start": "2026-09-09T21:02:33.099Z",
+      "type": "code-reviewer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "PBI-010 profile, eligibility, plan view",
+      "effective": 324767,
+      "end": "2026-09-10T02:31:43.295Z",
+      "id": "a21d5fe955df8ac3d",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 18,
+      "start": "2026-09-10T02:26:12.388Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "engineering-agents:requirements-author",
+      "description": "Author PRD from raw notes",
+      "effective": 25984,
+      "end": "2026-09-09T19:52:27.513Z",
+      "id": "a22f56e739d9b7686",
+      "model": "claude-opus-5",
+      "modelLabel": "Opus 5",
+      "requests": 1,
+      "start": "2026-09-09T19:52:27.513Z",
+      "type": "requirements-author"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "Apply final library review notes",
+      "effective": 186726,
+      "end": "2026-09-10T01:47:43.663Z",
+      "id": "a24480916d216c366",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 10,
+      "start": "2026-09-10T01:42:14.677Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "Plan",
+      "description": "Spec-gate review of PBI-008 design spec",
+      "effective": 196097,
+      "end": "2026-09-09T20:50:57.862Z",
+      "id": "a3dd0a394939b7838",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 5,
+      "start": "2026-09-09T20:46:09.823Z",
+      "type": "Gate reviewer"
+    },
+    {
+      "agentType": "review-agents:code-reviewer",
+      "description": "Code-review gate PBI-002 (retry)",
+      "effective": 233047,
+      "end": "2026-09-10T01:47:53.921Z",
+      "id": "a3e2158e265af962c",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 6,
+      "start": "2026-09-10T01:42:31.062Z",
+      "type": "code-reviewer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "Align types.ts to set-membership vocab",
+      "effective": 99858,
+      "end": "2026-09-09T20:34:56.948Z",
+      "id": "a4584af0b3847e2ea",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 10,
+      "start": "2026-09-09T20:32:19.821Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "engineering-agents:test-writer",
+      "description": "Backfill graph.ts branch coverage",
+      "effective": 206479,
+      "end": "2026-09-09T20:41:27.526Z",
+      "id": "a55a0f3108711419a",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 12,
+      "start": "2026-09-09T20:36:47.263Z",
+      "type": "test-writer"
+    },
+    {
+      "agentType": "review-agents:code-reviewer",
+      "description": "Code-review gate PBI-000 and PBI-001",
+      "effective": 285160,
+      "end": "2026-09-09T20:48:06.275Z",
+      "id": "a59410c864d07cb58",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 7,
+      "start": "2026-09-09T20:43:05.256Z",
+      "type": "code-reviewer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "Apply PBI-002 review LOWs",
+      "effective": 186232,
+      "end": "2026-09-10T01:53:45.793Z",
+      "id": "a5ccaaaf95eb1a757",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 9,
+      "start": "2026-09-10T01:50:08.882Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "PBI-005 lifecycle findings under TDD",
+      "effective": 150165,
+      "end": "2026-09-09T20:42:36.892Z",
+      "id": "a5cee16d83ec4f0a2",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 17,
+      "start": "2026-09-09T20:38:32.011Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "Plan",
+      "description": "Plan-gate review round 2",
+      "effective": 325759,
+      "end": "2026-09-09T20:36:34.534Z",
+      "id": "a66cab3014021a1fe",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 5,
+      "start": "2026-09-09T20:32:06.460Z",
+      "type": "Gate reviewer"
+    },
+    {
+      "agentType": "Plan",
+      "description": "Plan-gate review of solution spec",
+      "effective": 177686,
+      "end": "2026-09-09T20:26:12.253Z",
+      "id": "a685e11b1677c8cc8",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 5,
+      "start": "2026-09-09T20:21:38.029Z",
+      "type": "Gate reviewer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "PBI-009 loader, browse, filter, detail",
+      "effective": 612492,
+      "end": "2026-09-10T02:23:46.612Z",
+      "id": "a705f2b16908177e2",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 19,
+      "start": "2026-09-10T02:12:24.058Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "PBI-006 onboarding plan under TDD",
+      "effective": 263159,
+      "end": "2026-09-09T20:50:02.269Z",
+      "id": "a7131e40e4cbb1f2c",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 14,
+      "start": "2026-09-09T20:45:14.821Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "PBI-004 eligibility partitioning under TDD",
+      "effective": 217885,
+      "end": "2026-09-09T20:42:42.590Z",
+      "id": "a729d55ed4218fc80",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 12,
+      "start": "2026-09-09T20:38:15.147Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "PBI-007 public entry point and proofs",
+      "effective": 137534,
+      "end": "2026-09-09T20:54:34.760Z",
+      "id": "a7e3107674fb30057",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 14,
+      "start": "2026-09-09T20:51:39.534Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "review-agents:code-reviewer",
+      "description": "Code-review gate PBI-009",
+      "effective": 301701,
+      "end": "2026-09-10T02:30:16.350Z",
+      "id": "a83b7f54370cabe35",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 8,
+      "start": "2026-09-10T02:25:34.769Z",
+      "type": "code-reviewer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "PBI-001 types and graph under TDD",
+      "effective": 411169,
+      "end": "2026-09-09T20:30:48.521Z",
+      "id": "aa06a57777fe08d5e",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 22,
+      "start": "2026-09-09T20:22:50.728Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "PBI-002 schema, catalogue data, validator",
+      "effective": 540913,
+      "end": "2026-09-09T21:01:11.663Z",
+      "id": "aa6d59748d18f41f2",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 18,
+      "start": "2026-09-09T20:51:20.805Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "PBI-008 design system build under TDD",
+      "effective": 776381,
+      "end": "2026-09-10T02:07:37.303Z",
+      "id": "ab9874143f146da6b",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 20,
+      "start": "2026-09-10T01:49:18.436Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "review-agents:code-reviewer",
+      "description": "Final library code-review round",
+      "effective": 249551,
+      "end": "2026-09-09T21:01:17.066Z",
+      "id": "ac8f1eef5be3c1638",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 5,
+      "start": "2026-09-09T20:57:25.281Z",
+      "type": "code-reviewer"
+    },
+    {
+      "agentType": "engineering-agents:requirements-author",
+      "description": "Author PRD for service catalogue",
+      "effective": 272572,
+      "end": "2026-09-09T20:15:07.657Z",
+      "id": "ad8f34de3e0564883",
+      "model": "claude-opus-5",
+      "modelLabel": "Opus 5",
+      "requests": 6,
+      "start": "2026-09-09T20:05:16.951Z",
+      "type": "requirements-author"
+    },
+    {
+      "agentType": "Plan",
+      "description": "PBI-008 spec-gate review round 2",
+      "effective": 283361,
+      "end": "2026-09-09T21:01:10.176Z",
+      "id": "adae7028b3282c9c5",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 8,
+      "start": "2026-09-09T20:54:59.687Z",
+      "type": "Gate reviewer"
+    },
+    {
+      "agentType": "Plan",
+      "description": "Plan-gate review round 3 (final)",
+      "effective": 220220,
+      "end": "2026-09-09T20:46:14.413Z",
+      "id": "adc7d45f73e3dfd09",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 5,
+      "start": "2026-09-09T20:43:34.710Z",
+      "type": "Gate reviewer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "PBI-003 composite availability under TDD",
+      "effective": 219870,
+      "end": "2026-09-09T20:43:18.749Z",
+      "id": "ae122483d3af15afd",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 14,
+      "start": "2026-09-09T20:37:53.628Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "Plan",
+      "description": "PBI-008 spec-gate review round 3 (final)",
+      "effective": 233451,
+      "end": "2026-09-10T01:46:43.902Z",
+      "id": "aedddebe2728df341",
+      "model": "claude-fable-5-1",
+      "modelLabel": "Fable 5.1",
+      "requests": 6,
+      "start": "2026-09-10T01:42:52.010Z",
+      "type": "Gate reviewer"
+    }
+  ],
+  "totals": {
+    "cacheRead": 92843769,
+    "cacheWrite": 4839631,
+    "effective": 23912513,
+    "input": 12534,
+    "output": 987268,
+    "requests": 508
+  },
+  "weights": {
+    "cacheRead": 0.1,
+    "cacheWrite": 2,
+    "input": 1,
+    "output": 5
+  }
+}

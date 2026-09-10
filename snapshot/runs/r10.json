@@ -1,0 +1,10 @@
+{
+  "from": "r06",
+  "kind": "go",
+  "label": "plan gate · round 3 (final)",
+  "lane": "plan",
+  "min": 3,
+  "seq": 10,
+  "tok": 97467,
+  "verdict": "APPROVE-WITH-NOTES"
+}

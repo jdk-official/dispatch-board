@@ -1,0 +1,10 @@
+{
+  "from": "r31",
+  "kind": "go",
+  "label": "PBI-009",
+  "lane": "cr",
+  "min": 6,
+  "seq": 32,
+  "tok": 109604,
+  "verdict": "GO-WITH-CONDITIONS · 2M 4L"
+}

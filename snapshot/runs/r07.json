@@ -1,0 +1,10 @@
+{
+  "feeds": "r05",
+  "kind": "done",
+  "label": "types → set-membership vocabulary",
+  "lane": "cw",
+  "min": 3,
+  "seq": 7,
+  "tok": 35944,
+  "verdict": "DONE"
+}

@@ -1,0 +1,9 @@
+{
+  "kind": "done",
+  "label": "PRD from raw notes",
+  "lane": "req",
+  "min": 10,
+  "seq": 2,
+  "tok": 69787,
+  "verdict": "DONE-WITH-CONDITIONS"
+}

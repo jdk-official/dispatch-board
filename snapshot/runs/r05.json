@@ -1,0 +1,9 @@
+{
+  "kind": "done",
+  "label": "PBI-001 types + graph",
+  "lane": "cw",
+  "min": 9,
+  "seq": 5,
+  "tok": 80259,
+  "verdict": "DONE · 24 tests"
+}

@@ -1,0 +1,749 @@
+<title>Live Dispatch Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400..700;1,400..500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Dark-first: the bare root carries the dark palette; light is the override. */
+  :root {
+    color-scheme: dark;
+    --ground: #0B1115; --surface: #111A20; --raised: #17232B; --hover: #1B2932; --rule: #22323C; --rule-2: #2E4350;
+    --ink: #E7EEF1; --ink-2: #9AACB5; --ink-3: #6B808B;
+    --live: #46C6DA; --go: #4FC58F; --changes: #F1B24A; --nogo: #FF6B5E; --human: #C893FF;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      color-scheme: light;
+      --ground: #F3F5F7; --surface: #FFFFFF; --raised: #EEF2F5; --hover: #E6ECF0; --rule: #DDE4E9; --rule-2: #C8D2D9;
+      --ink: #0F1A20; --ink-2: #4D5F69; --ink-3: #7A8A93;
+      --live: #0E7C90; --go: #1D8752; --changes: #9A6200; --nogo: #C23A2E; --human: #7A3CC4;
+    }
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --ground: #F3F5F7; --surface: #FFFFFF; --raised: #EEF2F5; --hover: #E6ECF0; --rule: #DDE4E9; --rule-2: #C8D2D9;
+    --ink: #0F1A20; --ink-2: #4D5F69; --ink-3: #7A8A93;
+    --live: #0E7C90; --go: #1D8752; --changes: #9A6200; --nogo: #C23A2E; --human: #7A3CC4;
+  }
+
+  body { background: var(--ground); color: var(--ink); font: 400 14px/1.5 "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 0 28px; }
+  code, .id { font: 500 12px/1.4 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  code { background: var(--raised); padding: 1px 5px; border-radius: 4px; }
+  h2 { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 4px; text-wrap: balance; }
+  h3 { font-size: 14px; font-weight: 600; margin: 0; }
+  p { margin: 0; }
+  .muted { color: var(--ink-2); }
+  .faint { color: var(--ink-3); font-size: 12px; }
+  .lead { color: var(--ink-2); max-width: 78ch; margin: 0 0 18px; }
+
+  /* ---------- app bar ---------- */
+  .appbar { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--ground) 88%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--rule); }
+  .appbar .row1 { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0 8px; }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .brand svg { flex: none; }
+  .brand .t { font-size: 15px; font-weight: 650; white-space: nowrap; }
+  .crumb { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--rule-2); border-radius: 6px; color: var(--ink-2); font: 500 12px/1.4 "IBM Plex Mono", ui-monospace, monospace; white-space: nowrap; }
+  .right { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
+  .status { display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 6px; background: var(--raised); font-size: 12.5px; font-weight: 600; }
+  .status i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
+  .status.on { color: var(--live); } .status.on i { background: var(--live); }
+  .tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin-bottom: -1px; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { font: 500 13.5px/1 inherit; font-family: inherit; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--ink-2); padding: 11px 12px 12px; cursor: pointer; white-space: nowrap; display: inline-flex; gap: 7px; align-items: center; }
+  .tabs button:hover { color: var(--ink); }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+  button:focus-visible, .chip:focus-visible { outline: 2px solid var(--live); outline-offset: -2px; border-radius: 4px; }
+  .count { font-size: 11px; font-weight: 600; min-width: 18px; padding: 2px 6px; border-radius: 9px; background: var(--raised); color: var(--ink-2); text-align: center; }
+  .count.human { background: color-mix(in srgb, var(--human) 18%, transparent); color: var(--human); }
+  .count.warn { background: color-mix(in srgb, var(--changes) 18%, transparent); color: var(--changes); }
+
+  section[role="tabpanel"] { padding: 24px 0 48px; }
+
+  /* ---------- tiles (the shared status-cell language) ---------- */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 0 0 16px; }
+  .tile { position: relative; background: var(--surface); border: 1px solid var(--rule-2); border-radius: 8px; padding: 16px 16px 14px; overflow: hidden; }
+  .tile::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--tone, var(--rule-2)); }
+  .tile .tl { font-size: 12.5px; color: var(--ink-2); font-weight: 500; }
+  .tile .tv { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.15; margin: 6px 0 4px; }
+  .tile .tv small { font-size: 16px; font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
+  .tile .ts { font-size: 12px; color: var(--ink-3); }
+  .tile.accent .tv { color: var(--tone); }
+
+  /* ---------- panels ---------- */
+  .panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+  .ph { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--rule); }
+  .pb { padding: 16px 18px; }
+  .pb.flush { padding: 0; }
+  .grid { display: grid; gap: 16px; margin: 0 0 16px; }
+  .g-2-1 { grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr); }
+  .g-1-1 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .g-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .scroll { overflow-x: auto; }
+  svg { max-width: 100%; height: auto; display: block; }
+
+  /* backlog cells */
+  .cells { display: grid; grid-template-columns: repeat(13, minmax(96px, 1fr)); gap: 8px; }
+  .cell { position: relative; background: var(--surface); border: 1px solid var(--rule-2); border-radius: 6px; padding: 12px 10px 10px; overflow: hidden; display: grid; gap: 6px; align-content: start; min-height: 96px; }
+  .cell::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--tone, transparent); }
+  .cell .nm { font-size: 12px; line-height: 1.35; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .cell .st { font-size: 11.5px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; margin-top: auto; }
+  .cell .st i { width: 7px; height: 7px; border-radius: 50%; background: var(--tone, var(--rule-2)); }
+  .cell.done { --tone: var(--go); } .cell.conditions { --tone: var(--changes); } .cell.partial { --tone: var(--live); border-style: dashed; }
+  .cell.todo { --tone: transparent; } .cell.todo .nm { color: var(--ink-2); } .cell.todo .st i { background: var(--rule-2); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--ink-2); }
+  .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+
+  /* badges */
+  .tag { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; line-height: 1; padding: 4px 8px; border-radius: 5px; color: var(--t, var(--ink-2)); background: color-mix(in srgb, var(--t, var(--ink-3)) 15%, transparent); white-space: nowrap; }
+  .tag.go, .tag.done, .tag.resolved { --t: var(--go); } .tag.changes, .tag.conditions, .tag.medium { --t: var(--changes); } .tag.nogo, .tag.killed { --t: var(--nogo); }
+  .tag.running, .tag.partial { --t: var(--live); } .tag.assumed, .tag.human, .tag.proposed, .tag.pending { --t: var(--human); }
+  .tag.muted, .tag.low, .tag.todo { --t: var(--ink-3); }
+
+  /* attention list */
+  .att { list-style: none; margin: 0; padding: 0; }
+  .att li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 13px 18px; border-bottom: 1px solid var(--rule); }
+  .att li:last-child { border-bottom: 0; }
+  .att .d { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; background: var(--t); }
+  .att b { font-weight: 600; display: block; }
+  .att span.m { color: var(--ink-2); font-size: 13px; }
+  .linkbtn { font: 500 12.5px/1 inherit; font-family: inherit; color: var(--ink-2); background: var(--raised); border: 1px solid var(--rule-2); border-radius: 6px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
+  .linkbtn:hover { color: var(--ink); background: var(--hover); }
+
+  /* tables */
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: 12px; font-weight: 500; color: var(--ink-3); background: var(--raised); border-bottom-color: var(--rule-2); white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  tbody tr:hover td { background: color-mix(in srgb, var(--hover) 55%, transparent); }
+  td.num, th.num { text-align: right; }
+  td.wide { min-width: 240px; }
+  .sub { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
+  .bar { height: 6px; border-radius: 3px; background: var(--raised); overflow: hidden; min-width: 60px; }
+  .bar i { display: block; height: 100%; border-radius: 3px; background: var(--ink-3); }
+
+  /* outcome bars */
+  .stack { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--raised); margin: 4px 0 12px; }
+  .stack i { display: block; height: 100%; }
+  .hbars { display: grid; gap: 10px; }
+  .hbars .r { display: grid; grid-template-columns: 136px minmax(0, 1fr) 30px; gap: 12px; align-items: center; font-size: 13px; }
+  .hbars .v { text-align: right; color: var(--ink-2); }
+
+  /* chips */
+  .chipbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+  .chip { font: 500 13px/1 inherit; font-family: inherit; background: var(--surface); color: var(--ink-2); border: 1px solid var(--rule-2); border-radius: 6px; padding: 7px 11px; cursor: pointer; }
+  .chip[aria-pressed="true"] { color: var(--ink); background: var(--raised); border-color: var(--ink-3); }
+
+  .callout { display: flex; gap: 12px; align-items: flex-start; border: 1px solid color-mix(in srgb, var(--t, var(--human)) 45%, transparent); background: color-mix(in srgb, var(--t, var(--human)) 9%, transparent); border-radius: 8px; padding: 12px 14px; margin: 0 0 16px; }
+  .callout svg { flex: none; margin-top: 2px; }
+  .callout.warn { --t: var(--changes); }
+  .empty { border: 1px dashed var(--rule-2); border-radius: 10px; padding: 32px; color: var(--ink-2); text-align: center; }
+
+  /* spec */
+  .list { margin: 0; padding-left: 18px; } .list li { margin: 0 0 7px; } .list li::marker { color: var(--ink-3); }
+  .goals { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .goals li { display: grid; grid-template-columns: 40px 1fr; gap: 10px; }
+  .modules { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+  .track { display: grid; grid-template-columns: 150px 1fr; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+  .track:last-child { border-bottom: 0; }
+  .track ol { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; list-style: none; margin: 0; padding: 0; }
+  .track li { display: flex; align-items: center; gap: 6px; }
+  .track li + li::before { content: ""; width: 16px; height: 1px; background: var(--rule-2); }
+
+  /* assumptions */
+  tr.you td:first-child { box-shadow: inset 3px 0 0 var(--human); }
+  .n { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 6px; background: var(--raised); font-size: 12px; font-weight: 600; color: var(--ink-2); }
+  tr.you .n { background: color-mix(in srgb, var(--human) 20%, transparent); color: var(--human); }
+
+  /* decisions */
+  .mapping td:first-child { font-style: italic; }
+  .adrs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 0 0 16px; }
+
+  /* git */
+  .facts { display: grid; grid-template-columns: max-content 1fr; gap: 10px 20px; margin: 0; }
+  .facts dt { color: var(--ink-3); font-size: 13px; }
+  .facts dd { margin: 0; }
+  .steps { list-style: none; counter-reset: s; margin: 10px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+  .steps li { counter-increment: s; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .steps li::before { content: counter(s); width: 20px; height: 20px; border-radius: 50%; background: var(--raised); display: grid; place-items: center; font-size: 11px; font-weight: 600; color: var(--ink-2); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .flow { stroke-dasharray: 5 7; animation: flow 1.1s linear infinite; }
+    @keyframes flow { to { stroke-dashoffset: -24; } }
+    .status.on i, .runglow { animation: ping 1.6s ease-in-out infinite; }
+    @keyframes ping { 50% { opacity: 0.35; } }
+  }
+  footer { padding: 18px 0 32px; border-top: 1px solid var(--rule); color: var(--ink-3); font-size: 12px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+
+  @media (max-width: 1100px) { .g-2-1, .g-1-1, .g-3 { grid-template-columns: 1fr; } .cells { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); } }
+  @media (max-width: 640px) {
+    .wrap { padding: 0 16px; } .crumb, .updated { display: none; }
+    .track { grid-template-columns: 1fr; gap: 6px; } .facts { grid-template-columns: 1fr; gap: 2px; } .facts dd { margin-bottom: 8px; }
+    .hbars .r { grid-template-columns: 110px minmax(0, 1fr) 26px; }
+  }
+</style>
+
+<header class="appbar">
+  <div class="wrap">
+    <div class="row1">
+      <div class="brand">
+        <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 8.5h11M6.5 12h7M6.5 15.5h4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="17.5" cy="15.5" r="2" fill="var(--human)"/></svg>
+        <span class="t">Platform catalogue build</span>
+        <span class="crumb" id="crumb">build/logic-core</span>
+      </div>
+      <div class="right">
+        <span class="faint updated" id="updated"></span>
+        <span class="status" id="status"><i></i><span id="statusText">Connecting</span></span>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Dashboard sections">
+      <button role="tab" id="tab-overview" aria-controls="panel-overview" data-tab="overview">Overview</button>
+      <button role="tab" id="tab-dispatch" aria-controls="panel-dispatch" data-tab="dispatch">Dispatch</button>
+      <button role="tab" id="tab-spec" aria-controls="panel-spec" data-tab="spec">Spec</button>
+      <button role="tab" id="tab-assumptions" aria-controls="panel-assumptions" data-tab="assumptions">Assumptions <span class="count human" id="c-assumptions" hidden></span></button>
+      <button role="tab" id="tab-decisions" aria-controls="panel-decisions" data-tab="decisions">Decisions &amp; not worked out</button>
+      <button role="tab" id="tab-backlog" aria-controls="panel-backlog" data-tab="backlog">Backlog &amp; status <span class="count warn" id="c-backlog" hidden></span></button>
+      <button role="tab" id="tab-git" aria-controls="panel-git" data-tab="git">GitHub details</button>
+      <button role="tab" id="tab-usage" aria-controls="panel-usage" data-tab="usage">Claude usage</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section role="tabpanel" id="panel-overview" aria-labelledby="tab-overview"></section>
+  <section role="tabpanel" id="panel-dispatch" aria-labelledby="tab-dispatch" hidden></section>
+  <section role="tabpanel" id="panel-spec" aria-labelledby="tab-spec" hidden></section>
+  <section role="tabpanel" id="panel-assumptions" aria-labelledby="tab-assumptions" hidden></section>
+  <section role="tabpanel" id="panel-decisions" aria-labelledby="tab-decisions" hidden></section>
+  <section role="tabpanel" id="panel-backlog" aria-labelledby="tab-backlog" hidden></section>
+  <section role="tabpanel" id="panel-git" aria-labelledby="tab-git" hidden></section>
+  <section role="tabpanel" id="panel-usage" aria-labelledby="tab-usage" hidden></section>
+  <footer><span>Built with Claude Code and the agent-catalog plugins — planning by backlog-delivery, code by engineering-agents, review by review-agents.</span><span id="foot">Live data</span></footer>
+</main>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  // Text lifted from the repo's docs carries code spans and bold; nothing else is rendered.
+  const md = s => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  const when = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString(undefined, { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }); };
+  const ago = iso => {
+    const d = new Date(iso); if (isNaN(d)) return '';
+    const m = Math.round((Date.now() - d) / 60000);
+    if (m < 1) return 'just now'; if (m < 60) return m + ' min ago'; if (m < 1440) return Math.round(m / 60) + ' h ago';
+    return when(iso);
+  };
+  const src = d => d ? `<p class="faint" style="margin:0 0 16px">Source: ${esc(d.source)} · exported ${esc(when(d.generatedAt))}</p>` : '';
+  const vKind = v => { v = String(v || '').toUpperCase(); if (v.startsWith('NO-GO')) return 'nogo'; if (v.includes('CHANGES')) return 'changes'; if (v.startsWith('GO') || v.startsWith('APPROVE')) return 'go'; return 'muted'; };
+  const icon = (kind) => kind === 'lock'
+    ? `<svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 9V6.5a4 4 0 0 1 8 0V9" fill="none" stroke="var(--human)" stroke-width="1.7"/><rect x="4" y="9" width="12" height="9" rx="2" fill="none" stroke="var(--human)" stroke-width="1.7"/></svg>`
+    : `<svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3l8 14H2z" fill="none" stroke="var(--changes)" stroke-width="1.7" stroke-linejoin="round"/><path d="M10 8v4M10 14.5v.5" stroke="var(--changes)" stroke-width="1.7" stroke-linecap="round"/></svg>`;
+  const tile = (label, value, sub, tone, accent) => `<div class="tile${accent ? ' accent' : ''}" style="--tone:${tone || 'var(--rule-2)'}"><div class="tl">${esc(label)}</div><div class="tv">${value}</div><div class="ts">${sub || '&nbsp;'}</div></div>`;
+  const toneOf = { done: 'var(--ink-3)', go: 'var(--go)', changes: 'var(--changes)', nogo: 'var(--nogo)', killed: 'var(--nogo)', running: 'var(--live)' };
+  const stateLabel = { done: 'Built and reviewed', conditions: 'Conditions open', partial: 'Partly built', todo: 'Not started' };
+  const kindLabel = { done: 'Done', go: 'Approved', changes: 'Changes required', nogo: 'Rejected', killed: 'Cut off', running: 'Running' };
+
+  let runs = [], status = null;
+  const docs = { spec: null, assumptions: null, decisions: null, backlog: null, git: null, usage: null };
+  const lanes = [
+    ['orch', 'Orchestrator', 'this session'], ['req', 'requirements-author', 'engineering-agents'],
+    ['plan', 'Gate reviewer', 'Plan · pbi-review'], ['cw', 'code-writer', 'engineering-agents'],
+    ['tw', 'test-writer', 'engineering-agents'], ['cr', 'code-reviewer', 'review-agents'],
+    ['ver', 'verifier', 'review-agents'], ['human', 'Human', 'plan-gate approval'],
+  ];
+  const laneName = Object.fromEntries(lanes.map(l => [l[0], l[1]]));
+  const sorted = () => runs.slice().sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+  const agentRuns = () => runs.filter(r => r.lane !== 'orch');
+  const isLive = () => runs.some(r => r.kind === 'running') || status?.live === true;
+  const verdictRuns = () => runs.filter(r => ['go', 'changes', 'nogo'].includes(r.kind));
+
+  // ---------------- tabs ----------------
+  const tabs = [...document.querySelectorAll('[role="tab"]')];
+  function select(name, focus) {
+    tabs.forEach(t => {
+      const on = t.dataset.tab === name;
+      t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1;
+      $('panel-' + t.dataset.tab).hidden = !on;
+      if (on && focus) t.focus();
+    });
+    try { localStorage.setItem('board-tab', name); } catch (e) {}
+  }
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => select(t.dataset.tab));
+    t.addEventListener('keydown', e => {
+      const k = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      if (k) { e.preventDefault(); select(tabs[(i + k + tabs.length) % tabs.length].dataset.tab, true); }
+      else if (e.key === 'Home') { e.preventDefault(); select(tabs[0].dataset.tab, true); }
+      else if (e.key === 'End') { e.preventDefault(); select(tabs[tabs.length - 1].dataset.tab, true); }
+    });
+  });
+  document.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) { select(b.dataset.go); window.scrollTo({ top: 0 }); } });
+  let saved = 'overview';
+  try { saved = localStorage.getItem('board-tab') || 'overview'; } catch (e) {}
+  select(tabs.some(t => t.dataset.tab === saved) ? saved : 'overview');
+
+  // ---------------- header ----------------
+  function renderHeader() {
+    const live = isLive();
+    $('status').className = 'status' + (live ? ' on' : '');
+    $('statusText').textContent = live ? 'Building' : (status?.title || (status ? 'Idle' : 'Connecting'));
+    $('updated').textContent = status?.updatedAt ? 'Updated ' + ago(status.updatedAt) : '';
+    if (docs.git?.branch) $('crumb').textContent = docs.git.branch;
+    const you = docs.assumptions?.humanList?.length || 0, cA = $('c-assumptions');
+    cA.hidden = !you; cA.textContent = you;
+    const pb = docs.backlog?.pbis || [], open = pb.filter(p => p.state === 'conditions' || p.state === 'partial').length, cB = $('c-backlog');
+    cB.hidden = !open; cB.textContent = open;
+  }
+
+  // ---------------- pipeline diagram ----------------
+  function pipeline() {
+    const count = l => runs.filter(r => r.lane === l).length;
+    const running = l => runs.some(r => r.lane === l && r.kind === 'running');
+    const live = isLive(), spec = docs.spec, you = docs.assumptions?.humanList?.length ?? '—';
+    const lastPlan = (spec?.rounds || []).filter(r => r.gate === 'Plan gate').slice(-1)[0];
+    const verdicts = runs.filter(r => r.lane === 'cr' && ['go', 'changes', 'nogo'].includes(r.kind)).length;
+    const commits = docs.git?.commits?.length ?? '—';
+    const rn = n => `${n} run${n === 1 ? '' : 's'}`;
+    const node = (x, y, w, h, title, sub, meta, o = {}) => {
+      const stroke = o.human ? 'var(--human)' : o.run ? 'var(--live)' : 'var(--rule-2)';
+      let s = o.run ? `<rect class="runglow" x="${x - 4}" y="${y - 4}" width="${w + 8}" height="${h + 8}" rx="10" fill="none" stroke="var(--live)" stroke-opacity="0.5"/>` : '';
+      s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="7" fill="${o.human ? 'color-mix(in srgb, var(--human) 9%, var(--surface))' : 'var(--surface)'}" stroke="${stroke}" stroke-width="${o.human || o.run ? 1.6 : 1}" ${o.dash ? 'stroke-dasharray="4 4"' : ''}/>`;
+      s += `<text x="${x + (o.tx || 12)}" y="${y + 24}" font-size="12.5" font-weight="600" fill="${o.dim ? 'var(--ink-3)' : o.human ? 'var(--human)' : 'var(--ink)'}">${esc(title)}</text>`;
+      if (sub) s += `<text x="${x + 12}" y="${y + 40}" font-size="11.5" fill="var(--ink-2)">${esc(sub)}</text>`;
+      if (meta) s += `<text x="${x + 12}" y="${y + 56}" font-size="11.5" fill="${o.human ? 'var(--human)' : o.run ? 'var(--live)' : 'var(--ink-3)'}">${esc(meta)}</text>`;
+      return s;
+    };
+    const edge = (d, label, lx, ly, o = {}) => {
+      const c = o.human ? 'var(--human)' : o.warn ? 'var(--changes)' : o.dim ? 'var(--rule-2)' : 'var(--ink-3)';
+      let s = `<path d="${d}" fill="none" stroke="${c}" stroke-width="1.3" ${o.flow && live ? 'class="flow"' : o.dash ? 'stroke-dasharray="4 4"' : ''} marker-end="url(#${o.human ? 'ph' : o.warn ? 'pw' : 'pa'})"/>`;
+      if (label) s += `<text x="${lx}" y="${ly}" text-anchor="${o.anchor || 'middle'}" font-size="11" fill="${o.human ? 'var(--human)' : o.warn ? 'var(--changes)' : 'var(--ink-3)'}">${esc(label)}</text>`;
+      return s;
+    };
+    const mk = (id, c) => `<marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="${c}"/></marker>`;
+    // Six equal columns, two lanes. Column 0 of the engineering lane is intentionally empty.
+    const X = [96, 284, 472, 660, 848, 1036], NW = 158, NH = 64, TY = 44, BY = 176;
+    const cx = i => X[i] + NW / 2, my = TY + NH / 2, by = BY + NH / 2;
+    let s = `<svg viewBox="0 0 1200 286" role="img" aria-label="Pipeline: requirements-author writes the PRD, pbi-plan drafts the spec, a reviewer grades it, and a human approval gate with ${esc(you)} decisions pending must pass before anything reaches the board. Code is built, tested and reviewed on a branch that waits behind the same gate." style="min-width: 900px"><defs>${mk('pa', 'var(--ink-3)')}${mk('pw', 'var(--changes)')}${mk('ph', 'var(--human)')}</defs><g font-family="Schibsted Grotesk, system-ui, sans-serif">`;
+    s += `<text x="0" y="${TY + 29}" font-size="12.5" font-weight="600" fill="var(--ink-2)">Planning</text><text x="0" y="${TY + 46}" font-size="11.5" fill="var(--ink-3)">governed</text>`;
+    s += `<text x="0" y="${BY + 29}" font-size="12.5" font-weight="600" fill="var(--ink-2)">Engineering</text><text x="0" y="${BY + 46}" font-size="11.5" fill="var(--ink-3)">on a branch</text>`;
+    // planning chain: brief → PRD → spec → review → human → board
+    for (let i = 0; i < 5; i++) s += edge(`M${X[i] + NW} ${my}H${X[i + 1] - 2}`, '', 0, 0, i === 3 ? { human: true } : i === 4 ? { dash: true, dim: true } : { flow: true });
+    s += edge(`M${cx(3)} ${TY}V26H${cx(2)}V${TY - 2}`, 'findings, 2 revisions', (cx(2) + cx(3)) / 2, 18, { warn: true });
+    // the PRD's acceptance criteria drive the engineering lane
+    s += edge(`M${cx(1)} ${TY + NH}V${BY - 2}`, 'acceptance criteria', cx(1) - 8, 150, { flow: true, anchor: 'end' });
+    // engineering chain: write → test → review → (verify, not yet run)
+    s += edge(`M${X[1] + NW} ${by}H${X[2] - 2}`, '', 0, 0, { flow: true });
+    s += edge(`M${X[2] + NW} ${by}H${X[3] - 2}`, '', 0, 0, { flow: true });
+    s += edge(`M${X[3] + NW} ${by}H${X[4] - 2}`, '', 0, 0, { dash: true, dim: true });
+    s += edge(`M${cx(3)} ${BY}V152H${cx(1) + 30}V${BY - 2}`, 'findings → fixes', (cx(1) + 30 + cx(3)) / 2, 146, { warn: true });
+    s += edge(`M${cx(3)} ${BY + NH}V262H${cx(5)}V${BY + NH + 2}`, 'commits', (cx(3) + cx(5)) / 2, 278, { flow: true });
+    s += edge(`M${cx(5)} ${BY}V140H${cx(4)}V${TY + NH + 2}`, 'waits for approval', (cx(4) + cx(5)) / 2, 132, { human: true, dash: true });
+    // nodes last so they sit above the edges
+    s += node(X[0], TY, NW, NH, 'Your brief', 'raw notes', 'docs/brief');
+    s += node(X[1], TY, NW, NH, 'requirements-author', spec ? `PRD · ${spec.prd?.frs} requirements` : 'writes the PRD', rn(count('req')), { run: running('req') });
+    s += node(X[2], TY, NW, NH, 'pbi-plan', spec ? `spec revision ${spec.revision}` : 'solution spec', 'planning skill');
+    s += node(X[3], TY, NW, NH, 'Gate reviewer', lastPlan ? lastPlan.verdict.charAt(0) + lastPlan.verdict.slice(1).toLowerCase() : 'grades the spec', rn(count('plan')), { run: running('plan') });
+    s += node(X[4], TY, NW, NH, 'Human approval', `${you} decisions pending`, 'required to proceed', { human: true, tx: 34 });
+    s += `<g transform="translate(${X[4] + 11} ${TY + 10})">${icon('lock')}</g>`;
+    s += node(X[5], TY, NW, NH, 'Board', 'Proposed column', '0 items until approved', { dim: true, dash: true });
+    s += node(X[1], BY, NW, NH, 'code-writer', 'builds under TDD', rn(count('cw')), { run: running('cw') });
+    s += node(X[2], BY, NW, NH, 'test-writer', 'backfills tests', rn(count('tw')), { run: running('tw') });
+    s += node(X[3], BY, NW, NH, 'code-reviewer', `${verdicts} verdicts`, rn(count('cr')), { run: running('cr') });
+    s += node(X[4], BY, NW, NH, 'verifier', count('ver') ? 'runs the app' : 'not run yet', rn(count('ver')), { run: running('ver'), dim: !count('ver'), dash: !count('ver') });
+    s += node(X[5], BY, NW, NH, 'Branch', 'build/logic-core', `${commits} commits`);
+    return s + '</g></svg>';
+  }
+
+  // ---------------- overview ----------------
+  function renderOverview() {
+    const p = $('panel-overview');
+    const pbis = docs.backlog?.pbis || [], m = status?.metrics || {}, g = docs.git;
+    const cnt = k => pbis.filter(x => x.state === k).length;
+    const built = cnt('done') + cnt('conditions');
+    const you = docs.assumptions?.humanList?.length;
+    const tokens = agentRuns().reduce((a, r) => a + (Number(r.tok) || 0), 0);
+    const cov = String(m.coverage || ''), covMain = (cov.match(/\d+%/) || ['—'])[0], covRest = cov.replace(covMain, '').replace(/^\s*/, '');
+    const pushed = (g?.remotes || []).length > 0;
+    const tiles = [
+      tile('Work items built', pbis.length ? `${built}<small> / ${pbis.length}</small>` : '—', pbis.length ? `${cnt('conditions')} with open conditions · ${cnt('partial')} partly built` : '', 'var(--go)'),
+      tile('Awaiting your decision', esc(you ?? '—'), 'assumptions at the plan gate', 'var(--human)', true),
+      tile('Tests passing', esc(m.tests ?? '—'), m.testFiles ? `${m.testFiles} files · commit ${esc(m.measuredOn || '')}` : '', 'var(--go)'),
+      tile('Library coverage', esc(covMain), esc(covRest), 'var(--go)'),
+      tile('Agent runs', esc(agentRuns().length || '—'), agentRuns().length ? `${verdictRuns().length} review verdicts · ${(tokens / 1e6).toFixed(2)}M tokens` : '', 'var(--live)'),
+      (() => { const u = docs.usage; if (!u) return tile('Claude usage', '—', 'not exported yet', 'var(--live)'); const byAgents = (u.subagents || []).reduce((a, x) => a + x.effective, 0); return tile('Claude usage', fmtTok(u.totals?.effective) + '<small> effective</small>', `limit hit ${(u.limits || []).length}× · ${u.totals?.effective ? Math.round(byAgents / u.totals.effective * 100) : 0}% by agents`, 'var(--live)'); })(),
+    ].join('');
+
+    const cells = pbis.length
+      ? pbis.map(x => `<div class="cell ${esc(x.state)}" title="${esc(x.id)}: ${esc(String(x.title).replace(/[`*]/g, ''))}"><span class="id">${esc(x.id)}</span><span class="nm">${esc(String(x.title).replace(/[`*]/g, ''))}</span><span class="st"><i></i>${esc(stateLabel[x.state] || x.state)}</span></div>`).join('')
+      : '<div class="empty" style="grid-column:1/-1">The backlog has not been exported yet.</div>';
+
+    // Needs attention, derived from the data rather than written by hand.
+    const att = [];
+    if (you) att.push(['var(--human)', 'Plan gate approval', `${you} assumptions need confirming before work can go on the board.`, 'assumptions']);
+    pbis.filter(x => x.state === 'conditions').forEach(x => att.push(['var(--changes)', `${x.id} review conditions`, x.open, 'backlog']));
+    pbis.filter(x => x.state === 'partial').forEach(x => att.push(['var(--live)', `${x.id} partly built`, x.open, 'backlog']));
+    if (g && !pushed) att.push(['var(--ink-3)', 'Not on GitHub', 'No remote, pull request or Pages site yet.', 'git']);
+    if (runs.length && !runs.some(r => r.lane === 'ver')) att.push(['var(--ink-3)', 'App not verified', 'The verifier agent has not exercised the running site yet.', 'dispatch']);
+    const killed = runs.filter(r => r.kind === 'killed').length;
+    if (killed) att.push(['var(--nogo)', `${killed} runs cut off`, 'Stopped by rate limits before finishing.', 'dispatch']);
+
+    const R = sorted(), recent = R.slice().reverse().slice(0, 7);
+    const vr = verdictRuns(), vc = k => vr.filter(r => r.kind === k).length;
+    const laneCounts = lanes.filter(l => !['orch', 'human'].includes(l[0])).map(l => [l[1], runs.filter(r => r.lane === l[0]).length]);
+    const maxLane = Math.max(1, ...laneCounts.map(x => x[1]));
+
+    p.innerHTML = `
+      <div class="tiles">${tiles}</div>
+      <div class="panel" style="margin-bottom:16px">
+        <div class="ph"><h3>Backlog</h3><div class="legend"><span><i style="background:var(--go)"></i>Built and reviewed</span><span><i style="background:var(--changes)"></i>Conditions open</span><span><i style="background:var(--live)"></i>Partly built</span><span><i style="background:var(--rule-2)"></i>Not started</span></div></div>
+        <div class="pb scroll"><div class="cells">${cells}</div></div>
+      </div>
+      <div class="panel" style="margin-bottom:16px">
+        <div class="ph"><h3>Pipeline</h3><div class="legend"><span><i style="background:var(--human)"></i>Human decision</span><span><i style="background:var(--changes)"></i>Feedback loop</span><span><i style="background:var(--live)"></i>Running agent</span><span class="faint">${isLive() ? 'Live' : 'Paused'}</span></div></div>
+        <div class="pb scroll">${pipeline()}</div>
+      </div>
+      <div class="grid g-3">
+        <div class="panel"><div class="ph"><h3>Needs attention</h3><span class="count">${att.length}</span></div>
+          <ul class="att">${att.map(([t, h, m2, go]) => `<li style="--t:${t}"><span class="d"></span><div><b>${esc(h)}</b><span class="m">${esc(m2)}</span></div><button class="linkbtn" data-go="${go}">View</button></li>`).join('') || '<li><span></span><span class="m">Nothing needs attention.</span><span></span></li>'}</ul>
+        </div>
+        ${usagePanel()}
+        <div class="panel"><div class="ph"><h3>Review outcomes</h3><span class="faint">${vr.length} verdicts</span></div>
+          <div class="pb">
+            <div class="stack" role="img" aria-label="${vc('go')} approved, ${vc('changes')} changes required, ${vc('nogo')} rejected">${vr.length ? `<i style="width:${vc('go') / vr.length * 100}%;background:var(--go)"></i><i style="width:${vc('changes') / vr.length * 100}%;background:var(--changes)"></i><i style="width:${vc('nogo') / vr.length * 100}%;background:var(--nogo)"></i>` : ''}</div>
+            <div class="legend" style="margin-bottom:22px"><span><i style="background:var(--go)"></i>Approved ${vc('go')}</span><span><i style="background:var(--changes)"></i>Changes required ${vc('changes')}</span><span><i style="background:var(--nogo)"></i>Rejected ${vc('nogo')}</span></div>
+            <h3 style="margin-bottom:12px">Runs by agent</h3>
+            <div class="hbars">${laneCounts.map(([n, v]) => `<div class="r"><span>${esc(n)}</span><span class="bar"><i style="width:${v / maxLane * 100}%;background:var(--live)"></i></span><span class="v">${v}</span></div>`).join('')}</div>
+          </div></div>
+      </div>
+      <div class="panel"><div class="ph"><h3>Recent agent activity</h3><button class="linkbtn" data-go="dispatch">All runs</button></div>
+        <div class="pb flush scroll"><table><thead><tr><th>#</th><th>Agent</th><th>Run</th><th>Outcome</th><th>Detail</th><th class="num">Tokens</th></tr></thead><tbody>
+        ${recent.map(r => `<tr><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(laneName[r.lane] || r.lane)}</td><td>${esc(r.label)}</td><td><span class="tag ${esc(r.kind)}">${esc(kindLabel[r.kind] || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td class="num muted">${r.tok ? Number(r.tok).toLocaleString() : '—'}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No runs yet.</td></tr>'}
+        </tbody></table></div></div>`;
+  }
+
+  // ---------------- dispatch ----------------
+  function renderDispatch() {
+    const R = sorted(), p = $('panel-dispatch');
+    if (!R.length) { p.innerHTML = '<div class="empty">No runs recorded yet. The board fills as agents are dispatched.</div>'; return; }
+    const LW = 56, RW = 20, W = 1180, rowH = 38, top = 52, padB = 14;
+    const laneX = {}, lw = (W - LW - RW) / lanes.length;
+    lanes.forEach((l, i) => laneX[l[0]] = LW + i * lw);
+    const H = top + R.length * rowH + padB, maxTok = Math.max(160430, ...R.map(r => Number(r.tok) || 0));
+    const idx = Object.fromEntries(R.map((r, i) => [r.id, i])), y0 = i => top + 12 + i * rowH;
+    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Swimlane of ${R.length} runs across ${lanes.length} agents in dispatch order, with review verdicts fed back to the builders" style="min-width: 960px"><defs><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="context-stroke"/></marker></defs><g font-family="Schibsted Grotesk, system-ui, sans-serif" font-size="12">`;
+    lanes.forEach((l, i) => {
+      const x = laneX[l[0]];
+      s += `<rect x="${x + 2}" y="${top - 38}" width="${lw - 4}" height="${H - top + 38 - padB}" rx="6" fill="${l[0] === 'human' ? 'color-mix(in srgb, var(--human) 8%, transparent)' : i % 2 ? 'var(--raised)' : 'transparent'}" fill-opacity="${l[0] === 'human' ? 1 : 0.55}" ${l[0] === 'human' ? 'stroke="var(--human)" stroke-opacity="0.5" stroke-dasharray="4 4"' : ''}/>`;
+      s += `<text x="${x + lw / 2}" y="${top - 20}" text-anchor="middle" font-weight="600" font-size="12" fill="${l[0] === 'human' ? 'var(--human)' : 'var(--ink)'}">${l[1]}</text>`;
+      s += `<text x="${x + lw / 2}" y="${top - 5}" text-anchor="middle" font-size="10.5" fill="var(--ink-3)">${l[2]}</text>`;
+    });
+    const groups = {};
+    R.forEach((r, i) => { if (r.group) (groups[r.group] = groups[r.group] || []).push(i); });
+    Object.values(groups).forEach(g => {
+      if (g.length < 2) return;
+      const x = (laneX[R[g[0]].lane] ?? LW) + 6, ya = y0(g[0]) - 3, yb = y0(g[g.length - 1]) + 25;
+      s += `<path d="M${x + 5} ${ya}H${x}V${yb}H${x + 5}" fill="none" stroke="var(--live)" stroke-width="1.4"/>`;
+    });
+    R.forEach((r, i) => {
+      const link = (jid, c, dash) => {
+        const j = idx[jid]; if (j === undefined || j >= i) return;
+        const x1 = (laneX[R[j].lane] ?? LW) + lw / 2, y1 = y0(j) + 22, x2 = (laneX[r.lane] ?? LW) + lw / 2, y2 = y0(i), my = (y1 + y2) / 2;
+        s += `<path d="M${x1} ${y1}V${my}H${x2}V${y2 - 2}" fill="none" stroke="${c}" stroke-width="1.3" ${dash ? 'stroke-dasharray="3 4"' : ''} marker-end="url(#m)"/>`;
+      };
+      if (r.feeds) { const k = R[idx[r.feeds]]?.kind; link(r.feeds, (!k || k === 'done') ? 'var(--ink-3)' : toneOf[k], false); }
+      if (r.from) link(r.from, 'var(--ink-3)', true);
+    });
+    R.forEach((r, i) => {
+      const y = y0(i), x = laneX[r.lane] ?? LW, tok = Number(r.tok) || 0, c = toneOf[r.kind] || 'var(--ink-3)';
+      const w = r.kind === 'running' ? lw - 18 : Math.max(22, Math.min(lw - 18, 22 + (tok / maxTok) * (lw - 42)));
+      const label = String(r.label || r.id);
+      s += `<text x="${LW - 12}" y="${y + 15}" text-anchor="end" font-size="11" fill="var(--ink-3)">${i + 1}</text>`;
+      if (r.kind === 'running') s += `<rect class="runglow" x="${x + 5}" y="${y - 3}" width="${w + 8}" height="28" rx="7" fill="none" stroke="var(--live)"/>`;
+      s += `<rect x="${x + 9}" y="${y}" width="${w}" height="22" rx="5" fill="${r.kind === 'done' ? 'var(--raised)' : 'var(--surface)'}" stroke="${c}" stroke-width="1.5" ${r.kind === 'killed' || r.kind === 'running' ? 'stroke-dasharray="4 3"' : ''}/>`;
+      s += `<text x="${x + lw / 2}" y="${y + 34}" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">${esc(label.length > 30 ? label.slice(0, 29) + '…' : label)}</text>`;
+    });
+    s += '</g></svg>';
+    const tokens = agentRuns().reduce((a, r) => a + (Number(r.tok) || 0), 0);
+    p.innerHTML = `
+      <div class="tiles">
+        ${tile('Agent runs', agentRuns().length, 'dispatched this build', 'var(--live)')}
+        ${tile('Running now', runs.filter(r => r.kind === 'running').length, isLive() ? 'live' : 'paused', 'var(--live)')}
+        ${tile('Review verdicts', verdictRuns().length, `${verdictRuns().filter(r => r.kind === 'go').length} approved`, 'var(--go)')}
+        ${tile('Cut off', runs.filter(r => r.kind === 'killed').length, 'stopped by rate limits', 'var(--nogo)')}
+        ${tile('Agent tokens', (tokens / 1e6).toFixed(2) + '<small> M</small>', 'across all runs', 'var(--rule-2)')}
+      </div>
+      <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Swimlane</h3><div class="legend"><span><i style="background:var(--live)"></i>Running</span><span><i style="background:var(--ink-3)"></i>Done</span><span><i style="background:var(--go)"></i>Approved</span><span><i style="background:var(--changes)"></i>Changes required</span><span><i style="background:var(--nogo)"></i>Rejected or cut off</span></div></div>
+        <div class="pb scroll">${s}</div>
+        <div class="pb faint" style="border-top:1px solid var(--rule)">Box width is proportional to tokens used. Arrows show hand-offs and the verdicts that sent work back; a bracket marks runs dispatched in parallel. Gate-review rounds ran on the harness's built-in Plan agent following the catalogue's pbi-review runbook.</div></div>
+      <div class="panel"><div class="ph"><h3>Run log</h3><span class="faint">newest first</span></div>
+        <div class="pb flush scroll"><table><thead><tr><th>#</th><th>Agent</th><th>Run</th><th>Outcome</th><th>Detail</th><th style="min-width:120px">Tokens</th><th class="num">Minutes</th></tr></thead><tbody>
+        ${R.slice().reverse().map(r => `<tr><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(laneName[r.lane] || r.lane)}</td><td class="wide">${esc(r.label)}</td><td><span class="tag ${esc(r.kind)}">${esc(kindLabel[r.kind] || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td>${r.tok ? `<div class="bar"><i style="width:${Math.max(2, (Number(r.tok) || 0) / maxTok * 100)}%"></i></div><div class="sub">${Number(r.tok).toLocaleString()}</div>` : '<span class="faint">—</span>'}</td><td class="num muted">${r.min || '—'}</td></tr>`).join('')}
+        </tbody></table></div></div>`;
+  }
+
+  // ---------------- spec ----------------
+  function renderSpec() {
+    const d = docs.spec, p = $('panel-spec');
+    if (!d) { p.innerHTML = '<div class="empty">The spec has not been exported to the board yet.</div>'; return; }
+    const n = d.prd || {}, approved = d.approvedBy && d.approvedBy !== '—';
+    const gates = {};
+    (d.rounds || []).forEach(r => (gates[r.gate] = gates[r.gate] || []).push(r));
+    p.innerHTML = `
+      <h2>Solution spec</h2>${src(d)}
+      <div class="tiles">
+        ${tile('Functional requirements', esc(n.frs), 'EARS-shaped', 'var(--rule-2)')}
+        ${tile('Non-functional', esc(n.nfrs), 'measurable targets', 'var(--rule-2)')}
+        ${tile('Constraints', esc(n.constraints), '', 'var(--rule-2)')}
+        ${tile('Acceptance criteria', esc(n.acs), 'gate the tests', 'var(--rule-2)')}
+        ${tile('Spec revision', esc(d.revision), `${(d.rounds || []).filter(r => r.gate === 'Plan gate').length} review rounds`, 'var(--go)')}
+        ${tile('Plan gate', approved ? 'Approved' : 'Pending', approved ? esc(d.approvedBy) : 'human approval required', 'var(--human)', true)}
+      </div>
+      <div class="callout">${icon('lock')}<p><b>Plan gate ${approved ? 'approved' : 'pending'}.</b> ${md(d.approval)}</p></div>
+      <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>What the catalogue calculates</h3><span class="faint">one library module each</span></div>
+        <div class="pb"><div class="modules">${(d.logicCore || []).map(c => `<div class="tile" style="--tone:var(--live)"><div class="tv" style="font-size:16px;margin:2px 0 0">${md(String(c).replace(/\.$/, ''))}</div></div>`).join('')}</div></div></div>
+      <div class="grid g-1-1">
+        <div class="panel"><div class="ph"><h3>Goals</h3><span class="faint">${(d.goals || []).length}</span></div><div class="pb"><ul class="goals">${(d.goals || []).map(g => `<li><span class="id muted">${esc(g.id)}</span><span>${md(g.text)}</span></li>`).join('')}</ul></div></div>
+        <div class="panel"><div class="ph"><h3>Scope</h3></div><div class="pb">
+          <p class="faint" style="margin-bottom:8px;font-weight:600">In scope</p><ul class="list">${(d.scopeIn || []).map(s => `<li>${md(s)}</li>`).join('')}</ul>
+          <p class="faint" style="margin:16px 0 8px;font-weight:600">Out of scope</p><ul class="list">${(d.scopeOut || []).map(s => `<li>${md(s)}</li>`).join('')}</ul></div></div>
+      </div>
+      <div class="panel"><div class="ph"><h3>Review history</h3><span class="faint">each round by a fresh reviewer; plan-gate verdicts are advisory</span></div>
+        <div class="pb">${Object.entries(gates).map(([g, rs]) => `<div class="track"><b>${esc(g)}</b><ol>${rs.map(r => `<li><span class="tag ${vKind(r.verdict)}">Round ${esc(r.round)} · ${esc(r.verdict)}</span></li>`).join('')}${g === 'Plan gate' ? `<li><span class="tag human">Human · ${approved ? 'approved' : 'pending'}</span></li>` : ''}</ol></div>`).join('')}</div></div>`;
+  }
+
+  // ---------------- assumptions ----------------
+  let aFilter = 'you';
+  function renderAssumptions() {
+    const d = docs.assumptions, p = $('panel-assumptions');
+    if (!d) { p.innerHTML = '<div class="empty">The assumptions ledger has not been exported yet.</div>'; return; }
+    const rows = d.rows || [], you = rows.filter(r => r.needsYou), assumed = rows.filter(r => r.status === 'ASSUMED');
+    const heavy = rows.filter(r => /Medium|High/.test(r.level));
+    const shown = { you, assumed, resolved: rows.filter(r => r.status !== 'ASSUMED'), all: rows }[aFilter] || you;
+    const chip = (k, label, n) => `<button class="chip" data-f="${k}" aria-pressed="${aFilter === k}">${label} (${n})</button>`;
+    p.innerHTML = `
+      <h2>Assumptions and open questions</h2>${src(d)}
+      <div class="tiles">
+        ${tile('Awaiting your decision', you.length, 'required for the plan gate', 'var(--human)', true)}
+        ${tile('Ledger rows', rows.length, 'every gap the inputs left', 'var(--rule-2)')}
+        ${tile('Resolved from the docs', rows.length - assumed.length, 'no decision needed', 'var(--go)')}
+        ${tile('Medium impact or more', heavy.length, 'rework beyond one file if wrong', 'var(--changes)')}
+      </div>
+      <div class="callout">${icon('lock')}<p>No agent may confirm these. Each is a default the build chose where the brief was silent or undecided. Confirming a row means accepting the chosen answer or supplying the right one; a correction changes one decision, not the whole build.</p></div>
+      <div class="chipbar" role="group" aria-label="Filter assumptions">${chip('you', 'Awaiting you', you.length)}${chip('assumed', 'Assumed', assumed.length)}${chip('resolved', 'Resolved', rows.length - assumed.length)}${chip('all', 'All', rows.length)}</div>
+      <div class="panel scroll"><table><thead><tr><th>#</th><th>Question</th><th>Chosen answer</th><th>Impact if wrong</th><th>Status</th></tr></thead><tbody>
+        ${shown.map(r => `<tr class="${r.needsYou ? 'you' : ''}"><td><span class="n">${esc(r.n)}</span></td><td class="wide"><b style="font-weight:600">${md(r.question)}</b></td><td class="wide">${md(r.resolution)}<div class="sub">${md(r.source)}</div></td><td class="wide"><span class="tag ${/Medium|High/.test(r.level) ? 'medium' : 'low'}">${esc(r.level)}</span><div class="sub" style="color:var(--ink-2)">${md(String(r.impact).replace(/^\**(Low[–-]Medium|Medium|High|Low)\**\s*[—-]?\s*/, '') || '—')}</div></td><td><span class="tag ${r.status === 'ASSUMED' ? 'assumed' : 'resolved'}">${r.status === 'ASSUMED' ? 'Assumed' : 'Resolved'}</span></td></tr>`).join('') || '<tr><td colspan="5" class="muted">No rows match this filter.</td></tr>'}
+      </tbody></table></div>`;
+    p.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => { aFilter = c.dataset.f; renderAssumptions(); p.querySelector(`.chip[data-f="${aFilter}"]`)?.focus(); }));
+  }
+
+  // ---------------- decisions ----------------
+  function renderDecisions() {
+    const d = docs.decisions, p = $('panel-decisions');
+    if (!d) { p.innerHTML = '<div class="empty">Decisions have not been exported yet.</div>'; return; }
+    const nwo = d.notWorkedOut || [];
+    p.innerHTML = `
+      <h2>Decisions and things not worked out</h2>${src(d)}
+      <div class="tiles">
+        ${tile('Open points in the brief', nwo.length, 'none decided silently', 'var(--rule-2)')}
+        ${tile('Still need you', nwo.filter(r => r.needsYou).length, 'confirm at the plan gate', 'var(--human)', true)}
+        ${tile('Architecture decisions', (d.adrs || []).length, 'all proposed, none in force', 'var(--human)')}
+        ${tile('Key decisions in the spec', (d.decisions || []).length, '', 'var(--rule-2)')}
+      </div>
+      <div class="panel mapping" style="margin-bottom:16px"><div class="ph"><h3>What the brief left open, and where each point landed</h3></div>
+        <div class="pb flush scroll"><table><thead><tr><th>From the brief</th><th>Where it landed</th><th>Status</th><th>Ledger</th></tr></thead><tbody>
+        ${nwo.map(r => `<tr class="${r.needsYou ? 'you' : ''}"><td class="wide">“${esc(r.item)}”</td><td class="wide">${md(r.landed)}${r.adr ? `<div class="sub">${esc(r.adr)} · proposed</div>` : ''}</td><td><span class="tag ${r.needsYou ? 'human' : 'resolved'}">${r.needsYou ? 'Needs you' : 'Settled by PRD default'}</span></td><td class="muted">Row ${esc(r.row)}</td></tr>`).join('')}
+        </tbody></table></div></div>
+      <div class="adrs">${(d.adrs || []).map(a => `<div class="tile" style="--tone:var(--human)"><div class="tl"><span class="id">${esc(a.id)}</span> · resolves ${esc(a.resolves)}</div><div class="tv" style="font-size:16px;line-height:1.35;margin:8px 0 10px">${esc(a.title)}</div><div class="ts"><span class="tag proposed">${esc(a.status)}</span> <span class="id" style="margin-left:6px">${esc(a.path)}</span></div></div>`).join('')}</div>
+      <div class="panel"><div class="ph"><h3>Key decisions in the solution spec</h3></div>
+        <div class="pb flush scroll"><table><thead><tr><th>Decision</th><th>Rationale</th><th>Made by</th></tr></thead><tbody>
+        ${(d.decisions || []).map(k => `<tr><td class="wide">${md(k.decision)}</td><td class="wide muted">${md(k.rationale)}</td><td>${md(k.madeBy)}<div class="sub">${md(k.date)}</div></td></tr>`).join('')}
+        </tbody></table></div></div>`;
+  }
+
+  // ---------------- backlog ----------------
+  function renderBacklog() {
+    const d = docs.backlog, p = $('panel-backlog');
+    if (!d) { p.innerHTML = '<div class="empty">The backlog has not been exported yet.</div>'; return; }
+    const pbis = d.pbis || [], by = Object.fromEntries(pbis.map(x => [x.id, x]));
+    const cnt = k => pbis.filter(x => x.state === k).length;
+    const tone = { done: 'var(--go)', conditions: 'var(--changes)', partial: 'var(--live)', todo: 'var(--rule-2)' };
+    const deps = Object.fromEntries(pbis.map(x => [x.id, (String(x.dependsOn).match(/PBI-\d+/g) || []).filter(i => by[i])]));
+    const layer = {}, L = id => layer[id] ?? (layer[id] = deps[id].length ? 1 + Math.max(...deps[id].map(L)) : 0);
+    pbis.forEach(x => L(x.id));
+    const cols = {};
+    pbis.forEach(x => (cols[layer[x.id]] = cols[layer[x.id]] || []).push(x.id));
+    const nL = Math.max(...Object.keys(cols).map(Number)) + 1, maxRows = Math.max(...Object.values(cols).map(c => c.length));
+    const NW = 128, NH = 50, GX = 30, GY = 14, PAD = 12;
+    const W = PAD * 2 + nL * NW + (nL - 1) * GX, H = PAD * 2 + maxRows * NH + (maxRows - 1) * GY, pos = {};
+    Object.entries(cols).forEach(([l, ids]) => {
+      const colH = ids.length * NH + (ids.length - 1) * GY, off = (H - PAD * 2 - colH) / 2;
+      ids.forEach((id, i) => pos[id] = { x: PAD + Number(l) * (NW + GX), y: PAD + off + i * (NH + GY) });
+    });
+    let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Dependency graph of ${pbis.length} work items coloured by state" style="min-width:${Math.min(W, 900)}px"><defs><marker id="da" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--rule-2)"/></marker></defs><g font-family="Schibsted Grotesk, system-ui, sans-serif">`;
+    pbis.forEach(x => deps[x.id].forEach(dep => {
+      const a = pos[dep], c = pos[x.id]; if (!a || !c) return;
+      const x1 = a.x + NW, y1 = a.y + NH / 2, x2 = c.x - 2, y2 = c.y + NH / 2, mx = (x1 + x2) / 2;
+      g += `<path d="M${x1} ${y1}C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}" fill="none" stroke="var(--rule-2)" stroke-width="1.2" marker-end="url(#da)"/>`;
+    }));
+    pbis.forEach(x => {
+      const q = pos[x.id], t = tone[x.state] || 'var(--rule-2)', title = String(x.title).replace(/[`*]/g, '');
+      g += `<g><title>${esc(x.id)}: ${esc(title)} (${esc(stateLabel[x.state] || x.state)})</title>`;
+      g += `<rect x="${q.x}" y="${q.y}" width="${NW}" height="${NH}" rx="6" fill="var(--surface)" stroke="var(--rule-2)" ${x.state === 'partial' ? 'stroke-dasharray="4 3"' : ''}/>`;
+      g += `<rect x="${q.x}" y="${q.y}" width="${NW}" height="3" rx="1.5" fill="${x.state === 'todo' ? 'transparent' : t}"/>`;
+      g += `<text x="${q.x + 11}" y="${q.y + 22}" font-size="12" font-weight="600" font-family="IBM Plex Mono, ui-monospace, monospace" fill="var(--ink)">${esc(x.id)}</text>`;
+      g += `<text x="${q.x + 11}" y="${q.y + 39}" font-size="11" fill="var(--ink-2)">${esc(title.length > 19 ? title.slice(0, 18) + '…' : title)}</text></g>`;
+    });
+    g += '</g></svg>';
+    p.innerHTML = `
+      <h2>Backlog and status</h2>${src(d)}
+      <div class="tiles">
+        ${tile('Built and reviewed', cnt('done'), `of ${pbis.length} work items`, 'var(--go)')}
+        ${tile('Conditions open', cnt('conditions'), 'review findings to fix', 'var(--changes)')}
+        ${tile('Partly built', cnt('partial'), 'interrupted', 'var(--live)')}
+        ${tile('Not started', cnt('todo'), '', 'var(--rule-2)')}
+      </div>
+      <div class="callout warn">${icon('warn')}<p>${esc(d.board)}</p></div>
+      <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Dependencies</h3><span class="faint">arrows run from a prerequisite to what depends on it</span></div><div class="pb scroll">${g}</div></div>
+      <div class="panel"><div class="ph"><h3>Work items</h3><span class="faint">${pbis.length}</span></div>
+        <div class="pb flush scroll"><table><thead><tr><th>Item</th><th>Delivers</th><th>Depends on</th><th>State</th><th>Review</th><th>Still open</th></tr></thead><tbody>
+        ${pbis.map(x => `<tr><td style="white-space:nowrap"><span class="id">${esc(x.id)}</span>${x.commit ? `<div class="sub id">${esc(x.commit)}</div>` : ''}</td><td class="wide">${md(x.title)}<div class="sub">${esc(x.group)} · ${esc(x.risk)} risk</div></td><td class="muted" style="white-space:nowrap">${esc(String(x.dependsOn).replace(/[\[\]]/g, '') || '—')}</td><td><span class="tag ${esc(x.state)}">${esc(stateLabel[x.state] || x.state)}</span></td><td class="muted">${esc(x.review)}</td><td class="wide muted">${esc(x.open) || '—'}</td></tr>`).join('')}
+        </tbody></table></div></div>`;
+  }
+
+  // ---------------- git ----------------
+  function renderGit() {
+    const d = docs.git, p = $('panel-git');
+    if (!d) { p.innerHTML = '<div class="empty">Repository details have not been exported yet.</div>'; return; }
+    const pushed = (d.remotes || []).length > 0;
+    const dirs = Object.entries(d.byDir || {}).sort((a, b) => b[1] - a[1]), maxDir = Math.max(1, ...dirs.map(x => x[1]));
+    p.innerHTML = `
+      <h2>Repository and GitHub</h2>${src(d)}
+      <div class="tiles">
+        ${tile('GitHub', pushed ? 'Connected' : 'Not connected', pushed ? '' : 'no remote configured', 'var(--rule-2)')}
+        ${tile('Commits', esc(d.commits?.length), `on ${esc(d.branch)}`, 'var(--live)')}
+        ${tile('Ahead of ' + esc(d.defaultBranch || 'default'), esc(d.ahead || '0'), 'not merged', 'var(--changes)')}
+        ${tile('Tracked files', esc(d.tracked), `${(d.dirty || []).length} uncommitted`, 'var(--rule-2)')}
+      </div>
+      ${pushed ? '' : `<div class="callout warn">${icon('warn')}<div><p><b>Not on GitHub yet.</b> There is no remote, so no repository, pull request or Pages site exists. The overnight run was deliberately told never to push. Each step below happens once you approve it.</p><ol class="steps"><li>Create the GitHub repository</li><li>Push <code>${esc(d.branch)}</code></li><li>Open a pull request into <code>${esc(d.defaultBranch || 'master')}</code></li></ol></div></div>`}
+      <div class="grid g-1-1">
+        <div class="panel"><div class="ph"><h3>Repository</h3></div><div class="pb">
+          <dl class="facts">
+            <dt>Local path</dt><dd><code>${esc(d.repoPath)}</code></dd>
+            <dt>Working branch</dt><dd><code>${esc(d.branch)}</code> at <code>${esc(d.head)}</code></dd>
+            <dt>Default branch</dt><dd><code>${esc(d.defaultBranch || '—')}</code></dd>
+            <dt>Change</dt><dd>${esc(d.shortstat || '—')}</dd>
+            <dt>Remote</dt><dd>${pushed ? d.remotes.map(r => `<code>${esc(r)}</code>`).join('<br>') : 'None'}</dd>
+            <dt>Pull request</dt><dd>None</dd>
+            <dt>Pages site</dt><dd>Not deployed · base path <code>/platform-catalogue/</code> configured</dd>
+            <dt>Working tree</dt><dd>${(d.dirty || []).length ? d.dirty.map(x => `<code>${esc(x)}</code>`).join(' ') : 'Clean'}</dd>
+          </dl>
+          <p class="faint" style="margin:22px 0 10px;font-weight:600">Files by folder</p>
+          <div class="hbars">${dirs.map(([k, v]) => `<div class="r"><span class="id">${esc(k)}</span><span class="bar"><i style="width:${v / maxDir * 100}%;background:var(--ink-3)"></i></span><span class="v">${v}</span></div>`).join('')}</div>
+        </div></div>
+        <div class="panel"><div class="ph"><h3>Commits</h3><span class="faint">newest first</span></div>
+          <div class="pb flush scroll"><table><thead><tr><th>Commit</th><th>Message</th><th>When</th></tr></thead><tbody>
+          ${(d.commits || []).map(c => `<tr><td><span class="id">${esc(c.sha)}</span></td><td>${esc(c.subject)}</td><td class="muted" style="white-space:nowrap">${esc(when(c.date))}</td></tr>`).join('')}
+          </tbody></table></div></div>
+      </div>`;
+  }
+
+  // ---------------- Claude usage ----------------
+  const fmtTok = n => { n = Number(n) || 0; return n >= 1e6 ? (n / 1e6).toFixed(n >= 1e8 ? 0 : 1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(Math.round(n)); };
+  const niceCeil = v => { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p; return 10 * p; };
+  const hourLabel = key => { const d = new Date(key + ':00:00Z'); return isNaN(d) ? key : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); };
+
+  // Stacked hourly bars (agents under main session), one scale for bars, gridlines and labels.
+  function usageChart(u, W, H, compact) {
+    const hours = u.hourly || [];
+    if (!hours.length) return '<p class="faint">No hourly data.</p>';
+    const L = compact ? 36 : 50, R = compact ? 6 : 64, T = 16, B = compact ? 22 : 28, iw = W - L - R, ih = H - T - B;
+    const max = niceCeil(Math.max(...hours.map(h => h.main + h.sub)));
+    const bw = iw / hours.length, gap = Math.min(3, bw * 0.22), y = v => T + ih - (v / max) * ih;
+    const idx = iso => { const d = new Date(iso); return isNaN(d) ? -1 : hours.findIndex(h => h.hour === d.toISOString().slice(0, 13)); };
+    const fs = compact ? 10 : 11;
+    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Effective Claude usage per hour for the main session and the agents, with the times the five-hour limit was hit" ${compact ? '' : 'style="min-width:560px"'}><g font-family="Schibsted Grotesk, system-ui, sans-serif" font-size="${fs}">`;
+    [0, 0.5, 1].forEach(f => { const yy = y(max * f); s += `<line x1="${L}" x2="${L + iw}" y1="${yy}" y2="${yy}" stroke="var(--rule)"/><text x="${L - 6}" y="${yy + 3.5}" text-anchor="end" fill="var(--ink-3)">${fmtTok(max * f)}</text>`; });
+    hours.forEach((h, i) => {
+      const x = L + i * bw + gap / 2, w = Math.max(1, bw - gap), when_ = esc(hourLabel(h.hour));
+      if (h.sub) s += `<rect x="${x}" y="${y(h.sub)}" width="${w}" height="${T + ih - y(h.sub)}" fill="var(--live)"><title>${when_} · agents ${fmtTok(h.sub)}</title></rect>`;
+      if (h.main) s += `<rect x="${x}" y="${y(h.sub + h.main)}" width="${w}" height="${y(h.sub) - y(h.sub + h.main)}" fill="var(--ink-3)"><title>${when_} · main session ${fmtTok(h.main)}</title></rect>`;
+    });
+    (u.limits || []).forEach((l, k) => {
+      const i = idx(l.firstAt); if (i < 0) return;
+      const x = L + i * bw + bw / 2;
+      s += `<line x1="${x}" x2="${x}" y1="${T - 6}" y2="${T + ih}" stroke="var(--nogo)" stroke-width="1.5" stroke-dasharray="3 3"/>`;
+      if (!compact) s += `<text x="${x}" y="${T - 8}" text-anchor="middle" fill="var(--nogo)" font-size="10.5">limit ${k + 1}</text>`;
+    });
+    const step = Math.max(1, Math.ceil(hours.length / (compact ? 5 : 8)));
+    hours.forEach((h, i) => { if (i % step === 0) s += `<text x="${L + i * bw + bw / 2}" y="${H - 7}" text-anchor="middle" fill="var(--ink-3)">${esc(hourLabel(h.hour))}</text>`; });
+    return s + '</g></svg>';
+  }
+
+  function usagePanel() {
+    const u = docs.usage;
+    const body = !u ? '<p class="faint">Usage has not been exported yet.</p>'
+      : `${usageChart(u, 440, 150, true)}<div class="legend" style="margin-top:10px"><span><i style="background:var(--live)"></i>Agents</span><span><i style="background:var(--ink-3)"></i>Main session</span><span><i style="background:var(--nogo)"></i>Limit hit</span></div><p class="faint" style="margin-top:10px">${fmtTok(u.totals?.effective)} effective · ${(u.totals?.requests || 0).toLocaleString()} requests · five-hour limit hit ${(u.limits || []).length}×</p>`;
+    return `<div class="panel"><div class="ph"><h3>Claude usage</h3><button class="linkbtn" data-go="usage">View</button></div><div class="pb">${body}</div></div>`;
+  }
+
+  function renderUsage() {
+    const u = docs.usage, p = $('panel-usage');
+    if (!u) { p.innerHTML = '<div class="empty">Usage has not been exported yet.</div>'; return; }
+    const t = u.totals || {}, subs = u.subagents || [], lim = u.limits || [];
+    const groups = (u.groups || []).slice().sort((a, b) => b.effective - a.effective), gmax = Math.max(1, ...groups.map(g => g.effective));
+    const pct = v => t.effective ? Math.round(v / t.effective * 100) : 0;
+    const subEff = subs.reduce((a, x) => a + x.effective, 0), smax = Math.max(1, ...subs.map(x => x.effective));
+    const byType = {}; subs.forEach(x => { byType[x.type] = (byType[x.type] || 0) + x.effective; });
+    const top = Object.entries(byType).sort((a, b) => b[1] - a[1])[0];
+    const reread = groups.find(g => g.key === 'reread'), refused = lim.reduce((a, l) => a + l.refused, 0);
+    const bullets = [
+      `The agents did most of the work: ${pct(subEff)}% of usage came from ${subs.length} agent runs${top ? `, and ${esc(top[0])} alone was ${pct(top[1])}%` : ''}.`,
+      reread ? `Keeping the conversation in memory took ${pct(reread.effective)}%. Each turn re-reads the instructions and everything so far, which is cheap per token but never stops.` : null,
+      lim.length ? `The five-hour limit was hit ${lim.length} time${lim.length === 1 ? '' : 's'} and ${refused} request${refused === 1 ? ' was' : 's were'} refused. Work picked up again after each reset (${lim.map(l => esc(when(l.resetsAt))).join(' and ')}).` : 'No usage limit was hit.',
+      (u.byModel || []).length > 1 ? `Two models shared the work: ${u.byModel.map(m => `${esc(m.label)} ${pct(m.effective)}%`).join(', ')}.` : null,
+    ].filter(Boolean);
+    p.innerHTML = `
+      <h2>Claude usage</h2>${src(u)}
+      <div class="tiles">
+        ${tile('Effective usage', fmtTok(t.effective), 'input-token equivalents', 'var(--live)')}
+        ${tile('Requests to Claude', (t.requests || 0).toLocaleString(), `${subs.length} agent runs`, 'var(--rule-2)')}
+        ${tile('Done by agents', pct(subEff) + '%', 'of effective usage', 'var(--live)')}
+        ${tile('Limit hits', lim.length, `${refused} requests refused`, 'var(--nogo)')}
+        ${tile('Output written', fmtTok(t.output), `${fmtTok(t.cacheRead)} tokens read from cache`, 'var(--rule-2)')}
+      </div>
+      <div class="callout warn">${icon('warn')}<p>Measured from this session's transcripts on your computer, ${esc(when(u.span?.first))} to ${esc(when(u.span?.last))}. It is not your plan's usage meter: Claude records the moments a limit was hit, not a percentage used. <b>Effective usage</b> weights each kind of token by relative cost (cache reads ×0.1, cache writes ×2, output ×5) so the session compares fairly with itself; it is not a price.</p></div>
+      <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>In plain terms</h3></div><div class="pb"><ul class="list">${bullets.map(b => `<li>${b}</li>`).join('')}</ul></div></div>
+      <div class="grid g-1-1">
+        <div class="panel"><div class="ph"><h3>Where it went</h3><span class="faint">effective usage by activity</span></div>
+          <div class="pb"><div class="hbars">${groups.map(g => `<div class="r" style="grid-template-columns:minmax(120px,190px) minmax(0,1fr) 92px"><span>${esc(g.label)}</span><span class="bar"><i style="width:${g.effective / gmax * 100}%;background:${g.key === 'subagents' ? 'var(--live)' : 'var(--ink-3)'}"></i></span><span class="v">${fmtTok(g.effective)} · ${pct(g.effective)}%</span></div>`).join('')}</div>
+          <p class="faint" style="margin-top:14px">The main session's own work is split by the tools each response used; re-reading the conversation is counted separately.</p></div></div>
+        <div class="panel"><div class="ph"><h3>Over time</h3><div class="legend"><span><i style="background:var(--live)"></i>Agents</span><span><i style="background:var(--ink-3)"></i>Main session</span><span><i style="background:var(--nogo)"></i>Limit hit</span></div></div>
+          <div class="pb scroll">${usageChart(u, 660, 250, false)}</div></div>
+      </div>
+      <div class="grid g-1-1">
+        <div class="panel"><div class="ph"><h3>By model</h3></div><div class="pb flush scroll"><table><thead><tr><th>Model</th><th class="num">Requests</th><th class="num">Input</th><th class="num">Output</th><th class="num">Cache read</th><th class="num">Cache write</th><th class="num">Effective</th></tr></thead><tbody>
+          ${(u.byModel || []).map(m => `<tr><td>${esc(m.label)}<div class="sub">${esc(m.model)}</div></td><td class="num">${m.requests.toLocaleString()}</td><td class="num">${fmtTok(m.input)}</td><td class="num">${fmtTok(m.output)}</td><td class="num">${fmtTok(m.cacheRead)}</td><td class="num">${fmtTok(m.cacheWrite)}</td><td class="num"><b>${fmtTok(m.effective)}</b></td></tr>`).join('')}
+        </tbody></table></div></div>
+        <div class="panel"><div class="ph"><h3>Usage limits</h3></div><div class="pb flush scroll"><table><thead><tr><th>Limit</th><th>First refused</th><th class="num">Refused</th><th>Reset</th></tr></thead><tbody>
+          ${lim.map((l, k) => `<tr><td>${k + 1} · five-hour limit</td><td>${esc(when(l.firstAt))}</td><td class="num">${l.refused}</td><td>${esc(when(l.resetsAt)) || '—'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No limit was hit.</td></tr>'}
+        </tbody></table>${u.overage ? `<div class="pb faint" style="border-top:1px solid var(--rule)">${esc(u.overage)}</div>` : ''}</div></div>
+      </div>
+      <div class="panel"><div class="ph"><h3>Agent runs</h3><span class="faint">${subs.length} runs · ${fmtTok(subEff)} effective</span></div><div class="pb flush scroll"><table><thead><tr><th>Agent</th><th>Task</th><th>Model</th><th class="num">Requests</th><th style="min-width:150px">Effective</th></tr></thead><tbody>
+        ${subs.slice().sort((a, b) => b.effective - a.effective).map(x => `<tr><td style="white-space:nowrap">${esc(x.type)}</td><td>${esc(x.description)}</td><td class="muted">${esc(x.modelLabel)}</td><td class="num">${x.requests}</td><td><div class="bar"><i style="width:${Math.max(2, x.effective / smax * 100)}%;background:var(--live)"></i></div><div class="sub">${fmtTok(x.effective)}</div></td></tr>`).join('')}
+      </tbody></table></div></div>`;
+  }
+
+  function renderAll() { renderHeader(); renderOverview(); renderDispatch(); renderSpec(); renderAssumptions(); renderDecisions(); renderBacklog(); renderGit(); renderUsage(); }
+  renderAll();
+  setInterval(renderHeader, 60000);
+
+  (async () => {
+    const db = await window.claude?.use?.('db');
+    if (!db) { $('statusText').textContent = 'Offline'; $('foot').textContent = 'This view cannot reach the live store, so it shows no data.'; return; }
+    const fail = e => { $('foot').textContent = 'A live subscription ended (' + e.code + '). Reload the page to reconnect.'; };
+    db.collection('runs').orderBy('seq').onSnapshot(snap => { runs = snap.docs.filter(x => x.exists).map(x => ({ id: x.id, ...x.data() })); renderHeader(); renderOverview(); renderDispatch(); }, fail);
+    db.doc('meta/status').onSnapshot(snap => { status = snap.exists ? snap.data() : null; renderHeader(); renderOverview(); }, fail);
+    const sub = (id, after) => db.doc('tabs/' + id).onSnapshot(snap => { docs[id] = snap.exists ? snap.data() : null; renderHeader(); renderOverview(); after(); }, fail);
+    sub('spec', renderSpec); sub('assumptions', renderAssumptions); sub('decisions', renderDecisions); sub('backlog', renderBacklog); sub('git', renderGit); sub('usage', renderUsage);
+  })();
+})();
+</script>

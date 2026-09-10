@@ -1,0 +1,10 @@
+{
+  "from": "r04",
+  "kind": "changes",
+  "label": "plan gate · round 2",
+  "lane": "plan",
+  "min": 5,
+  "seq": 6,
+  "tok": 110238,
+  "verdict": "CHANGES-REQUIRED · 4 Medium"
+}

@@ -1,0 +1,169 @@
+{
+  "adrs": [
+    {
+      "id": "ADR-0001",
+      "path": "docs/adr/0001-catalogue-data-json-per-service.md",
+      "resolves": "PRD A-1",
+      "status": "proposed",
+      "title": "Catalogue data lives as one JSON file per service"
+    },
+    {
+      "id": "ADR-0002",
+      "path": "docs/adr/0002-deprecated-dependency-warns.md",
+      "resolves": "PRD A-3",
+      "status": "proposed",
+      "title": "A deprecated dependency warns; it does not block an onboarding plan"
+    },
+    {
+      "id": "ADR-0003",
+      "path": "docs/adr/0003-cost-out-of-scope-v1.md",
+      "resolves": "PRD A-6",
+      "status": "proposed",
+      "title": "Cost and chargeback are out of scope for v1"
+    }
+  ],
+  "decisions": [
+    {
+      "date": "2026-09-09 (PRD D-1)",
+      "decision": "Catalogue content is illustrative, in data files separate from code",
+      "madeBy": "Brief author",
+      "rationale": "Swap-for-real later without touching logic"
+    },
+    {
+      "date": "2026-09-09 (PRD D-3)",
+      "decision": "Full site in one pass; library still testable standalone",
+      "madeBy": "Brief author",
+      "rationale": "Agreed scope"
+    },
+    {
+      "date": "2026-09-09 (PRD D-4)",
+      "decision": "Design quality is a delivery requirement",
+      "madeBy": "Brief author",
+      "rationale": "Daily-use internal product"
+    },
+    {
+      "date": "2026-09-09 (PRD FR-5..8, A-2)",
+      "decision": "Composite = product over target + transitive closure, each service once; contribution `1-(1-a)^N`, N absent ⇒ 1, instance failures independent",
+      "madeBy": "PRD author (default)",
+      "rationale": "Fixed, testable formula with exact fixtures — **but an author-chosen model (PRD A-2), confirmed at the plan gate, see ledger row 6**"
+    },
+    {
+      "date": "2026-09-09 (ADR-0001, `status: proposed`)",
+      "decision": "One JSON file per service, schema-validated at build; discovered by `import.meta.glob`",
+      "madeBy": "Build agent, pending confirmation",
+      "rationale": "No front-matter pipeline; clear ownership; editable without TS"
+    },
+    {
+      "date": "2026-09-09 (ADR-0002, `status: proposed`)",
+      "decision": "Site passes `advisory` deprecation policy; library requires the parameter and supports `blocking` too",
+      "madeBy": "Build agent, pending confirmation",
+      "rationale": "Brief: \"know, and have the migration path\"; blocking makes the catalogue unusable when a foundation deprecates"
+    },
+    {
+      "date": "2026-09-09 (ADR-0003, `status: proposed`)",
+      "decision": "Cost/chargeback out of scope for v1",
+      "madeBy": "Build agent, pending confirmation",
+      "rationale": "Reversible direction; different owner and cadence"
+    },
+    {
+      "date": "2026-09-09 (ledger row 11; review L2)",
+      "decision": "Canonical term is **availability**; \"SLA\" is a glossary alias in the UI only. Module is `availability.ts`, not `sla.ts`",
+      "madeBy": "Planner",
+      "rationale": "PRD uses \"availability\"; the API must not carry the overloaded word"
+    },
+    {
+      "date": "2026-09-09 (ledger row 17; review N3 option a)",
+      "decision": "Eligibility vocabularies live in **data** as `schema.json` enums, and eligibility is a **set-membership** test: a service lists the classifications and tiers it accepts and the controls it requires; a team profile carries one classification, one tier, and its attested controls. `types.ts` types both dimensions as plain `string` (applied in the working tree); the PBI-002 drift test validates a typed sample against the schema's *structure*, never enum equality; PBI-010's profile picker reads the enum values from `catalogue/schema.json` at build time (read-only dependency)",
+      "madeBy": "Planner (PRD default)",
+      "rationale": "PRD A-16 default; keeps vocabulary editable without TypeScript (C-5) — a real-vocabulary change is a data + schema edit only; no ordering assumption baked into logic"
+    },
+    {
+      "date": "2026-09-09 (ledger rows 24, 27; review M4, N2, N7)",
+      "decision": "**Routing and offline model:** hash-based routing; `import.meta.glob(..., { eager: true })`; a single JS bundle with no dynamic imports; **no service worker** in v1. In-session navigation after first load is proven **by construction** (AC-25's static scan + the single bundle + fonts preloaded on first load); an offline *reload* is not supported — a narrowing of PRD S-5/C-1 recorded in Out-of-scope",
+      "madeBy": "Planner",
+      "rationale": "GitHub Pages project paths break history routing on deep links; lazy chunks fail offline; a SW is a separate operational commitment"
+    },
+    {
+      "date": "2026-09-09 (review M3, N2; ledger row 27)",
+      "decision": "**Test harness split:** Vitest `projects` — `lib` (node, `src/lib/**/*.test.ts`, no DOM) and `ui` (`happy-dom`, `src/ui/**/*.test.ts`); `axe-core` runs inside the `ui` project **with `color-contrast` excluded** (happy-dom performs no layout, so that rule returns *incomplete*); NFR-9 contrast is discharged by PBI-008's token-contrast test instead. Layout-dependent checks (AC-32 viewports; network-disabled navigation) are a **manual owner gate** on the deployed build, like NFR-4",
+      "madeBy": "Planner",
+      "rationale": "PRD NFR-6 forbids DOM emulation in the library suite while AC-31/34/36/37 need a DOM; no real-browser harness is in the dependency list"
+    },
+    {
+      "date": "2026-09-09 (review M2)",
+      "decision": "**Result types are module-local** (`availability.ts` owns `Working`, `eligibility.ts` owns `EligibilityResult`, etc.); `types.ts` owns only the data model, `Result`, and the shared error types; `src/lib/index.ts` is created **only** by PBI-007",
+      "madeBy": "Planner",
+      "rationale": "Lets PBI-003/004/005 run in parallel without touching a shared file"
+    },
+    {
+      "date": "2026-09-09 (review M2)",
+      "decision": "**Fixtures F1–F6 are test-only** and owned by PBI-001 at `src/lib/testing/fixtures.ts`; F1 reuses catalogue ids with PRD-fixed values that the illustrative catalogue need not match",
+      "madeBy": "Planner",
+      "rationale": "One owner; the PRD values are gate values, not content"
+    },
+    {
+      "date": "2026-09-09 (review L3)",
+      "decision": "`formatAvailability()` (PRD FR-13) is shipped by PBI-003 in the library; PBI-009 only renders its output",
+      "madeBy": "Planner",
+      "rationale": "The rounding rule is part of the tested computation"
+    },
+    {
+      "date": "2026-09-09 (review L6, N5, N6, N12)",
+      "decision": "**Dependency additions** (all dev-time; none affects the NFR-3 runtime budget except the three font packages, of which only the **latin subset files** are imported, bundled, and counted): `@tailwindcss/vite` (already installed), `@vitest/coverage-v8`, `happy-dom`, `axe-core`, `ajv` + `ajv-formats`, `@fontsource-variable/bricolage-grotesque`, `@fontsource/ibm-plex-sans`, `@fontsource/ibm-plex-mono`. **No script-runner package:** `scripts/*.ts` run under Node's native type stripping (`node scripts/x.ts`), which requires **Node ≥ 22.18** — pinned by `engines.node` in `package.json` (PBI-000) and to be matched by `setup-node` in PBI-012's workflow; this also satisfies PRD NFR-1's \"Node 22\" reference environment. Nothing else without a ledger row",
+      "madeBy": "Planner",
+      "rationale": "Supply-chain decisions made once, here"
+    }
+  ],
+  "generatedAt": "2026-09-10T18:25:16+00:00",
+  "notWorkedOut": [
+    {
+      "adr": "ADR-0001",
+      "item": "Where the catalogue data lives: Markdown or JSON, one file or many",
+      "landed": "One JSON file per service + JSON Schema, eager `import.meta.glob`",
+      "needsYou": true,
+      "row": 1,
+      "status": "ASSUMED"
+    },
+    {
+      "adr": null,
+      "item": "SLA maths for redundant deployments",
+      "landed": "Optional integer N per service; contribution `1-(1-a)^N`; instance failures independent",
+      "needsYou": true,
+      "row": 6,
+      "status": "ASSUMED"
+    },
+    {
+      "adr": "ADR-0002",
+      "item": "Does a deprecated dependency block an onboarding plan or warn?",
+      "landed": "Site passes `advisory`; library requires the parameter",
+      "needsYou": true,
+      "row": 2,
+      "status": "ASSUMED"
+    },
+    {
+      "adr": null,
+      "item": "Who owns a catalogue entry, and what stops it going stale",
+      "landed": "`owner`, `reviewBy` in scope; enforcement out",
+      "needsYou": false,
+      "row": 7,
+      "status": "RESOLVED (PRD default A-5, unconfirmed)"
+    },
+    {
+      "adr": "ADR-0003",
+      "item": "Does cost / chargeback belong here at all?",
+      "landed": "Out of scope for v1",
+      "needsYou": true,
+      "row": 3,
+      "status": "ASSUMED"
+    },
+    {
+      "adr": null,
+      "item": "Search in a static site",
+      "landed": "Client-side substring filter over name/summary/tags; no index",
+      "needsYou": false,
+      "row": 5,
+      "status": "RESOLVED (PRD default A-7, unconfirmed)"
+    }
+  ],
+  "source": "docs/backlog/specs/platform-catalogue.md, docs/adr/, docs/brief/raw-notes.md"
+}

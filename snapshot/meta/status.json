@@ -1,0 +1,14 @@
+{
+  "live": false,
+  "message": "Loop stopped by the owner. 20 assumptions await your confirmation; PBI-009 has two review conditions open; PBI-010 is half built; PBI-011, PBI-012, the merge and the handover are still to do.",
+  "metrics": {
+    "bundle": "26.7 kB JS · 8.5 kB gz",
+    "coverage": "99% lines · 98% branches",
+    "measuredAt": "2026-09-10T17:55:00Z",
+    "measuredOn": "b6a8d48",
+    "testFiles": 29,
+    "tests": 563
+  },
+  "title": "Paused",
+  "updatedAt": "2026-09-10T18:30:00Z"
+}

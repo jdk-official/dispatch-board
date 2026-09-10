@@ -1,0 +1,10 @@
+{
+  "group": "A",
+  "kind": "done",
+  "label": "PBI-003 availability",
+  "lane": "cw",
+  "min": 5,
+  "seq": 12,
+  "tok": 53181,
+  "verdict": "DONE · 36 tests"
+}

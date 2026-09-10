@@ -1,0 +1,109 @@
+{
+  "approval": "PENDING — the only open leg of the gate.",
+  "approvedBy": "—",
+  "designRevision": "3",
+  "generatedAt": "2026-09-10T18:25:16+00:00",
+  "goals": [
+    {
+      "id": "G-1",
+      "text": "A delivery team with no platform context can discover what the platform offers and what consuming it commits them to, without a ticket. *(PRD O-1)*"
+    },
+    {
+      "id": "G-2",
+      "text": "The availability a team will *actually* receive — the composite down the dependency chain — is computed, shown, and explained service by service. *(PRD O-2, O-3)*"
+    },
+    {
+      "id": "G-3",
+      "text": "Ordered prerequisites are derived from the catalogue, and circular dependencies in the platform's own documentation are caught at build time rather than shipped. *(PRD O-4)*"
+    },
+    {
+      "id": "G-4",
+      "text": "Eligibility by data classification and compliance tier is explicit, naming the specific control a team fails. *(PRD O-5)*"
+    },
+    {
+      "id": "G-5",
+      "text": "A GA service resting on a deprecated dependency is surfaced with its migration path at the point of consumption. *(PRD O-6)*"
+    },
+    {
+      "id": "G-6",
+      "text": "A team leaves with a concrete onboarding plan: ordered steps, approvers, elapsed-time estimate. *(PRD O-7)*"
+    },
+    {
+      "id": "G-7",
+      "text": "Illustrative content can be swapped for real data by editing JSON only. *(PRD O-8)*"
+    },
+    {
+      "id": "G-8",
+      "text": "The computation is a standalone, regression-tested library. *(PRD O-9)*"
+    },
+    {
+      "id": "G-9",
+      "text": "The portal is a deliberately designed product, not a default template. *(PRD O-10)*"
+    }
+  ],
+  "logicCore": [
+    "Composite SLA.",
+    "Dependency resolution.",
+    "Eligibility.",
+    "Lifecycle.",
+    "Onboarding plan."
+  ],
+  "prd": {
+    "acs": 37,
+    "assumptions": 20,
+    "constraints": 9,
+    "frs": 41,
+    "nfrs": 11,
+    "path": "docs/prd/platform-catalogue.md"
+  },
+  "revision": "3",
+  "rounds": [
+    {
+      "gate": "Plan gate",
+      "round": 1,
+      "verdict": "CHANGES-REQUIRED"
+    },
+    {
+      "gate": "Plan gate",
+      "round": 2,
+      "verdict": "CHANGES-REQUIRED"
+    },
+    {
+      "gate": "Plan gate",
+      "round": 3,
+      "verdict": "APPROVE-WITH-NOTES"
+    },
+    {
+      "gate": "PBI-008 spec gate",
+      "round": 1,
+      "verdict": "CHANGES-REQUIRED"
+    },
+    {
+      "gate": "PBI-008 spec gate",
+      "round": 2,
+      "verdict": "CHANGES-REQUIRED"
+    },
+    {
+      "gate": "PBI-008 spec gate",
+      "round": 3,
+      "verdict": "APPROVE-WITH-NOTES"
+    }
+  ],
+  "scopeIn": [
+    "`src/lib/**` — the pure logic library: types, dependency graph resolution with cycle detection, composite availability with working, eligibility partitioning, lifecycle findings, onboarding plan generation, shared test fixtures, and a DOM-free public entry point. *(PRD S-1, S-8)*",
+    "`catalogue/**` and `scripts/validate-catalogue.ts` — `schema.json` (including the eligibility vocabularies as enums), one illustrative service file per service, and the build-time validator; plus `scripts/check-bundle.ts`, the NFR-3 bundle-budget check. *(PRD S-3, S-4)*",
+    "`src/ui/**`, `src/styles/**`, `src/main.ts`, `index.html` — the designed front end: design tokens, layout shell, hash router, catalogue browse with filter, service detail with composite working, team-profile eligibility marking, lifecycle findings, onboarding plan view, glossary, illustrative-content notice. *(PRD S-2, S-6, S-7)*",
+    "`package.json`, `package-lock.json`, `vite.config.ts`, `tsconfig*.json`, `README.md`, `.github/workflows/**` — build, test-harness split, coverage, validation wiring, the Node `engines` pin, GitHub Pages base path, the Pages deployment workflow file, and the repo README. *(PRD S-5)*"
+  ],
+  "scopeOut": [
+    "Any backend, SSR, or runtime network call. *(PRD S-9)*",
+    "Real platform data or any claim about a real environment. *(PRD S-10)*",
+    "Full-text search and any index build step. *(PRD S-11)*",
+    "Cost and chargeback data or display. *(PRD S-12; ADR-0003)*",
+    "Automated staleness enforcement of catalogue entries. *(PRD S-13)*",
+    "**Executing** a deployment: pushing to any remote or running the Pages workflow. The workflow *file* is in scope (PBI-012); running it is deferred to the brief author — a recorded narrowing of PRD S-5, see ledger row 23.",
+    "A service worker. An offline **reload** is not supported in v1; only in-session navigation after first load is. This narrows PRD S-5 and C-1 (\"full functionality offline after first load\"), not merely AC-26 — see ledger rows 24 and 27.",
+    "The ADR browser (a separate repository)."
+  ],
+  "source": "docs/backlog/specs/platform-catalogue.md"
+}

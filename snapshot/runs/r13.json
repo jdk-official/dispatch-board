@@ -1,0 +1,10 @@
+{
+  "group": "A",
+  "kind": "done",
+  "label": "PBI-004 eligibility",
+  "lane": "cw",
+  "min": 5,
+  "seq": 13,
+  "tok": 52471,
+  "verdict": "DONE · 18 tests"
+}

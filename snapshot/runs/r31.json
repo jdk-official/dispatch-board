@@ -1,0 +1,9 @@
+{
+  "kind": "done",
+  "label": "PBI-009 loader, browse, detail",
+  "lane": "cw",
+  "min": 12,
+  "seq": 31,
+  "tok": 128253,
+  "verdict": "DONE-WITH-CONDITIONS · 100 tests"
+}

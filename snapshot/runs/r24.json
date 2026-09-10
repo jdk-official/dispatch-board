@@ -1,0 +1,9 @@
+{
+  "kind": "killed",
+  "label": "PBI-002 (first attempt)",
+  "lane": "cr",
+  "min": 1,
+  "seq": 24,
+  "tok": 3000,
+  "verdict": "killed · rate limit"
+}

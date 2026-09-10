@@ -1,0 +1,85 @@
+{
+  "ahead": "11",
+  "branch": "build/logic-core",
+  "byDir": {
+    "(root)": 9,
+    "catalogue": 16,
+    "docs": 9,
+    "scripts": 1,
+    "src": 58
+  },
+  "commits": [
+    {
+      "date": "2026-09-10T18:55:31+01:00",
+      "sha": "b6a8d48",
+      "subject": "Designed front end: design system, router, browse, filter, service detail"
+    },
+    {
+      "date": "2026-09-10T03:19:07+01:00",
+      "sha": "361055c",
+      "subject": "PBI-008 design spec: record build-time decisions from the code review"
+    },
+    {
+      "date": "2026-09-10T02:54:29+01:00",
+      "sha": "5238445",
+      "subject": "Catalogue validator: robust directory handling; schema minItems; review notes"
+    },
+    {
+      "date": "2026-09-10T02:49:53+01:00",
+      "sha": "4caa5dc",
+      "subject": "Logic library, illustrative catalogue, validator and toolchain (PBI-000..007)"
+    },
+    {
+      "date": "2026-09-10T02:48:37+01:00",
+      "sha": "c8b4cb6",
+      "subject": "PBI-008 design spec: spec gate resolved (APPROVE-WITH-NOTES, round 3)"
+    },
+    {
+      "date": "2026-09-10T02:42:57+01:00",
+      "sha": "ac08b8a",
+      "subject": "PBI-008 design spec rev 3; parent allowed-areas for UI composition root"
+    },
+    {
+      "date": "2026-09-09T21:55:23+01:00",
+      "sha": "6320255",
+      "subject": "PBI-008 design spec rev 2; ledger rows 28-30 for library refinements"
+    },
+    {
+      "date": "2026-09-09T21:48:07+01:00",
+      "sha": "b3f2290",
+      "subject": "Solution spec rev 3: plan gate independent review satisfied"
+    },
+    {
+      "date": "2026-09-09T21:32:37+01:00",
+      "sha": "8467aa5",
+      "subject": "Add solution spec (rev 2), PBI-008 design spec, backlog scaffold"
+    },
+    {
+      "date": "2026-09-09T21:16:07+01:00",
+      "sha": "17f5dd9",
+      "subject": "Add plan-ready PRD and three ADRs resolving its pending decisions"
+    },
+    {
+      "date": "2026-09-09T21:05:43+01:00",
+      "sha": "0da5483",
+      "subject": "Normalise line endings to LF"
+    },
+    {
+      "date": "2026-09-09T21:05:00+01:00",
+      "sha": "b275e6b",
+      "subject": "Scaffold platform-catalogue toolchain"
+    }
+  ],
+  "defaultBranch": "master",
+  "dirty": [
+    "M .gitignore",
+    "?? scripts/export-board.py"
+  ],
+  "generatedAt": "2026-09-10T18:25:16+00:00",
+  "head": "b6a8d48",
+  "remotes": [],
+  "repoPath": "C:/Users/jdk/platform-catalogue",
+  "shortstat": "91 files changed, 8550 insertions(+), 4 deletions(-)",
+  "source": "git, local repository",
+  "tracked": 93
+}

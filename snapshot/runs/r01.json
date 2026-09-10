@@ -1,0 +1,9 @@
+{
+  "kind": "killed",
+  "label": "PRD (first attempt, stopped by user)",
+  "lane": "req",
+  "min": 2,
+  "seq": 1,
+  "tok": 4000,
+  "verdict": "stopped"
+}

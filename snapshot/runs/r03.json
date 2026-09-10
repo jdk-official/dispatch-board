@@ -1,0 +1,10 @@
+{
+  "from": "r02",
+  "kind": "done",
+  "label": "3 ADRs · pbi-plan → spec rev 1",
+  "lane": "orch",
+  "min": 0,
+  "seq": 3,
+  "tok": 0,
+  "verdict": "draft"
+}

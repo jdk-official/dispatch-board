@@ -1,0 +1,10 @@
+{
+  "group": "B",
+  "kind": "done",
+  "label": "PBI-007 public entry point",
+  "lane": "cw",
+  "min": 3,
+  "seq": 21,
+  "tok": 43540,
+  "verdict": "DONE-WITH-CONDITIONS"
+}

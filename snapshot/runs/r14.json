@@ -1,0 +1,10 @@
+{
+  "group": "A",
+  "kind": "done",
+  "label": "PBI-005 lifecycle",
+  "lane": "cw",
+  "min": 5,
+  "seq": 14,
+  "tok": 45601,
+  "verdict": "DONE · 17 tests"
+}

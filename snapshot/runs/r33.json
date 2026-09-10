@@ -1,0 +1,9 @@
+{
+  "kind": "killed",
+  "label": "PBI-010 profile + plan view",
+  "lane": "cw",
+  "min": 8,
+  "seq": 33,
+  "tok": 40000,
+  "verdict": "killed · rate limit · partial"
+}

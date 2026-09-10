@@ -1,0 +1,20 @@
+{
+  "artifact": {
+    "url": "https://claude.ai/code/artifact/09d7c7e7-26ae-4ed3-9c7f-34ba86925be6",
+    "title": "Live Dispatch Board",
+    "capabilities": { "db": { "rules": [ { "path": "", "read": "interact", "write": "admin" } ] } }
+  },
+  "build": {
+    "repoPath": "C:/Users/jdk/platform-catalogue",
+    "branch": "build/logic-core"
+  },
+  "usage": {
+    "sessions": [
+      {
+        "label": "Overnight platform-catalogue build",
+        "projectsDir": "C:/Users/jdk/.claude/projects/C--Users-jdk",
+        "sessionId": "7f71729a-c7c5-4855-aab8-25ddf9bac96f"
+      }
+    ]
+  }
+}
