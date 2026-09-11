@@ -2,6 +2,35 @@
 
 <!-- On-demand archive of completed-PBI evidence. NEVER loaded at session start; the BOARD ## Done
      index anchors here by ID. One ## <PBI-ID> section per completed PBI. -->
+## PBI-013
+- title: Usage limit forecast (feature 6, FR-117, FR-118)
+- PR: https://github.com/jdk-official/dispatch-board/pull/9 · merge: `602eab9` · class: standard · tier: assisted · cell-verdict: GO
+- allowed_areas: site/**, tests/page.test.mjs
+- evidence: docs/backlog/reviews/PBI-013/findings.json (round 2 GO; round 1 GO-WITH-CONDITIONS, all five applied); run-report bound to c54a119 (215/68/90 PASS); suites 215/68/90 OK on 602eab9; AC-80 checked against the live store's real data
+- outcome: The board estimates the next usage-limit hit (mean gap from resumption to each hit, added to the latest reset), labelled an estimate, on the Claude usage tab and the Overview; 'no forecast: no limit hit recorded' when none is recorded. Page republished 2026-09-11. The method still needs the owner's record in PRD A-34.
+
+## PBI-021
+- title: Store leftovers clean-up: export the six unused documents to snapshot/, then delete them with the owner's explicit approval
+- PR: https://github.com/jdk-official/dispatch-board/pull/2 · merge: `fd7b926` · class: standard · tier: assisted · cell-verdict: GO
+- allowed_areas: snapshot/**
+- evidence: docs/backlog/reviews/PBI-021/findings.json (GO, no findings); AC-S1 to AC-S3 in docs/backlog/pbi/PBI-021.md Evidence; owner delete approval recorded verbatim; suites 215 / 57 / 90 OK on 7fd96cb
+- outcome: The six retired tabs/* documents were deleted from the store with the owner's verbatim approval on 2026-09-11; copies remain in snapshot/tabs/ (fd7b926); every project's tabs still render.
+
+## PBI-003
+- title: Record shapes and SQLite schema: session, run, project, tab, status, last-refresh and catalogue records (FR-100 except the answer record; FR-101 fields; FR-102)
+- PR: https://github.com/jdk-official/dispatch-board/pull/7 · merge: `7fd96cb` · class: standard · tier: assisted · cell-verdict: GO
+- allowed_areas: local/records*, local/schema*, local/tests/**
+- spec: docs/backlog/specs/pbi-003-records-schema.md
+- evidence: docs/backlog/reviews/PBI-003/findings.json (round 2 GO; round 1 NO-GO in findings-r1.json, all five findings fixed); suites 215 / 57 / 90 OK on 7fd96cb; AC-69 N/A for PBI-003, accepted by the owner 2026-09-11 (verified in PBI-005)
+- outcome: local/records.py (SHAPES, validate, id forms, store_path, to_row/from_row), local/records.shapes.json and local/schema.py (7 tables, atomic idempotent create_schema), with 90 tests including conformance of every v1 exporter document. Unblocks PBI-019, PBI-005, PBI-006, PBI-008, PBI-014 and PBI-020 (with PBI-004 where needed).
+
+## PBI-023
+- title: Pull requests on the board: the GitHub tab lists each project's pull requests as links, and Needs attention flags the ones awaiting the owner's merge
+- PR: https://github.com/jdk-official/dispatch-board/pull/6 · merge: `547b635` · class: standard · tier: assisted · cell-verdict: CELL-DONE
+- allowed_areas: exporters/export_board.py, tests/test_export_board.py, site/**, tests/page.test.mjs, CLAUDE.md, README.md
+- evidence: Code review GO-WITH-CONDITIONS, all three applied in e17006b (docs/backlog/reviews/PBI-023/findings.json); real gh run and Browser-pane check passed; unittest 215 OK and page 57/57 on 7fd96cb; handover docs/backlog/handovers/PBI-023.md
+- outcome: GitHub tab lists each project's 20 most recently updated PRs as links; open PRs show in Needs attention as awaiting the owner's merge; gh failures never break the refresh. Live 2026-09-11 (pulls pushed, page republished). Landing: resolved_method squash (declared) / observed_method squash; level record.
+
 ## PBI-022
 - title: PRD re-baseline after project-first navigation and the plan-gate answers, with evidence for AC-84, AC-85 and AC-92
 - PR: https://github.com/jdk-official/dispatch-board/pull/3 · merge: `3c520d6` · class: trivial · tier: assisted · cell-verdict: CELL-DONE

@@ -13,9 +13,9 @@
       "commit": "25fa9e7"
     },
     "PBI-021": {
-      "state": "conditions",
+      "state": "done",
       "review": "GO",
-      "open": "PR #2 merged (fd7b926): the six retired tabs/* documents are saved in snapshot/tabs/. Still open: the owner's verbatim approval to delete them from the store (AC-S2), then the delete and its check (AC-S3).",
+      "open": "Done: PR #2 squash-merged by the owner (fd7b926). With the owner's verbatim approval, the six retired tabs/* documents were deleted from the store on 2026-09-11; copies stay in snapshot/tabs/, and every project's tabs still render.",
       "commit": "fd7b926"
     },
     "PBI-022": {
@@ -25,12 +25,30 @@
       "commit": "3c520d6"
     },
     "PBI-023": {
-      "state": "partial",
-      "review": "in build",
-      "open": "Building on branch pbi/PBI-023-pr-links: the GitHub tab lists each project's pull requests as links, and Needs attention flags the ones awaiting the owner's merge. code-writer under TDD, then code review.",
-      "commit": ""
+      "state": "done",
+      "review": "GO-WITH-CONDITIONS, conditions applied",
+      "open": "Done: PR #6 squash-merged by the owner (547b635) and finalized. Pull requests are live on the GitHub tab and in Needs attention.",
+      "commit": "547b635"
+    },
+    "PBI-003": {
+      "state": "done",
+      "review": "GO (code review round 2)",
+      "open": "Done: PR #7 squash-merged by the owner (7fd96cb) and finalized. AC-69 was recorded as N/A for PBI-003 with the owner's OK; it is verified in PBI-005.",
+      "commit": "7fd96cb"
+    },
+    "PBI-001": {
+      "state": "conditions",
+      "review": "GO-WITH-CONDITIONS (round 2; conditions applied and checked; round 1 NO-GO fixed)",
+      "open": "PR #10 is open and waiting for the owner's merge (squash); suites 267 / 57 / 90 pass on 9aeff32. Round 1 found a High (a verifier that declared a fallback could show as exercised); rounds 2 and 3 fixed it and six other findings. Branch pbi/PBI-001-exporter-hardening: the FR-80 to FR-84 and FR-133 hardening, plus the follow-ups other reviews logged here (a token in remotes, manual-row validation, the reserved meta/lastRefresh, Later bullets).",
+      "commit": "9aeff32"
+    },
+    "PBI-013": {
+      "state": "done",
+      "review": "GO (code review round 2; round 1's five conditions fixed)",
+      "open": "Done: PR #9 squash-merged by the owner (602eab9) and finalized. The forecast is live on the Claude usage tab and the Overview. The estimate method still needs the owner's record in PRD A-34.",
+      "commit": "602eab9"
     }
   },
   "notWorkedOut": [],
-  "boardNote": "The plan was approved on 2026-09-11 (spec revision 5). Done: **PBI-017** (Agent catalogue tab), **PBI-018** (Later group) and **PBI-022** (PRD revision 3). **PBI-021** waits for the owner's approval to delete the six retired `tabs/*` documents. Next: **PBI-023** (pull-request links on the board), then **PBI-001** (exporter hardening)."
+  "boardNote": "The plan was approved on 2026-09-11 (spec revision 5). Done: **PBI-017**, **PBI-018**, **PBI-022**, **PBI-023**, **PBI-003**, **PBI-021** (the six leftover store documents are deleted, with copies in snapshot/tabs/) and **PBI-013** (the usage limit forecast is live). **PBI-016** (Unraid) was moved to Later by the owner. Awaiting the owner: the merge of PR #10 (**PBI-001**, exporter hardening, review GO-WITH-CONDITIONS with every condition applied). After it: **PBI-002** (page fixes) and **PBI-004** (shared derivation module)."
 }
