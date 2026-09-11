@@ -433,7 +433,8 @@
         ${tile('Agent runs', ar.length, ar.length ? `${verdictRuns().length} review verdicts` : 'no agents dispatched', 'var(--live)')}
         ${tile('Running now', now, sessionLive(s) ? 'session active' : 'session idle', 'var(--live)', now > 0)}
         ${tile('Claude usage', fmtTok(t.effective) + '<small> effective</small>', `${esc((t.requests || 0).toLocaleString())} requests`, 'var(--live)')}
-        ${tile('Limit hits', (s.usage?.limits || []).length, 'usage limit', 'var(--nogo)')}
+        ${tile('Limit hits', limitsOf(s.usage).length, 'usage limit', 'var(--nogo)')}
+        ${forecastTile(docs.usage)}
       </div>
       <div class="grid g-2-1">
         <div class="panel"><div class="ph"><h3>Session</h3><span class="faint">Not linked to a project</span></div><div class="pb">
@@ -465,7 +466,8 @@
       tile('Tests passing', esc(m.tests ?? '—'), m.testFiles ? `${m.testFiles} files · commit ${esc(m.measuredOn || '')}` : '', 'var(--go)'),
       tile('Library coverage', esc(covMain), esc(covRest), 'var(--go)'),
       tile('Agent runs', esc(agentRuns().length || '—'), agentRuns().length ? `${verdictRuns().length} review verdicts · ${(tokens / 1e6).toFixed(2)}M tokens` : '', 'var(--live)'),
-      (() => { const u = docs.usage; if (!u) return tile('Claude usage', '—', 'not exported yet', 'var(--live)'); const byAgents = (u.subagents || []).reduce((a, x) => a + x.effective, 0); return tile('Claude usage', fmtTok(u.totals?.effective) + '<small> effective</small>', `limit hit ${(u.limits || []).length}× · ${u.totals?.effective ? Math.round(byAgents / u.totals.effective * 100) : 0}% by agents`, 'var(--live)'); })(),
+      (() => { const u = docs.usage; if (!u) return tile('Claude usage', '—', 'not exported yet', 'var(--live)'); const byAgents = (u.subagents || []).reduce((a, x) => a + x.effective, 0); return tile('Claude usage', fmtTok(u.totals?.effective) + '<small> effective</small>', `limit hit ${limitsOf(u).length}× · ${u.totals?.effective ? Math.round(byAgents / u.totals.effective * 100) : 0}% by agents`, 'var(--live)'); })(),
+      forecastTile(docs.usage),
     ].join('');
 
     const cells = pbis.length
@@ -852,6 +854,56 @@
   const fmtTok = n => { n = Number(n) || 0; return n >= 1e6 ? (n / 1e6).toFixed(n >= 1e8 ? 0 : 1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(Math.round(n)); };
   const niceCeil = v => { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p; return 10 * p; };
   const hourLabel = key => { const d = new Date(key + ':00:00Z'); return isNaN(d) ? key : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); };
+  // Usage limits as the exporter writes them: a list of objects. Anything else in the store counts as no limit hit.
+  const limitsOf = u => (Array.isArray(u?.limits) ? u.limits : []).filter(l => l && typeof l === 'object' && !Array.isArray(l));
+  const timeOf = v => typeof v === 'string' ? Date.parse(v) : NaN;
+  const HOUR_MS = 3600e3;
+  const dur = ms => { const m = Math.round(ms / 60000), h = Math.floor(m / 60); return h ? `${h} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`; };
+  const FORECAST_HOW = 'the average time from when work resumed after a reset to the next limit hit, added to the latest reset. Work counts as resumed at the start of the first hour with recorded usage after the reset, or at the reset if that is later or no such hour is recorded; a hit with no reset before it is timed from the first hour with recorded usage. It assumes work picks up again when the limit resets and goes on as before, and is not a plan meter.';
+
+  // Transcripts record only the moments a limit refused a request, so the next hit can be estimated but never
+  // metered. Each hit is timed from when work resumed before it, so idle hours after a reset do not count: from
+  // the start of the first hour with usage (main session or agents) that ends after the latest reset before the
+  // hit, or from the reset itself when that hour began before it or the hourly usage has no such hour. A hit with
+  // no reset before it is timed from the first hour with usage. The average is added to the latest reset. When the
+  // latest hit's own reset is not recorded there is no time to add it to (work cannot resume before that unknown
+  // reset), so only the average is returned. A hit with no readable time, or with neither a reset nor usage before
+  // it, adds nothing.
+  function forecastOf(u) {
+    if (!u) return { state: 'absent' };
+    const lim = limitsOf(u);
+    if (!lim.length) return { state: 'none' };
+    const timed = lim.map(l => ({ hit: timeOf(l.firstAt), reset: timeOf(l.resetsAt) })).filter(l => !isNaN(l.hit));
+    const resets = lim.map(l => timeOf(l.resetsAt)).filter(t => !isNaN(t));
+    const used = (Array.isArray(u.hourly) ? u.hourly : []).filter(h => h && typeof h.hour === 'string' && (Number(h.main) || 0) + (Number(h.sub) || 0) > 0)
+      .map(h => timeOf(h.hour + ':00:00Z')).filter(t => !isNaN(t));
+    const gaps = timed.map(({ hit }) => {
+      // -Infinity when no reset came before the hit; Infinity when no hour with usage qualifies.
+      const reset = Math.max(...resets.filter(r => r < hit)), resumed = Math.min(...used.filter(s => s + HOUR_MS > reset && s < hit));
+      return hit - (Number.isFinite(resumed) ? Math.max(resumed, reset) : reset);
+    }).filter(Number.isFinite);
+    if (!gaps.length) return { state: 'unknown' };
+    const last = timed.reduce((a, l) => l.hit > a.hit ? l : a), base = { gap: gaps.reduce((a, g) => a + g, 0) / gaps.length, n: gaps.length, m: lim.length };
+    if (isNaN(last.reset)) return { state: 'reset-unknown', ...base };
+    const at = Math.max(...resets) + base.gap;
+    return isNaN(new Date(at)) ? { state: 'unknown' } : { state: 'ok', at, ...base };
+  }
+  // n limit hits gave a gap, of the m in usage.limits (the Limit hits tile's count).
+  const hitsFrom = f => f.n === f.m ? `${esc(f.n)} limit hit${f.n === 1 ? '' : 's'}` : `${esc(f.n)} of the ${esc(f.m)} recorded limit hits`;
+  const NO_FORECAST = { absent: 'no forecast: usage not exported yet', none: 'no forecast: no limit hit recorded', unknown: 'no forecast: too little timing data to estimate' };
+  // A neutral tone: the forecast is neither a review verdict nor something waiting on the owner.
+  function forecastTile(u) {
+    const f = forecastOf(u), tone = 'var(--rule-2)';
+    if (f.state === 'ok') return tile('Next limit hit', esc(when(f.at)), `estimate from ${hitsFrom(f)}${f.at < Date.now() ? ' · passed with no hit since' : ''}`, tone);
+    if (f.state === 'reset-unknown') return tile('Next limit hit', esc(dur(f.gap)) + ' after reset', `estimate from ${hitsFrom(f)} · reset time of the latest hit not recorded`, tone);
+    return tile('Next limit hit', '—', NO_FORECAST[f.state], tone);
+  }
+  // The usage tab's line on how the forecast is made. The tab is drawn only when usage was exported.
+  function forecastNote(f) {
+    if (f.state === 'ok') return `Next limit hit is an estimate from ${hitsFrom(f)}: ${FORECAST_HOW}`;
+    if (f.state === 'reset-unknown') return `Next limit hit is an estimate from ${hitsFrom(f)}. The reset time of the latest hit is not recorded, so it is shown as a time after that reset. The estimate is ${FORECAST_HOW}`;
+    return `${f.state === 'none' ? 'No forecast until a limit hit is recorded.' : 'No forecast: no limit hit has both a readable time and a reset or recorded usage before it.'} The estimate is ${FORECAST_HOW}`;
+  }
 
   // Stacked hourly bars (agents under main session), one scale for bars, gridlines and labels.
   function usageChart(u, W, H, compact) {
@@ -869,7 +921,7 @@
       if (h.sub) s += `<rect x="${x}" y="${y(h.sub)}" width="${w}" height="${T + ih - y(h.sub)}" fill="var(--live)"><title>${when_} · agents ${fmtTok(h.sub)}</title></rect>`;
       if (h.main) s += `<rect x="${x}" y="${y(h.sub + h.main)}" width="${w}" height="${y(h.sub) - y(h.sub + h.main)}" fill="var(--ink-3)"><title>${when_} · main session ${fmtTok(h.main)}</title></rect>`;
     });
-    (u.limits || []).forEach((l, k) => {
+    limitsOf(u).forEach((l, k) => {
       const i = idx(l.firstAt); if (i < 0) return;
       const x = L + i * bw + bw / 2;
       s += `<line x1="${x}" x2="${x}" y1="${T - 6}" y2="${T + ih}" stroke="var(--nogo)" stroke-width="1.5" stroke-dasharray="3 3"/>`;
@@ -883,14 +935,14 @@
   function usagePanel() {
     const u = docs.usage;
     const body = !u ? '<p class="faint">Usage has not been exported yet.</p>'
-      : `${usageChart(u, 440, 150, true)}<div class="legend" style="margin-top:10px"><span><i style="background:var(--live)"></i>Agents</span><span><i style="background:var(--ink-3)"></i>Main session</span><span><i style="background:var(--nogo)"></i>Limit hit</span></div><p class="faint" style="margin-top:10px">${fmtTok(u.totals?.effective)} effective · ${esc((u.totals?.requests || 0).toLocaleString())} requests · usage limit hit ${(u.limits || []).length}×</p>`;
+      : `${usageChart(u, 440, 150, true)}<div class="legend" style="margin-top:10px"><span><i style="background:var(--live)"></i>Agents</span><span><i style="background:var(--ink-3)"></i>Main session</span><span><i style="background:var(--nogo)"></i>Limit hit</span></div><p class="faint" style="margin-top:10px">${fmtTok(u.totals?.effective)} effective · ${esc((u.totals?.requests || 0).toLocaleString())} requests · usage limit hit ${limitsOf(u).length}×</p>`;
     return `<div class="panel"><div class="ph"><h3>Claude usage</h3><button class="linkbtn" data-go="usage">View</button></div><div class="pb">${body}</div></div>`;
   }
 
   function renderUsage() {
     const u = docs.usage, p = $('panel-usage');
     if (!u) { p.innerHTML = '<div class="empty">Usage has not been exported yet.</div>'; return; }
-    const t = u.totals || {}, subs = u.subagents || [], lim = u.limits || [];
+    const t = u.totals || {}, subs = u.subagents || [], lim = limitsOf(u), fc = forecastOf(u);
     const groups = (u.groups || []).slice().sort((a, b) => b.effective - a.effective), gmax = Math.max(1, ...groups.map(g => g.effective));
     const pct = v => t.effective ? Math.round(v / t.effective * 100) : 0;
     const subEff = subs.reduce((a, x) => a + x.effective, 0), smax = Math.max(1, ...subs.map(x => x.effective));
@@ -910,6 +962,7 @@
         ${tile('Requests to Claude', esc((t.requests || 0).toLocaleString()), `${subs.length} agent runs`, 'var(--rule-2)')}
         ${tile('Done by agents', pct(subEff) + '%', 'of effective usage', 'var(--live)')}
         ${tile('Limit hits', lim.length, `${refused} requests refused`, 'var(--nogo)')}
+        ${forecastTile(u)}
         ${tile('Output written', fmtTok(t.output), `${fmtTok(t.cacheRead)} tokens read from cache`, 'var(--rule-2)')}
       </div>
       <div class="callout warn">${icon('warn')}<p>Measured from the transcripts of ${esc(scopeName())} on your computer, ${esc(when(u.span?.first))} to ${esc(when(u.span?.last))}. It is not your plan's usage meter: Claude records the moments a limit was hit, not a percentage used. <b>Effective usage</b> weights each kind of token by relative cost (cache reads ×0.1, cache writes ×2, output ×5) so usage compares fairly with itself; it is not a price.</p></div>
@@ -927,7 +980,7 @@
         </tbody></table></div></div>
         <div class="panel"><div class="ph"><h3>Usage limits</h3></div><div class="pb flush scroll"><table><thead><tr><th>Limit</th><th>First refused</th><th class="num">Refused</th><th>Reset</th></tr></thead><tbody>
           ${lim.map((l, k) => `<tr><td>${k + 1} · usage limit</td><td>${esc(when(l.firstAt))}</td><td class="num">${esc(l.refused)}</td><td>${esc(when(l.resetsAt)) || '—'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No limit was hit.</td></tr>'}
-        </tbody></table>${u.overage ? `<div class="pb faint" style="border-top:1px solid var(--rule)">${esc(u.overage)}</div>` : ''}</div></div>
+        </tbody></table><div class="pb faint" data-forecast style="border-top:1px solid var(--rule)">${forecastNote(fc)}</div>${u.overage ? `<div class="pb faint" style="border-top:1px solid var(--rule)">${esc(u.overage)}</div>` : ''}</div></div>
       </div>
       <div class="panel"><div class="ph"><h3>Agent runs</h3><span class="faint">${subs.length} runs · ${fmtTok(subEff)} effective</span></div><div class="pb flush scroll"><table><thead><tr><th>Agent</th><th>Task</th><th>Model</th><th class="num">Requests</th><th style="min-width:150px">Effective</th></tr></thead><tbody>
         ${subs.slice().sort((a, b) => b.effective - a.effective).map(x => `<tr><td style="white-space:nowrap">${esc(x.type)}</td><td>${esc(x.description)}</td><td class="muted">${esc(x.modelLabel)}</td><td class="num">${esc(x.requests)}</td><td><div class="bar"><i style="width:${Math.max(2, x.effective / smax * 100)}%;background:var(--live)"></i></div><div class="sub">${fmtTok(x.effective)}</div></td></tr>`).join('')}
@@ -937,6 +990,10 @@
   // Each tab is drawn on its own, so a tab that cannot read the data it was given leaves the others drawn.
   const RENDERERS = [[renderHeader, null], [renderOverview, 'overview'], [renderDispatch, 'dispatch'], [renderCatalogue, 'catalogue'], [renderSpec, 'spec'],
     [renderAssumptions, 'assumptions'], [renderDecisions, 'decisions'], [renderBacklog, 'backlog'], [renderGit, 'git'], [renderUsage, 'usage']];
+  // The forecast tiles mark a forecast time that has gone by, but the store may not change for hours while the board
+  // sits idle, so the minute timer compares against what was last drawn and redraws once when the forecast passes.
+  let forecastPassed = false;
+  const forecastIsPast = () => { const f = forecastOf(docs.usage); return f.state === 'ok' && f.at < Date.now(); };
   function renderAll() {
     RENDERERS.forEach(([draw, tab]) => {
       try { draw(); } catch (e) {
@@ -944,6 +1001,7 @@
         if (tab) $('panel-' + tab).innerHTML = '<div class="empty">This tab could not be shown from the current data.</div>';
       }
     });
+    forecastPassed = forecastIsPast();
   }
 
   // ---------------- project picker and session filter ----------------
@@ -1025,7 +1083,7 @@
   $('project').addEventListener('blur', fillPickers);
   $('session').addEventListener('blur', fillPickers);
   apply();
-  setInterval(() => { renderHeader(); fillPickers(); }, 60000);
+  setInterval(() => { renderHeader(); fillPickers(); if (forecastIsPast() !== forecastPassed) renderAll(); }, 60000);
 
   (async () => {
     const db = await window.claude?.use?.('db');

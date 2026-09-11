@@ -53,13 +53,15 @@ function env(storage = {}, { offline = false } = {}) {
   globalThis.localStorage = { getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, String(v)) };
   globalThis.claude = { use: async () => offline ? null : db };
   globalThis.scrollTo = () => {};
-  globalThis.setInterval = () => 0;
+  // The page's timers are recorded rather than started; a check runs them with timers.forEach(f => f()).
+  const timers = [];
+  globalThis.setInterval = f => { timers.push(f); return 0; };
   vm.runInThisContext(script, { filename: 'site/index.html <script>' });
   const fire = (key, docs) => subs[key](key.startsWith('d:') ? { exists: !!docs, data: () => docs } :
     { docs: docs.map(d => ({ id: d.id, exists: true, data: () => { const { id, ...rest } = d; return rest; } })) });
   const change = (id, value) => { const e = el(id); e.value = value; e.listeners.change.forEach(f => f({ target: e })); };
   const selected = () => tabs.find(t => t.attrs['aria-selected'] === 'true').dataset.tab;
-  return { el, subs, fire, change, selected, store, doc };
+  return { el, subs, fire, change, selected, store, doc, timers };
 }
 const tick = () => new Promise(r => setTimeout(r, 0));
 
@@ -640,6 +642,200 @@ const groupOf = (html, plugin) => { const m = html.match(new RegExp(`data-plugin
     `state ${state} is the muted tag with the raw state, escaped`));
   assert.doesNotMatch(inh.el('panel-overview').innerHTML, /awaiting your merge/, 'none of them is an open PR');
   ok('pulls: an unknown state, even one named like an inherited object member, is a muted tag with the escaped raw state');
+}
+
+// ---- 11. the usage limit forecast: an estimate from the recorded limit hits, never a meter
+{
+  const NO_HIT = 'no forecast: no limit hit recorded', UNTIMED = 'no forecast: too little timing data to estimate';
+  const PASSED = ' · passed with no hit since';
+  // Hourly usage (UTC) from `first` for n hours: one unit in every hour except the hours of the day listed in idle.
+  const series = (first, n, idle = []) => Array.from({ length: n }, (_, i) => {
+    const hour = new Date(Date.parse(first + ':00:00Z') + i * 3600e3).toISOString().slice(0, 13);
+    return { hour, main: idle.includes(Number(hour.slice(11))) ? 0 : 1, sub: 0 };
+  });
+  const withLimits = (u, limits, hourly) => ({ ...u, limits, hourly });
+
+  // Gaps of 1 h, 1 h and 7 h, so the mean (3 h) differs from the median (1 h). Stored out of time order, so the
+  // estimate cannot depend on the order the store returns. Every hour from 00:00 to 13:00 has usage.
+  const SEVERAL = [
+    { firstAt: '2099-01-01T12:00:00Z', refused: 2, type: 'five_hour', resetsAt: '2099-01-01T13:00:00Z' },
+    { firstAt: '2099-01-01T01:00:00Z', refused: 1, type: 'five_hour', resetsAt: '2099-01-01T02:00:00Z' },
+    { firstAt: '2099-01-01T03:00:00Z', refused: 1, type: 'five_hour', resetsAt: '2099-01-01T05:00:00Z' },
+  ];
+  const SEVERAL_H = series('2099-01-01T00', 14);
+  // By hand: the 01:00 hit has no reset before it, so it is timed from the first hour with usage, 00:00: 1 h.
+  // The 03:00 hit follows the 02:00 reset, and the 02:00 hour has usage: 1 h. The 12:00 hit follows the 05:00
+  // reset, and the 05:00 hour has usage: 7 h. The mean, (1 + 1 + 7) / 3 = 3 h, added to the latest reset (13:00,
+  // the latest hit's own) gives 16:00. The median, 1 h, would give 14:00.
+  const SEVERAL_AT = '2099-01-01T16:00:00Z';
+
+  const ONE = [{ firstAt: '2026-09-10T11:30:00Z', refused: 1, type: 'five_hour', resetsAt: '2026-09-10T13:00:00Z' }];
+  const ONE_H = series('2026-09-10T08', 2);
+  // By hand: no reset before the hit and the first hour with usage is 08:00, so the hit came 3 h 30 min after
+  // work resumed; added to its 13:00 reset, 16:30. That time is in the past, so the tile says it passed with no hit since.
+  const ONE_AT = '2026-09-10T16:30:00Z';
+
+  // Idle hours after a reset do not count. Usage only in the hours 00, 01, 09, 10, 12 and 13; the 09:00 hour's
+  // usage is all by agents, which counts as usage too.
+  const IDLE = [
+    { firstAt: '2099-01-02T10:30:00Z', refused: 1, type: 'five_hour', resetsAt: '2099-01-02T12:20:00Z' },
+    { firstAt: '2099-01-02T01:30:00Z', refused: 1, type: 'five_hour', resetsAt: '2099-01-02T03:20:00Z' },
+    { firstAt: '2099-01-02T13:50:00Z', refused: 1, type: 'five_hour', resetsAt: '2099-01-02T15:00:00Z' },
+  ];
+  const IDLE_H = series('2099-01-02T00', 16, [2, 3, 4, 5, 6, 7, 8, 11, 14, 15]).map(h => h.hour.endsWith('T09') ? { ...h, main: 0, sub: 1 } : h);
+  // By hand: the 01:30 hit has no reset before it; the first hour with usage is 00:00: 1 h 30 min. The 10:30 hit's
+  // latest reset before it is 03:20; the hours 03 to 08 are idle and work resumed at 09:00: 1 h 30 min. The 13:50
+  // hit's latest reset before it is 12:20; the 12:00 hour has usage but starts before the reset, so the later of
+  // the two, 12:20: 1 h 30 min. The mean, 1 h 30 min, added to the latest reset, 15:00, gives 16:30.
+  // Timed from the resets instead, the gaps would be 1 h 30 min, 7 h 10 min and 1 h 30 min: a mean of 3 h 23 min
+  // 20 s, giving 18:23:20. Timing the last hit from the 12:00 hour start rather than the 12:20 reset would make its
+  // gap 1 h 50 min and the answer 16:36:40.
+  const IDLE_AT = '2099-01-02T16:30:00Z', IDLE_FROM_RESETS = '2099-01-02T18:23:20Z', IDLE_FROM_HOUR = '2099-01-02T16:36:40Z';
+
+  // One hit has nothing before it: the 03:00 hit has no reset before it and the recorded usage starts at 05:00.
+  // Usage only in the hours 05 to 08.
+  const MIXED = [
+    { firstAt: '2099-01-03T03:00:00Z', refused: 1, type: 'five_hour', resetsAt: '2099-01-03T04:00:00Z' },
+    { firstAt: '2099-01-03T08:00:00Z', refused: 1, type: 'five_hour', resetsAt: '2099-01-03T09:00:00Z' },
+    { firstAt: '2099-01-03T10:00:00Z', refused: 1, type: 'five_hour', resetsAt: '2099-01-03T11:00:00Z' },
+  ];
+  const MIXED_H = series('2099-01-03T05', 4);
+  // By hand: the 03:00 hit gives no gap. The 08:00 hit's latest reset before it is 04:00, and the first hour with
+  // usage after that is 05:00: 3 h. The 10:00 hit's latest reset before it is 09:00, and the recorded usage ends
+  // with the 08:00 hour, so it is timed from the reset: 1 h. The mean of the 2 gaps, 2 h, added to the latest
+  // reset, 11:00, gives 13:00, from 2 of the 3 recorded hits.
+  const MIXED_AT = '2099-01-03T13:00:00Z';
+
+  // The latest hit has no reset time. Usage in every hour from 00:00 to 06:00.
+  const NORESET = [
+    { firstAt: '2099-01-04T06:00:00Z', refused: 1, type: 'five_hour', resetsAt: null },
+    { firstAt: '2099-01-04T02:00:00Z', refused: 1, type: 'five_hour', resetsAt: '2099-01-04T03:00:00Z' },
+  ];
+  const NORESET_H = series('2099-01-04T00', 7);
+  // By hand: the 02:00 hit has no reset before it; the first hour with usage is 00:00: 2 h. The 06:00 hit's latest
+  // reset before it is 03:00, whose hour has usage: 3 h. The mean is 2 h 30 min, but the latest hit's reset is not
+  // recorded, so there is nothing to add it to: "2 h 30 min after reset", not a time. Added to the 06:00 hit
+  // itself, it would give 08:30, before that limit could have reset.
+
+  const FP = [
+    { ...PROJECTS[0], usage: withLimits(PROJECTS[0].usage, SEVERAL, SEVERAL_H) },
+    { ...PROJECTS[1] },
+  ];
+  const FS = SESSIONS.map(s => s.id === 's1' ? { ...s, usage: withLimits(s.usage, ONE, ONE_H) }
+    : s.id === 's4' ? { ...s, usage: withLimits(s.usage, SEVERAL, SEVERAL_H) } : s);
+  const tileHtml = (H, label) => { const m = H.match(new RegExp(`<div class="tile[^"]*" style="--tone:([^"]*)"><div class="tl">${reEsc(label)}</div>`)); assert.ok(m, 'tile ' + label); return m[1]; };
+  const forecast = e => [tileOf(e.el('panel-usage').innerHTML, 'Next limit hit'), tileOf(e.el('panel-overview').innerHTML, 'Next limit hit')];
+  const noteOf = e => { const m = e.el('panel-usage').innerHTML.match(/<div class="pb faint" data-forecast[^>]*>([\s\S]*?)<\/div>/); assert.ok(m, 'the usage tab explains the forecast'); return text(m[1]); };
+
+  const e = env({ 'board-view': 'p:platform-catalogue' });
+  await tick();
+  e.fire('c:projects', FP); e.fire('c:sessions', FS); e.fire('c:runs', RUNS); e.fire('c:projectTabs', TABS);
+  const [u, o] = forecast(e);
+  assert.deepEqual(u, [whenStr(SEVERAL_AT), 'estimate from 3 limit hits']);
+  assert.deepEqual(o, u, 'the Overview tile matches the usage tab');
+  assert.equal(tileOf(e.el('panel-usage').innerHTML, 'Limit hits')[0], '3');
+  ok('forecast, project view: skewed gaps give the mean, added to the latest reset, labelled an estimate, on the usage tab and the Overview');
+
+  const note = noteOf(e);
+  assert.match(note, /^Next limit hit is an estimate from 3 limit hits: /);
+  assert.match(note, /from when work resumed after a reset/);
+  assert.match(note, /added to the latest reset/);
+  assert.match(note, /not a plan meter/);
+  for (const H of [e.el('panel-usage').innerHTML, e.el('panel-overview').innerHTML]) {
+    const tone = tileHtml(H, 'Next limit hit');
+    assert.ok(tone.startsWith('var(--') && tone !== 'var(--human)', 'the forecast tile uses a token other than --human: ' + tone);
+  }
+  ok('forecast: the usage tab says how the estimate is derived and that it is not a meter; the tile never uses --human');
+
+  e.change('session', 's1');
+  const [su, so] = forecast(e);
+  assert.deepEqual(su, [whenStr(ONE_AT), 'estimate from 1 limit hit' + PASSED]);
+  assert.deepEqual(so, su);
+  ok('forecast, session filter: one hit gives the hand-computed time from that session\'s own usage, marked as passed');
+
+  e.change('project', 'p:dispatch-board');
+  assert.deepEqual(forecast(e), [['—', NO_HIT], ['—', NO_HIT]]);
+  assert.match(noteOf(e), /^No forecast until a limit hit is recorded\. The estimate is /);
+  ok('forecast, project view with no limit hit: "no forecast: no limit hit recorded" on the usage tab and the Overview');
+
+  e.change('project', 'other');
+  e.change('session', 's3');
+  assert.deepEqual(forecast(e), [['—', NO_HIT], ['—', NO_HIT]]);
+  e.change('session', 's4');
+  assert.deepEqual(forecast(e)[0], [whenStr(SEVERAL_AT), 'estimate from 3 limit hits']);
+  assert.deepEqual(forecast(e)[1], forecast(e)[0]);
+  ok('forecast, Other sessions: each session\'s own limit hits, or none');
+
+  const load = async usage => {
+    const q = env({ 'board-view': 'p:platform-catalogue' });
+    await tick();
+    q.fire('c:projects', [{ ...PROJECTS[0], usage }, PROJECTS[1]]); q.fire('c:sessions', SESSIONS); q.fire('c:runs', RUNS); q.fire('c:projectTabs', TABS);
+    return q;
+  };
+
+  const qi = await load(withLimits(PROJECTS[0].usage, IDLE, IDLE_H));
+  assert.deepEqual(forecast(qi), [[whenStr(IDLE_AT), 'estimate from 3 limit hits'], [whenStr(IDLE_AT), 'estimate from 3 limit hits']]);
+  for (const other of [IDLE_FROM_RESETS, IDLE_FROM_HOUR]) assert.notEqual(whenStr(other), whenStr(IDLE_AT), 'the fixture tells the methods apart');
+  ok('forecast: idle hours after a reset do not count; each hit is timed from the later of its reset and the first hour with usage');
+
+  const qm = await load(withLimits(PROJECTS[0].usage, MIXED, MIXED_H));
+  const MIXED_FROM = 'estimate from 2 of the 3 recorded limit hits';
+  assert.deepEqual(forecast(qm), [[whenStr(MIXED_AT), MIXED_FROM], [whenStr(MIXED_AT), MIXED_FROM]]);
+  assert.equal(tileOf(qm.el('panel-usage').innerHTML, 'Limit hits')[0], '3');
+  assert.match(noteOf(qm), /^Next limit hit is an estimate from 2 of the 3 recorded limit hits: /);
+  ok('forecast: a hit with nothing before it adds no gap, and the tile and note say "from 2 of the 3 recorded limit hits"');
+
+  const qn = await load(withLimits(PROJECTS[0].usage, NORESET, NORESET_H));
+  const NORESET_TILE = ['2 h 30 min after reset', 'estimate from 2 limit hits · reset time of the latest hit not recorded'];
+  assert.deepEqual(forecast(qn), [NORESET_TILE, NORESET_TILE]);
+  assert.match(noteOf(qn), /^Next limit hit is an estimate from 2 limit hits\. The reset time of the latest hit is not recorded/);
+  ok('forecast: when the latest hit has no reset time, the estimate is a time after that reset, never the mean added to the hit');
+
+  const qa = await load(undefined);
+  assert.deepEqual(tileOf(qa.el('panel-overview').innerHTML, 'Claude usage'), ['—', 'not exported yet']);
+  assert.deepEqual(tileOf(qa.el('panel-overview').innerHTML, 'Next limit hit'), ['—', 'no forecast: usage not exported yet']);
+  ok('forecast: with no usage exported, the Overview says "no forecast: usage not exported yet", not that no hit was recorded');
+
+  // The store may not change for hours while the board sits idle, so the minute timer has to add the passed marker.
+  const qt = await load(withLimits(PROJECTS[0].usage, IDLE, IDLE_H));
+  const realNow = Date.now;
+  try {
+    assert.equal(forecast(qt)[0][1], 'estimate from 3 limit hits');
+    qt.el('panel-usage').innerHTML = 'untouched';
+    qt.timers.forEach(f => f());
+    assert.equal(qt.el('panel-usage').innerHTML, 'untouched', 'no redraw while the forecast is still ahead');
+    Date.now = () => Date.parse('2099-01-02T17:00:00Z');
+    qt.timers.forEach(f => f());
+    assert.deepEqual(forecast(qt), [[whenStr(IDLE_AT), 'estimate from 3 limit hits' + PASSED], [whenStr(IDLE_AT), 'estimate from 3 limit hits' + PASSED]]);
+    qt.el('panel-usage').innerHTML = 'untouched';
+    qt.timers.forEach(f => f());
+    assert.equal(qt.el('panel-usage').innerHTML, 'untouched', 'redrawn once when the forecast passes, not every minute');
+  } finally { Date.now = realNow; }
+  noPageErrors('running the minute timer');
+  ok('forecast: on an idle board the minute timer marks the forecast as passed once its time has gone by');
+
+  for (const bad of ['x', 7, {}, null, { firstAt: SEVERAL_AT }, [null, 3, 'x', [], [SEVERAL[0]]]]) {
+    const q = await load({ ...PROJECTS[0].usage, limits: bad });
+    noPageErrors('rendering usage.limits = ' + JSON.stringify(bad));
+    assert.deepEqual(forecast(q), [['—', NO_HIT], ['—', NO_HIT]], JSON.stringify(bad));
+    assert.equal(tileOf(q.el('panel-usage').innerHTML, 'Limit hits')[0], '0', JSON.stringify(bad));
+    assert.doesNotMatch(q.el('panel-usage').innerHTML, /could not be shown/, JSON.stringify(bad));
+    q.timers.forEach(f => f());
+    noPageErrors('the minute timer with usage.limits = ' + JSON.stringify(bad));
+  }
+  for (const [usage, why] of [
+    [{ ...PROJECTS[0].usage, limits: [{ firstAt: 'not a date', resetsAt: 'nope', refused: '<b>x' }, { firstAt: 12345 }] }, 'hits without a readable time'],
+    [{ ...PROJECTS[0].usage, limits: ONE, hourly: [] }, 'a hit with no recorded usage or reset before it'],
+  ]) {
+    const q = await load(usage);
+    noPageErrors('rendering ' + why);
+    assert.deepEqual(forecast(q), [['—', UNTIMED], ['—', UNTIMED]], why);
+    assert.match(noteOf(q), /^No forecast: no limit hit has both a readable time and a reset or recorded usage before it\. /, why);
+    assert.doesNotMatch(q.el('panel-usage').innerHTML, /could not be shown|<b>x/, why);
+    q.timers.forEach(f => f());
+    noPageErrors('the minute timer with ' + why);
+  }
+  ok('forecast: malformed usage.limits shows no forecast with the right reason, draws every tab and logs no console.error');
 }
 noPageErrors('after the last check');
 console.log(`all ${passed} page checks passed`);
