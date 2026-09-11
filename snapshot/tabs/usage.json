@@ -11,50 +11,50 @@
       "requests": 430
     },
     {
-      "cacheRead": 24495199,
-      "cacheWrite": 965172,
-      "effective": 5469245,
-      "input": 786,
+      "cacheRead": 48043804,
+      "cacheWrite": 1464786,
+      "effective": 9516205,
+      "input": 2898,
       "label": "Opus 5",
       "model": "claude-opus-5",
-      "output": 217719,
-      "requests": 78
+      "output": 355871,
+      "requests": 156
     }
   ],
-  "generatedAt": "2026-09-10T18:54:38+00:00",
+  "generatedAt": "2026-09-10T19:26:24+00:00",
   "groups": [
     {
-      "effective": 8273590,
+      "effective": 9753510,
       "key": "subagents",
       "label": "Subagents (the agent fleet)"
     },
     {
-      "effective": 7838405,
+      "effective": 9929544,
       "key": "reread",
       "label": "Re-reading instructions and history"
     },
     {
-      "effective": 232990,
+      "effective": 284085,
       "key": "think",
       "label": "Thinking and replies"
     },
     {
-      "effective": 4933720,
+      "effective": 5127688,
       "key": "files",
       "label": "Files and shell commands"
     },
     {
-      "effective": 273577,
+      "effective": 294360,
       "key": "browser",
       "label": "Browser checks"
     },
     {
-      "effective": 134797,
+      "effective": 278960,
       "key": "artifact",
       "label": "Publishing this dashboard"
     },
     {
-      "effective": 1167408,
+      "effective": 1233301,
       "key": "dispatch",
       "label": "Dispatching agents"
     },
@@ -76,7 +76,7 @@
     {
       "effective": 3141,
       "key": "connectors",
-      "label": "Connectors (Microsoft Learn)"
+      "label": "Connectors"
     }
   ],
   "hourly": [
@@ -197,8 +197,13 @@
     },
     {
       "hour": "2026-09-10T18",
-      "main": 5801446,
+      "main": 6354015,
       "sub": 0
+    },
+    {
+      "hour": "2026-09-10T19",
+      "main": 2014471,
+      "sub": 1479921
     }
   ],
   "limits": [
@@ -216,10 +221,10 @@
     }
   ],
   "overage": "Extra usage beyond the limit is turned off for your organisation, so work paused until each reset.",
-  "source": "Claude Code transcripts for this session and its 31 subagents, on this computer",
+  "source": "Claude Code transcripts for 1 session(s) and 36 subagent runs, on this computer",
   "span": {
     "first": "2026-09-09T19:46:54.489Z",
-    "last": "2026-09-10T18:54:33.026Z"
+    "last": "2026-09-10T19:25:28.457Z"
   },
   "subagents": [
     {
@@ -231,6 +236,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 7,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-10T02:09:31.723Z",
       "type": "code-reviewer"
     },
@@ -243,6 +249,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 11,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:52:12.656Z",
       "type": "code-writer"
     },
@@ -255,6 +262,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 6,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:44:48.463Z",
       "type": "code-reviewer"
     },
@@ -267,6 +275,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 19,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:50:06.997Z",
       "type": "code-writer"
     },
@@ -279,6 +288,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 1,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T21:02:33.099Z",
       "type": "code-reviewer"
     },
@@ -291,6 +301,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 18,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-10T02:26:12.388Z",
       "type": "code-writer"
     },
@@ -303,6 +314,7 @@
       "model": "claude-opus-5",
       "modelLabel": "Opus 5",
       "requests": 1,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T19:52:27.513Z",
       "type": "requirements-author"
     },
@@ -315,7 +327,21 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 10,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-10T01:42:14.677Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "PBI-009 review fixes",
+      "effective": 358844,
+      "end": "2026-09-10T19:11:32.391Z",
+      "id": "a3bebbbf3af77d2bc",
+      "model": "claude-opus-5",
+      "modelLabel": "Opus 5",
+      "requests": 16,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
+      "start": "2026-09-10T19:04:39.388Z",
       "type": "code-writer"
     },
     {
@@ -327,6 +353,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 5,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:46:09.823Z",
       "type": "Gate reviewer"
     },
@@ -339,6 +366,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 6,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-10T01:42:31.062Z",
       "type": "code-reviewer"
     },
@@ -351,8 +379,22 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 10,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:32:19.821Z",
       "type": "code-writer"
+    },
+    {
+      "agentType": "review-agents:code-reviewer",
+      "description": "Code-review PBI-010 components",
+      "effective": 207680,
+      "end": "2026-09-10T19:18:41.922Z",
+      "id": "a51c86c47203577b7",
+      "model": "claude-opus-5",
+      "modelLabel": "Opus 5",
+      "requests": 7,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
+      "start": "2026-09-10T19:14:48.825Z",
+      "type": "code-reviewer"
     },
     {
       "agentType": "engineering-agents:test-writer",
@@ -363,6 +405,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 12,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:36:47.263Z",
       "type": "test-writer"
     },
@@ -375,6 +418,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 7,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:43:05.256Z",
       "type": "code-reviewer"
     },
@@ -387,6 +431,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 9,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-10T01:50:08.882Z",
       "type": "code-writer"
     },
@@ -399,6 +444,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 17,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:38:32.011Z",
       "type": "code-writer"
     },
@@ -411,6 +457,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 5,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:32:06.460Z",
       "type": "Gate reviewer"
     },
@@ -423,6 +470,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 5,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:21:38.029Z",
       "type": "Gate reviewer"
     },
@@ -435,6 +483,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 19,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-10T02:12:24.058Z",
       "type": "code-writer"
     },
@@ -447,6 +496,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 14,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:45:14.821Z",
       "type": "code-writer"
     },
@@ -459,6 +509,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 12,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:38:15.147Z",
       "type": "code-writer"
     },
@@ -471,6 +522,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 14,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:51:39.534Z",
       "type": "code-writer"
     },
@@ -483,8 +535,22 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 8,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-10T02:25:34.769Z",
       "type": "code-reviewer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "PBI-010 plan view and verdict components",
+      "effective": 456197,
+      "end": "2026-09-10T19:13:35.032Z",
+      "id": "a8bd7f1cc91a0c112",
+      "model": "claude-opus-5",
+      "modelLabel": "Opus 5",
+      "requests": 15,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
+      "start": "2026-09-10T19:05:03.380Z",
+      "type": "code-writer"
     },
     {
       "agentType": "engineering-agents:code-writer",
@@ -495,6 +561,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 22,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:22:50.728Z",
       "type": "code-writer"
     },
@@ -507,6 +574,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 18,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:51:20.805Z",
       "type": "code-writer"
     },
@@ -519,7 +587,21 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 20,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-10T01:49:18.436Z",
+      "type": "code-writer"
+    },
+    {
+      "agentType": "engineering-agents:code-writer",
+      "description": "PBI-010 wiring plus carried Low notes",
+      "effective": 231485,
+      "end": "2026-09-10T19:25:28.457Z",
+      "id": "ac22cbcb17cc3b7a1",
+      "model": "claude-opus-5",
+      "modelLabel": "Opus 5",
+      "requests": 7,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
+      "start": "2026-09-10T19:21:03.546Z",
       "type": "code-writer"
     },
     {
@@ -531,6 +613,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 5,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:57:25.281Z",
       "type": "code-reviewer"
     },
@@ -543,6 +626,7 @@
       "model": "claude-opus-5",
       "modelLabel": "Opus 5",
       "requests": 6,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:05:16.951Z",
       "type": "requirements-author"
     },
@@ -555,6 +639,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 8,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:54:59.687Z",
       "type": "Gate reviewer"
     },
@@ -567,6 +652,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 5,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:43:34.710Z",
       "type": "Gate reviewer"
     },
@@ -579,6 +665,7 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 14,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-09T20:37:53.628Z",
       "type": "code-writer"
     },
@@ -591,17 +678,31 @@
       "model": "claude-fable-5-1",
       "modelLabel": "Fable 5.1",
       "requests": 6,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
       "start": "2026-09-10T01:42:52.010Z",
       "type": "Gate reviewer"
+    },
+    {
+      "agentType": "review-agents:code-reviewer",
+      "description": "Code-review PBI-009 fixes",
+      "effective": 225715,
+      "end": "2026-09-10T19:17:11.344Z",
+      "id": "afd3945e2b8eea934",
+      "model": "claude-opus-5",
+      "modelLabel": "Opus 5",
+      "requests": 9,
+      "session": "7f71729a-c7c5-4855-aab8-25ddf9bac96f",
+      "start": "2026-09-10T19:12:48.696Z",
+      "type": "code-reviewer"
     }
   ],
   "totals": {
-    "cacheRead": 92843769,
-    "cacheWrite": 4839631,
-    "effective": 23912513,
-    "input": 12534,
-    "output": 987268,
-    "requests": 508
+    "cacheRead": 116392374,
+    "cacheWrite": 5339245,
+    "effective": 27959473,
+    "input": 14646,
+    "output": 1125420,
+    "requests": 586
   },
   "weights": {
     "cacheRead": 0.1,

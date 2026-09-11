@@ -1,6 +1,6 @@
 {
   "board": "Nothing is on the BOARD: PBIs land under Proposed only after the plan gate passes, and its human leg is still open. Everything below was built on the engineering branch.",
-  "generatedAt": "2026-09-10T18:25:16+00:00",
+  "generatedAt": "2026-09-10T20:22:42+00:00",
   "pbis": [
     {
       "commit": "4caa5dc",
@@ -111,27 +111,27 @@
       "title": "Design system: tokens, fonts, shell, hash router, ledger and stamp components, notice"
     },
     {
-      "commit": "b6a8d48",
+      "commit": "bb4ac69",
       "dependsOn": "[PBI-002, PBI-007, PBI-008]",
       "group": "ui",
       "id": "PBI-009",
-      "open": "Two Medium open: the shelf restyles the DEPRECATED stamp via text-data (CR-001); a JSDoc word re-emits the dead .hidden utility (CR-002). Ledger scroll wrapper not yet applied at 360px.",
+      "open": "",
       "requiresSpec": "false",
-      "review": "GO-WITH-CONDITIONS",
+      "review": "Round 1 GO-WITH-CONDITIONS, round 2 GO-WITH-NOTES; five Low notes carried into PBI-010",
       "risk": "Medium",
-      "state": "conditions",
+      "state": "done",
       "title": "Catalogue loader (eager glob), browse, filter, service detail with composite working"
     },
     {
-      "commit": "b6a8d48",
+      "commit": "d3de26d",
       "dependsOn": "[PBI-009]",
       "group": "ui",
       "id": "PBI-010",
-      "open": "Build agent killed by the rate limit: state.ts, profile.ts and reasons.ts written with tests; not wired into main.ts; the onboarding-plan view is not built.",
+      "open": "Team profile, eligibility verdict and onboarding plan view. Real-browser check found three defects the unit tests could not; all fixed and re-checked in the browser.",
       "requiresSpec": "false",
-      "review": "Not reviewed",
+      "review": "Round 4 GO; three Low notes carried into PBI-011",
       "risk": "Medium",
-      "state": "partial",
+      "state": "done",
       "title": "Team profile picker, eligibility marking, lifecycle findings, onboarding plan view with `advisory` policy"
     },
     {
@@ -139,11 +139,11 @@
       "dependsOn": "[PBI-010]",
       "group": "ui",
       "id": "PBI-011",
-      "open": "Delivery verification: offline navigation, axe, viewports, bundle budget.",
+      "open": "Delivery verification: bundle budget script, offline-by-construction scan, axe over every view, plus three Low notes carried from PBI-010. Viewports and network-off checks stay with the owner on the deployed site.",
       "requiresSpec": "false",
-      "review": "—",
+      "review": "In build",
       "risk": "Medium",
-      "state": "todo",
+      "state": "partial",
       "title": "Delivery verification: offline navigation, axe, viewports, bundle budget — with fixes"
     },
     {
