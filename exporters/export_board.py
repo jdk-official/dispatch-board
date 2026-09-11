@@ -67,6 +67,46 @@ def bullets(block):
     return [clean(m) for m in re.findall(r'^- (.+)$', block, re.M)]
 
 
+LATER = '### Future iterations (not planned)'
+
+
+def later_items(spec):
+    """The ideas listed under the spec's LATER heading, as [{title, description}]; [] without the heading.
+
+    The list runs to the next heading of the same level or higher, so a #### sub-heading inside it only groups
+    more ideas. Each top-level "- " bullet is one idea, and a wrapped or indented line straight after it
+    continues it. The title is the first bold span, less a trailing colon, and the description is the text
+    after that span, less a leading colon. A bullet with words before its bold span keeps them: its
+    description is the whole bullet. A bullet without a bold span is all title with no description, so no
+    idea is dropped for how it is formatted.
+    """
+    block = section(spec.replace('\r\n', '\n'), LATER)
+    found, current = [], None
+    for line in block.split('\n'):
+        m = re.match(r'-(?: (.*))?$', line)   # "- text" or a bare "-", never "-text" or a --- rule
+        if m:
+            current = [m.group(1) or '']
+            found.append(current)
+        elif line.strip() and current is not None:
+            current.append(line.strip())
+        else:
+            current = None
+    items = []
+    for parts in found:
+        text = clean(' '.join(p.strip() for p in parts))
+        if not text:
+            continue
+        b = re.search(r'\*\*(.+?)\*\*', text)
+        title = b.group(1).strip().rstrip(':').rstrip() if b else ''
+        if not title:
+            items.append({'title': text, 'description': ''})
+        elif text[:b.start()].strip():
+            items.append({'title': title, 'description': text})
+        else:
+            items.append({'title': title, 'description': re.sub(r'^:\s*', '', text[b.end():].strip())})
+    return items
+
+
 def git(root, *args):
     return subprocess.run(['git', *args], cwd=root, capture_output=True, text=True, encoding='utf-8').stdout.strip()
 
@@ -211,7 +251,7 @@ def spec_tabs(p, data, now):
         'decisions': {'source': ', '.join(x for x in (SPEC, ADRS and ADRS + '/', BRIEF) if x), 'generatedAt': now,
                       'notWorkedOut': not_worked, 'adrs': adrs, 'decisions': decisions},
         'backlog': {'source': '%s (PBI list) + build state kept in projects/%s.json in the dispatch-board repo' % (SPEC, p['id']),
-                    'generatedAt': now, 'pbis': pbis, 'board': data.get('boardNote', '')},
+                    'generatedAt': now, 'pbis': pbis, 'board': data.get('boardNote', ''), 'later': later_items(spec)},
     }
 
 

@@ -101,6 +101,10 @@
   .cell.todo { --tone: transparent; } .cell.todo .nm { color: var(--ink-2); } .cell.todo .st i { background: var(--rule-2); }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--ink-2); }
   .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+  /* Later: ideas for a future iteration. Neutral tiles, since an idea has no state and awaits no one. */
+  .ideas { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .tile.idea .tv { font-size: 15px; line-height: 1.35; letter-spacing: 0; margin: 6px 0; }
+  .tile.idea .ts { font-size: 13px; color: var(--ink-2); }
 
   /* badges */
   .tag { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; line-height: 1; padding: 4px 8px; border-radius: 5px; color: var(--t, var(--ink-2)); background: color-mix(in srgb, var(--t, var(--ink-3)) 15%, transparent); white-space: nowrap; }
@@ -729,6 +733,8 @@
     const d = docs.backlog, p = $('panel-backlog');
     if (!d) { p.innerHTML = '<div class="empty">The backlog has not been exported yet.</div>'; return; }
     const pbis = d.pbis || [], by = Object.fromEntries(pbis.map(x => [x.id, x]));
+    // Future-iteration ideas: shown in their own group and never mixed into pbis, so no count includes them.
+    const ideas = (Array.isArray(d.later) ? d.later : []).filter(x => x && typeof x === 'object');
     const cnt = k => pbis.filter(x => x.state === k).length;
     const tone = { done: 'var(--go)', conditions: 'var(--changes)', partial: 'var(--live)', todo: 'var(--rule-2)' };
     const deps = Object.fromEntries(pbis.map(x => [x.id, (String(x.dependsOn).match(/PBI-\d+/g) || []).filter(i => by[i])]));
@@ -771,7 +777,9 @@
       <div class="panel"><div class="ph"><h3>Work items</h3><span class="faint">${pbis.length}</span></div>
         <div class="pb flush scroll"><table><thead><tr><th>Item</th><th>Delivers</th><th>Depends on</th><th>State</th><th>Review</th><th>Still open</th></tr></thead><tbody>
         ${pbis.map(x => `<tr><td style="white-space:nowrap"><span class="id">${esc(x.id)}</span>${x.commit ? `<div class="sub id">${esc(x.commit)}</div>` : ''}</td><td class="wide">${md(x.title)}<div class="sub">${esc(x.group)} · ${esc(x.risk)} risk</div></td><td class="muted" style="white-space:nowrap">${esc(String(x.dependsOn).replace(/[\[\]]/g, '') || '—')}</td><td><span class="tag ${esc(x.state)}">${esc(stateLabel[x.state] || x.state)}</span></td><td class="muted">${esc(x.review)}</td><td class="wide muted">${esc(x.open) || '—'}</td></tr>`).join('')}
-        </tbody></table></div></div>`;
+        </tbody></table></div></div>
+      ${ideas.length ? `<div class="panel" data-later style="margin-top:16px"><div class="ph"><div><h3>Later</h3><p class="muted" style="font-size:13px;margin-top:2px">Ideas the spec records for a future iteration. They are not work items and are not counted.</p></div><span class="faint">${ideas.length}</span></div>
+        <div class="pb"><div class="ideas">${ideas.map(x => `<div class="tile idea"><div class="tl">Not planned</div><div class="tv">${md(x.title)}</div>${x.description ? `<div class="ts">${md(x.description)}</div>` : ''}</div>`).join('')}</div></div></div>` : ''}`;
   }
 
   // ---------------- git ----------------
