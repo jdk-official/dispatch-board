@@ -20,6 +20,7 @@ parent_prd: docs/prd/dispatch-board.md
 - **Revision 3:** applied plan-gate review round 1 and the owner's answers. Answers from the board are deferred; the local app goes on the PC first; the repo is private; the defaults are accepted.
 - **Revision 4:** applied review round 2: acceptance criteria for PBIs the PRD does not cover, dependency edges that enforce order, and a catalogue record.
 - **Revision 5 (2026-09-11):** applied the round-3 notes (APPROVE-WITH-NOTES; `docs/backlog/reviews/dispatch-board/plan-gate-review-r3.md`) and the owner's changes to PBI-017: "Include skills too" and "Show what each agent is for". It records the owner's approval.
+- **Post-approval amendment (2026-09-11):** the owner moved PBI-016 (Unraid deployment) to Future iterations ("Move PBI16 to later"). Its PBI-list row is removed, and ordering item 5 and rows 5 and 6 are amended. Its areas, its go-ahead entry and the Unraid parts of the scope are kept, marked deferred, so the idea can be revived. There is no other plan change, and no re-review, since this is a de-scope the owner asked for.
 
 **Already delivered, not re-planned here:**
 - **v1:** the session picker, generated runs and the refresher loop.
@@ -46,7 +47,7 @@ parent_prd: docs/prd/dispatch-board.md
 
 - `exporters/**` — the defect fixes FR-80 to FR-84, the carried-tab marker and config type checks, the refusal of an `answers` collection (FR-133), the catalogue export (PBI-017, a new `exporters/export_catalogue.py` run by `refresh.py`), the future-iterations list (PBI-018), and a shared derivation module that the exporters and the collector both use (PBI-004), plus the derivations features 2 to 7 need.
 - `site/**` — the page defect FR-83 and the design-rule deviations (row 13), the agent catalogue tab, the Later group on the Backlog, the stale-board warning, the "Waiting on you" panel, findings ledger, test trend, cost per work item, usage-limit forecast, run detail, timeline, and the data-adapter seam.
-- `local/**` — new: record shapes and the SQLite schema (including the catalogue), collector, local server (page, snapshot, live push; ingest endpoint only for Unraid), Task Scheduler log-on start, and an optional Unraid container definition. There is no answers endpoint (row 5).
+- `local/**` — new: record shapes and the SQLite schema (including the catalogue), collector, local server (page, snapshot, live push), and Task Scheduler log-on start. There is no answers endpoint (row 5). *Deferred to Future iterations (2026-09-11, the owner's "Move PBI16 to later"):* the Unraid ingest endpoint and the optional Unraid container definition.
 - `board.config.json`, `exporters/board_config.py`, `projects/**` — new keys for the catalogue paths, the local server port and the database path; the derived-state shadow period (PBI-010).
 - `docs/adr/0001-local-first-architecture.md` — accepted at this plan gate (row 8).
 - `docs/prd/**`, `docs/backlog/evidence/**`, `CLAUDE.md`, `README.md` — procedures for the local app, the C-16 rule ("no agent writes answers") and the PRD re-baseline (PBI-022).
@@ -105,7 +106,7 @@ the criteria listed in this spec, under "Acceptance criteria for PBIs the PRD do
    4. the page's data adapter;
    5. the log-on start and end-to-end check.
 4. **Features on the current board (PBI-008 to PBI-014, PBI-020)** work on the artifact today through the store adapter, and in the local app once PBI-006 lands.
-5. **Unraid (PBI-016)** is last and optional (row 6).
+5. **Unraid (PBI-016)** is last and optional (row 6). **Moved to Future iterations by the owner on 2026-09-11** ("Move PBI16 to later"); it is no longer a planned work item.
 
 **How ordering is enforced.** The coordinator reads only `depends_on` and `conflict_group`, so:
 - **Page PBIs run one at a time.** Every PBI that edits `site/**` is registered in the `page` group at `conflict_risk: High`, so no two start together.
@@ -142,7 +143,6 @@ the criteria listed in this spec, under "Acceptance criteria for PBIs the PRD do
 | PBI-013 | Usage limit forecast (feature 6, FR-117, FR-118) | [PBI-018] | page | High | false | false |
 | PBI-014 | Run detail (feature 8, FR-121) | [PBI-003, PBI-011] | page | High | false | false |
 | PBI-020 | Timeline view (feature 9; FR-101 filled, FR-122–FR-124) | [PBI-003, PBI-004] | page | High | true | false |
-| PBI-016 | Unraid deployment: collector upload and ingest endpoint with a secret from the environment, rejecting answers, and a container definition (FR-89, FR-134, AC-71, AC-72) | [PBI-005, PBI-007] | local-app | Low | false | true |
 
 ### Acceptance criteria for PBIs the PRD does not cover
 
@@ -200,6 +200,7 @@ These criteria are this spec's own (row 16). Each PBI file copies them at decomp
 These are ideas the owner has recorded for after this iteration. They are not PBIs and carry no
 metadata. PBI-018 shows them on the Backlog tab as a separate "Later" group.
 
+- **Unraid deployment (formerly PBI-016)**: the collector uploads records over the LAN to an ingest endpoint on the Unraid server, which reads its shared secret from the environment, rejects answers, and ships as a container definition (FR-89, FR-134, AC-71, AC-72). The owner moved it here on 2026-09-11 ("Move PBI16 to later"). Rows 6, 7 and 24 still describe how it would be exposed and hardened when it is revived.
 - **Answering assumptions from the board**: Accept / Override plus a note, recorded with provenance. This is the former PBI-015, deferred by the owner on 2026-09-11 (row 5), covering FR-95, FR-131, FR-132, NFR-23, AC-87 and the answer record. The guards that stop agents writing answers are already in this plan (G-6).
 - **Phone notifications**: a review returns NO-GO, a run is cut off, the build goes idle, a session is waiting on the owner (brief "Future iteration"; PRD S-29).
 - **Hosting on Azure**: Static Web Apps, Functions, a database and Entra ID, plus the hosted API adapter (PRD S-27, S-28, D-17).
@@ -253,7 +254,7 @@ Every page PBI must meet the design rules for new views (PRD NFR-22). Every PBI 
 - **PBI-013**: allowed `site/**`, `tests/page.test.mjs` only. It reads the limit reset times the session docs already carry (`usage.limits[].resetsAt`).
 - **PBI-014**: allowed `site/**`, `tests/page.test.mjs`, `exporters/**`, `tests/test_*.py`. It also touches `exporters`.
 - **PBI-020**: allowed `site/**`, `tests/page.test.mjs`, `exporters/**`, `tests/test_*.py` (run start and end times in the store docs). It also touches `exporters`.
-- **PBI-016**: allowed `local/server*`, `local/collector*` (the upload half of FR-89), `local/deploy/**`, `local/tests/**`, `README.md`; blocked `site/**`.
+- **PBI-016** *(deferred to Future iterations, 2026-09-11; kept for revival, not planned work)*: allowed `local/server*`, `local/collector*` (the upload half of FR-89), `local/deploy/**`, `local/tests/**`, `README.md`; blocked `site/**`.
   - The shared secret is read from an environment variable or a git-ignored file, on both the collector and the server, never from `board.config.json`.
   - The ingest endpoint rejects answer records (FR-134, AC-88).
   - The Host allow-list is extended to the Unraid server's configured LAN hostname and address (row 7).
@@ -271,7 +272,7 @@ Every page PBI must meet the design rules for new views (PRD NFR-22). Every PBI 
   - PBI-021 (a store delete);
   - PBI-007 (a Task Scheduler task);
   - PBI-010 (changes the build session's workflow);
-  - PBI-016 (LAN exposure; optional, row 6).
+  - ~~PBI-016 (LAN exposure; optional, row 6)~~: deferred to Future iterations on 2026-09-11. It needs the owner's go-ahead again if revived.
 
 ---
 
@@ -285,8 +286,8 @@ Every page PBI must meet the design rules for new views (PRD NFR-22). Every PBI 
 | 2 | Is the tab-bar overflow defect (PRD FR-125–FR-128, A-24) still open? | No: the tab bar wraps, so no tab is clipped | RESOLVED | `site/index.html:58` (`.tabs` flex-wrap); commit `2742ca6` message | Low |
 | 3 | Snapshot of build data in the public repo (PRD A-8) | The repo is made private on GitHub; `snapshot/` stays | CONFIRMED | Owner, 2026-09-11: "Make the repo private" (done the same day) | Medium — git history before the switch was public |
 | 4 | Deleting the store leftovers (PRD A-9, D-11) | A separate owner-run PBI-021, gated by owner approval, with preconditions: the page confirmed project-first, and the six documents exported to `snapshot/` first (AC-S1–AC-S3) | CONFIRMED | Owner, 2026-09-11 (accepted); mechanism tightened by review H-2 | Low — six unused documents stay until then |
-| 5 | Adopt the answer write path (PRD A-25, C-17) | Not now. The former PBI-015 moves to Future iterations; answers stay in chat. The guards stay: FR-133 in PBI-001, FR-134 in PBI-016, and the C-16 rule in `CLAUDE.md` | CONFIRMED | Owner, 2026-09-11: "Not now" | **High** — reversing later needs an ADR and the deferred PBI |
-| 6 | Deployment target (PRD A-26) | On-PC first (PBI-007). Unraid (PBI-016) is last and optional, built only when the owner says so | CONFIRMED | Owner, 2026-09-11 | Medium |
+| 5 | Adopt the answer write path (PRD A-25, C-17) | Not now. The former PBI-015 moves to Future iterations; answers stay in chat. The guards stay: FR-133 in PBI-001 and the C-16 rule in `CLAUDE.md`. FR-134 (the ingest endpoint rejects answer records) travels with the Unraid idea, deferred to Future iterations on 2026-09-11, since without Unraid there is no ingest endpoint | CONFIRMED | Owner, 2026-09-11: "Not now" | **High** — reversing later needs an ADR and the deferred PBI |
+| 6 | Deployment target (PRD A-26) | On-PC first (PBI-007). Unraid (PBI-016) is last and optional, built only when the owner says so. On 2026-09-11 the owner moved it to Future iterations ("Move PBI16 to later") | CONFIRMED | Owner, 2026-09-11 | Medium |
 | 7 | Unraid network exposure and authentication (PRD A-27) | Serve the page on the LAN without login, with the Host allow-list extended to the Unraid server's LAN name and address. The shared secret for the collector's uploads is read from an environment variable or a git-ignored file, never from `board.config.json`. There is no answers endpoint | CONFIRMED | Owner, 2026-09-11: "Yes, that's fine"; approved in this wording (revision 4, review L6) | Medium — any LAN device can read the board |
 | 8 | Local app technology and switch-over (PRD A-29) | Python stdlib only under `local/`: `sqlite3` (WAL mode), `http.server` (threaded), Server-Sent Events for live push, default port 8765. Record shapes and the schema are in PBI-003. The v1 artifact and refresher keep running until the owner retires them. Recorded as ADR-0001 | CONFIRMED | Owner, 2026-09-11 (accepted); ADR-0001 accepted | Medium |
 | 9 | Answer provenance on the local server (PRD A-28) | Not applicable in this plan: no answers endpoint is built (row 5) | RESOLVED | Row 5 | Low |
