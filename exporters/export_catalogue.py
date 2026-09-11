@@ -19,11 +19,15 @@ folder that cannot be listed; a malformed manifest makes the plugin's name its p
 installed-plugins file marks every entry not installed. A missing marketplace, a missing or unlistable plugins/
 folder, or no agents and no skills at all keeps the previous out/catalogue/index.json untouched, so a moved
 clone cannot blank the tab.
+
+Frontmatter and purpose parsing live in derive.py; this module reads the files and writes the document.
 """
 import fnmatch, io, json, os, re, sys
 from datetime import datetime, timezone
 
 import board_config
+import derive
+from derive import PURPOSE_MAX, purpose  # noqa: F401  (part of this module's interface)
 from export_sessions import write_json
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -31,7 +35,6 @@ CONFIG = os.path.join(HERE, 'board.config.json')
 MARKETPLACE = 'agent-catalog'  # installed-plugins keys are "<plugin>@<marketplace>"
 # Entry ids are matched against transcript ids and rendered on the page, so they are kept to a safe set.
 ID = re.compile(r'^[A-Za-z0-9_.:-]{1,100}$')
-PURPOSE_MAX = 120  # characters in a plugin's one-line purpose, the ellipsis included
 
 
 def warn(msg):
@@ -43,45 +46,8 @@ def frontmatter(path):
     ValueError (UnicodeDecodeError included) for a file that cannot be read or has no frontmatter."""
     # Text mode reads CRLF as LF; utf-8-sig drops a byte-order mark.
     with io.open(path, encoding='utf-8-sig') as f:
-        lines = f.read().split('\n')
-    marks = [i for i, line in enumerate(lines) if line.strip() == '---']
-    if len(marks) < 2:
-        raise ValueError('no frontmatter')
-    fm = {}
-    for line in lines[marks[0] + 1:marks[1]]:
-        if not line.strip() or line[0].isspace() or ':' not in line:
-            continue  # blank, or the continuation of a block value
-        key, value = (s.strip() for s in line.split(':', 1))
-        if re.match(r'^[>|][+-]?\d*$', value):
-            # Only single-line values are read; publishing a block's first line would misstate the text.
-            warn('%s: "%s" is a block value, which is not read' % (path, key))
-            continue
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in '"\'':
-            value = value[1:-1]
-        fm[key] = value
-    return fm
-
-
-def purpose(desc, plugin):
-    """A plugin's one-line purpose: the first sentence of its manifest description, cut to PURPOSE_MAX
-    characters at a word boundary. The plugin's name when there is no usable description."""
-    if not isinstance(desc, str) or not desc.strip():
-        return plugin
-    text = desc.strip()
-    end = len(text)
-    for m in re.finditer(r'[.!?](?=\s|$)', text):
-        if m.group() == '.' and re.search(r'(?i)(?:^|\W)(?:e\.g|i\.e)$', text[:m.start()]):
-            continue  # "e.g." and "i.e." do not end a sentence
-        end = m.end()
-        break
-    line = text[:end]
-    if len(line) > PURPOSE_MAX:
-        room = PURPOSE_MAX - 1  # leaves one character for the ellipsis
-        cut = line[:room]
-        if line[room] != ' ' and ' ' in cut:
-            cut = cut[:cut.rfind(' ')]  # the last whole word that fits
-        line = cut.rstrip(' ,') + '…'
-    return line
+        text = f.read()
+    return derive.frontmatter(text, path, warn)
 
 
 def manifest_description(plugin_dir, plugin):
