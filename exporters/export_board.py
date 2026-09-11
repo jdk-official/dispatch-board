@@ -1,59 +1,39 @@
-"""Export the planning state of the build repo named in board.config.json as JSON documents for the Live Dispatch Board.
+"""Export the planning state of every project in board.config.json as JSON documents for the Live Dispatch Board.
 
-Reads the solution spec, PRD, brief, ADRs, local review notes and git, and writes one
-JSON file per board tab into the output directory (default: out/). Re-run after any
-change to the spec or the branch; the orchestrating session pushes the files to the
-board's store. Build state per PBI is not recorded anywhere in the repo, so it lives in
-BUILD_STATE below and must be edited by hand as PBIs move.
+    python exporters/export_board.py [out_dir]
+
+For each project, reads the solution spec, PRD, brief, ADRs, local review notes and git of its repository
+(paths from the project's docs, relative to its repoPath) and writes out/projectTabs/<projectId>.<tab>.json
+for tab in spec, assumptions, decisions, backlog and git, replacing that folder. A tab is built only when
+its source exists: spec, assumptions, decisions and backlog all need the spec, git needs a git repository.
+A tab that was exported before but cannot be built now (the repoPath has moved, the spec was renamed, git
+is unavailable) keeps its last export, with a warning on stderr, so one broken project cannot blank its
+tabs on the board while the others refresh. A project dropped from the config loses its tabs.
+
+Build state per PBI, the brief's open questions and the backlog's note about the BOARD are not recorded in
+the build repo, so they are kept by hand in projects/<projectId>.json in this repo. A missing file means no
+build state. A malformed one stops the export and leaves out/ as it was, so a typo cannot reset every PBI
+to "not started".
 """
-import io, json, os, re, subprocess, sys
+import io, json, os, re, shutil, subprocess, sys
 from datetime import datetime, timezone
 
+import board_config
+
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CFG = json.load(io.open(os.path.join(HERE, 'board.config.json'), encoding='utf-8'))
-ROOT = CFG['build']['repoPath']   # the repository being built, not this one
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, 'out')
-SPEC = 'docs/backlog/specs/platform-catalogue.md'
-DESIGN = 'docs/backlog/specs/pbi-008-design-system.md'
-PRD = 'docs/prd/platform-catalogue.md'
-BRIEF = 'docs/brief/raw-notes.md'
-
-# state: done | conditions | partial | todo
-BUILD_STATE = {
-    'PBI-000': ('done', 'GO-WITH-CONDITIONS, all applied', '', '4caa5dc'),
-    'PBI-001': ('done', 'GO-WITH-CONDITIONS, then GO-WITH-NOTES; all applied', '', '4caa5dc'),
-    'PBI-002': ('done', 'GO-WITH-CONDITIONS; Lows applied', '', '5238445'),
-    'PBI-003': ('done', 'NO-GO, fixed, then GO-WITH-NOTES', '', '4caa5dc'),
-    'PBI-004': ('done', 'NO-GO, fixed, then GO-WITH-NOTES', '', '4caa5dc'),
-    'PBI-005': ('done', 'NO-GO, fixed, then GO-WITH-NOTES', '', '4caa5dc'),
-    'PBI-006': ('done', 'GO-WITH-NOTES; attribution rule recorded as ledger row 31', '', '4caa5dc'),
-    'PBI-007': ('done', 'GO-WITH-NOTES; all applied', '', '4caa5dc'),
-    'PBI-008': ('done', 'Spec gate 3 rounds; code review GO-WITH-CONDITIONS, applied', '', 'b6a8d48'),
-    'PBI-009': ('conditions', 'GO-WITH-CONDITIONS',
-                'Two Medium open: the shelf restyles the DEPRECATED stamp via text-data (CR-001); '
-                'a JSDoc word re-emits the dead .hidden utility (CR-002). Ledger scroll wrapper not yet applied at 360px.',
-                'b6a8d48'),
-    'PBI-010': ('partial', 'Not reviewed',
-                'Build agent killed by the rate limit: state.ts, profile.ts and reasons.ts written with tests; '
-                'not wired into main.ts; the onboarding-plan view is not built.',
-                'b6a8d48'),
-    'PBI-011': ('todo', '—', 'Delivery verification: offline navigation, axe, viewports, bundle budget.', ''),
-    'PBI-012': ('todo', '—', 'GitHub Pages workflow file (authored, not run).', ''),
-}
-
-# The brief's "Things I haven't worked out", mapped to where each landed in the spec ledger.
-NOT_WORKED_OUT = [
-    ('Where the catalogue data lives: Markdown or JSON, one file or many', 1, 'ADR-0001'),
-    ('SLA maths for redundant deployments', 6, None),
-    ('Does a deprecated dependency block an onboarding plan or warn?', 2, 'ADR-0002'),
-    ('Who owns a catalogue entry, and what stops it going stale', 7, None),
-    ('Does cost / chargeback belong here at all?', 3, 'ADR-0003'),
-    ('Search in a static site', 5, None),
-]
+CONFIG = os.path.join(HERE, 'board.config.json')
+DATA_DIR = os.path.join(HERE, 'projects')
+TABS = ('spec', 'assumptions', 'decisions', 'backlog', 'git')
+STATES = ('done', 'conditions', 'partial', 'todo')
+ROUNDS = (1, 2, 3)  # review rounds looked for, per gate
 
 
-def read(rel):
-    with io.open(os.path.join(ROOT, rel), encoding='utf-8') as f:
+def warn(msg):
+    print('export_board: ' + msg, file=sys.stderr)
+
+
+def read(root, rel):
+    with io.open(os.path.join(root, rel), encoding='utf-8') as f:
         return f.read()
 
 
@@ -87,128 +67,231 @@ def bullets(block):
     return [clean(m) for m in re.findall(r'^- (.+)$', block, re.M)]
 
 
-def git(*args):
-    return subprocess.run(['git', *args], cwd=ROOT, capture_output=True, text=True, encoding='utf-8').stdout.strip()
+def git(root, *args):
+    return subprocess.run(['git', *args], cwd=root, capture_output=True, text=True, encoding='utf-8').stdout.strip()
 
 
-def verdict(path):
+def is_repo(root):
     try:
-        m = re.search(r'\*\*Verdict:\*\*\s*\*\*([^*]+)\*\*', read(path))
+        r = subprocess.run(['git', 'rev-parse', '--is-inside-work-tree'], cwd=root, capture_output=True, text=True, encoding='utf-8')
+    except OSError:  # git is not installed
+        return False
+    return r.returncode == 0 and r.stdout.strip() == 'true'
+
+
+def verdict(root, path):
+    try:
+        m = re.search(r'\*\*Verdict:\*\*\s*\*\*([^*]+)\*\*', read(root, path))
         return m.group(1).strip() if m else '—'
     except FileNotFoundError:
         return None
 
 
-now = datetime.now(timezone.utc).isoformat(timespec='seconds')
-spec, prd, brief, design = read(SPEC), read(PRD), read(BRIEF), read(DESIGN)
-rev = re.search(r'^revision:\s*(\d+)', spec, re.M)
-drev = re.search(r'^revision:\s*(\d+)', design, re.M)
+def load_data(data_dir, pid):
+    """The hand-kept data for a project (buildState, notWorkedOut, boardNote), or {} when it has no file.
+    Raises ValueError for a file that is not valid JSON or not in that shape."""
+    path = os.path.join(data_dir, pid + '.json')
+    try:
+        with io.open(path, encoding='utf-8') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return {}
+    except ValueError as e:
+        raise ValueError('%s is not valid JSON (%s)' % (path, e))
+    if not isinstance(data, dict):
+        raise ValueError('%s must hold a JSON object' % path)
+    state, nwo = data.get('buildState'), data.get('notWorkedOut')
+    if state is not None and not (isinstance(state, dict) and all(isinstance(e, dict) for e in state.values())):
+        raise ValueError('%s: buildState must map each PBI id to an object' % path)
+    if nwo is not None and not (isinstance(nwo, list) and all(isinstance(e, dict) for e in nwo)):
+        raise ValueError('%s: notWorkedOut must be a list of objects' % path)
+    return data
 
-# --- assumptions ---------------------------------------------------------
-human_line = re.search(r'Rows the human must confirm or correct at the plan gate:\*\*\s*(.+)', spec).group(1)
-human_rows = re.sub(r'\([^)]*\)', '', human_line.split('.')[0])   # drop "(and explicitly AC-3, AC-4, AC-10)"
-human = sorted({int(n) for n in re.findall(r'\b(\d+)\b', human_rows)})
-ledger = []
-for c in table(section(spec, '## Assumptions & open questions')):
-    if len(c) < 6 or not c[0].isdigit():
-        continue
-    n = int(c[0])
-    status = re.sub(r'\*', '', c[3]).strip()
-    level = re.match(r'\**(Low[–-]Medium|Medium|High|Low)', c[5])
-    ledger.append({'n': n, 'question': c[1], 'resolution': c[2], 'status': status,
-                   'source': c[4], 'impact': c[5], 'level': level.group(1) if level else '—',
-                   'needsYou': n in human})
-by_n = {r['n']: r for r in ledger}
 
-# --- decisions -----------------------------------------------------------
-decisions = [{'decision': c[0], 'rationale': c[1], 'madeBy': c[2], 'date': c[3]}
-             for c in table(section(spec, '## Key decisions')) if len(c) >= 4]
-adrs = []
-for name in sorted(os.listdir(os.path.join(ROOT, 'docs/adr'))):
-    t = read('docs/adr/' + name)
-    fm = lambda k: (re.search(r'^%s:\s*(.+)$' % k, t, re.M) or [None, ''])[1].split('#')[0].strip()
-    adrs.append({'id': fm('id'), 'title': fm('title'), 'status': fm('status'), 'resolves': fm('resolves'),
-                 'path': 'docs/adr/' + name})
-not_worked = []
-for item, n, adr in NOT_WORKED_OUT:
-    r = by_n.get(n, {})
-    not_worked.append({'item': item, 'row': n, 'adr': adr, 'landed': r.get('resolution', '—'),
-                       'status': r.get('status', '—'), 'needsYou': r.get('needsYou', False)})
+def build_state(data):
+    """PBI id -> (state, review, open items, commit); state is one of STATES."""
+    return {pbi: (e.get('state', 'todo'), e.get('review', '—'), e.get('open', ''), e.get('commit', ''))
+            for pbi, e in (data.get('buildState') or {}).items()}
 
-# --- spec ----------------------------------------------------------------
-goals = [{'id': 'G-' + g, 'text': clean(t)} for g, t in re.findall(r'^- \*\*G-(\d+)\*\* (.+)$', spec, re.M)]
-core = [clean(t) for t in re.findall(r'^\d+\. \*\*(.+?)\*\*', section(brief, "## Why this is not just a content site"), re.M)]
-rounds = []
-for r in (1, 2, 3):
-    v = verdict('docs/backlog/reviews/platform-catalogue/plan-gate-review-r%d.md' % r)
-    if v:
-        rounds.append({'gate': 'Plan gate', 'round': r, 'verdict': v})
-for r in (1, 2, 3):
-    v = verdict('docs/backlog/reviews/PBI-008/spec-review-r%d.md' % r)
-    if v:
-        rounds.append({'gate': 'PBI-008 spec gate', 'round': r, 'verdict': v})
-approval = re.search(r'\*\*Human approval:\*\*\s*\n>\s*\*\*([^*]+)\*\*', spec)
-approved_by = re.search(r'\*\*Approved by:\*\*\s*(.+)', spec)
 
-# --- backlog -------------------------------------------------------------
-pbis = []
-for c in table(section(spec, '### PBI list (proposed)')):
-    if len(c) < 7 or not c[0].startswith('PBI-'):
-        continue
-    state, review, open_items, commit = BUILD_STATE.get(c[0], ('todo', '—', '', ''))
-    pbis.append({'id': c[0], 'title': c[1], 'dependsOn': c[2], 'group': c[3], 'risk': c[4],
-                 'requiresSpec': c[5], 'state': state, 'review': review, 'open': open_items, 'commit': commit})
+def not_worked_out(data):
+    """The brief's "Things I haven't worked out": (item, spec ledger row, ADR id or None)."""
+    return [(e.get('item', ''), e.get('row'), e.get('adr')) for e in data.get('notWorkedOut') or []]
 
-# --- git -----------------------------------------------------------------
-branch = git('branch', '--show-current')
-default = 'master' if git('rev-parse', '--verify', '--quiet', 'master') else ('main' if git('rev-parse', '--verify', '--quiet', 'main') else '')
-commits = []
-for line in git('log', '--pretty=format:%h|%ad|%s', '--date=iso-strict').splitlines():
-    sha, date, subject = line.split('|', 2)
-    commits.append({'sha': sha, 'date': date, 'subject': subject})
-tracked = git('ls-files').splitlines()
-by_dir = {}
-for f in tracked:
-    d = f.split('/')[0] if '/' in f else '(root)'
-    by_dir[d] = by_dir.get(d, 0) + 1
-dirty = [l for l in git('status', '--short').splitlines() if l.strip()]
-remotes = [l for l in git('remote', '-v').splitlines() if l.strip()]
-ahead = git('rev-list', '--count', '%s..%s' % (default, branch)) if default and branch else ''
-shortstat = git('diff', '--shortstat', default, branch) if default and branch else ''
 
-docs = {
-    'spec': {
-        'source': SPEC, 'generatedAt': now, 'revision': rev.group(1) if rev else '—',
-        'designRevision': drev.group(1) if drev else '—',
-        'goals': goals, 'scopeIn': bullets(section(spec, '### In scope')),
-        'scopeOut': bullets(section(spec, '### Out of scope')), 'logicCore': core,
-        'prd': {'path': PRD,
+def spec_tabs(p, data, now):
+    """The spec, assumptions, decisions and backlog tabs, all read from the project's spec; {} without one."""
+    root, paths = p['repoPath'], p['docs']
+
+    def doc(key):
+        rel = paths.get(key)
+        return read(root, rel) if rel and os.path.isfile(os.path.join(root, rel)) else None
+
+    spec = doc('spec')
+    if spec is None:
+        return {}
+    SPEC, PRD, BRIEF, ADRS = paths['spec'], paths.get('prd'), paths.get('brief'), (paths.get('adrDir') or '').rstrip('/')
+    prd, brief, design = doc('prd'), doc('brief') or '', doc('design') or ''
+    rev = re.search(r'^revision:\s*(\d+)', spec, re.M)
+    drev = re.search(r'^revision:\s*(\d+)', design, re.M)
+
+    # --- assumptions -----------------------------------------------------
+    human = []
+    human_line = re.search(r'Rows the human must confirm or correct at the plan gate:\*\*\s*(.+)', spec)
+    if human_line:
+        human_rows = re.sub(r'\([^)]*\)', '', human_line.group(1).split('.')[0])   # drop "(and explicitly AC-3, AC-4, AC-10)"
+        human = sorted({int(n) for n in re.findall(r'\b(\d+)\b', human_rows)})
+    ledger = []
+    for c in table(section(spec, '## Assumptions & open questions')):
+        if len(c) < 6 or not c[0].isdigit():
+            continue
+        n = int(c[0])
+        status = re.sub(r'\*', '', c[3]).strip()
+        level = re.match(r'\**(Low[–-]Medium|Medium|High|Low)', c[5])
+        ledger.append({'n': n, 'question': c[1], 'resolution': c[2], 'status': status,
+                       'source': c[4], 'impact': c[5], 'level': level.group(1) if level else '—',
+                       'needsYou': n in human})
+    by_n = {r['n']: r for r in ledger}
+
+    # --- decisions -------------------------------------------------------
+    decisions = [{'decision': c[0], 'rationale': c[1], 'madeBy': c[2], 'date': c[3]}
+                 for c in table(section(spec, '## Key decisions')) if len(c) >= 4]
+    adrs = []
+    if ADRS and os.path.isdir(os.path.join(root, ADRS)):
+        for name in sorted(n for n in os.listdir(os.path.join(root, ADRS)) if n.endswith('.md')):
+            t = read(root, ADRS + '/' + name)
+            fm = lambda k: (re.search(r'^%s:\s*(.+)$' % k, t, re.M) or [None, ''])[1].split('#')[0].strip()
+            adrs.append({'id': fm('id'), 'title': fm('title'), 'status': fm('status'), 'resolves': fm('resolves'),
+                         'path': ADRS + '/' + name})
+    not_worked = []
+    for item, n, adr in not_worked_out(data):
+        r = by_n.get(n, {})
+        not_worked.append({'item': item, 'row': n, 'adr': adr, 'landed': r.get('resolution', '—'),
+                           'status': r.get('status', '—'), 'needsYou': r.get('needsYou', False)})
+
+    # --- spec ------------------------------------------------------------
+    goals = [{'id': 'G-' + g, 'text': clean(t)} for g, t in re.findall(r'^- \*\*G-(\d+)\*\* (.+)$', spec, re.M)]
+    core = [clean(t) for t in re.findall(r'^\d+\. \*\*(.+?)\*\*', section(brief, "## Why this is not just a content site"), re.M)]
+    rounds = []
+    for review in paths.get('reviews') or []:
+        for r in ROUNDS:
+            v = verdict(root, review['path'].replace('{round}', str(r)))
+            if v:
+                rounds.append({'gate': review['gate'], 'round': r, 'verdict': v})
+    approval = re.search(r'\*\*Human approval:\*\*\s*\n>\s*\*\*([^*]+)\*\*', spec)
+    approved_by = re.search(r'\*\*Approved by:\*\*\s*(.+)', spec)
+
+    # --- backlog ---------------------------------------------------------
+    state_of, pbis = build_state(data), []
+    for c in table(section(spec, '### PBI list (proposed)')):
+        if len(c) < 7 or not c[0].startswith('PBI-'):
+            continue
+        state, review, open_items, commit = state_of.get(c[0], ('todo', '—', '', ''))
+        pbis.append({'id': c[0], 'title': c[1], 'dependsOn': c[2], 'group': c[3], 'risk': c[4],
+                     'requiresSpec': c[5], 'state': state, 'review': review, 'open': open_items, 'commit': commit})
+
+    return {
+        'spec': {
+            'source': SPEC, 'generatedAt': now, 'revision': rev.group(1) if rev else '—',
+            'designRevision': drev.group(1) if drev else '—',
+            'goals': goals, 'scopeIn': bullets(section(spec, '### In scope')),
+            'scopeOut': bullets(section(spec, '### Out of scope')), 'logicCore': core,
+            'prd': None if prd is None else {
+                'path': PRD,
                 'frs': len(re.findall(r'^- \*\*FR-\d+', prd, re.M)),
                 'nfrs': len(re.findall(r'^- \*\*NFR-\d+', prd, re.M)),
                 'constraints': len(re.findall(r'^- \*\*C-\d+', prd, re.M)),
                 'acs': len(re.findall(r'^- \*\*AC-\d+', prd, re.M)),
                 'assumptions': len(re.findall(r'^\| \*\*A-\d+', prd, re.M))},
-        'rounds': rounds,
-        'approval': approval.group(1).strip() if approval else '—',
-        'approvedBy': approved_by.group(1).strip() if approved_by else '—',
-    },
-    'assumptions': {'source': SPEC, 'generatedAt': now, 'rows': ledger, 'humanList': human},
-    'decisions': {'source': SPEC + ', docs/adr/, ' + BRIEF, 'generatedAt': now,
-                  'notWorkedOut': not_worked, 'adrs': adrs, 'decisions': decisions},
-    'backlog': {'source': SPEC + ' (PBI list) + build state kept in scripts/export-board.py',
-                'generatedAt': now, 'pbis': pbis,
-                'board': 'Nothing is on the BOARD: PBIs land under Proposed only after the plan gate passes, and its human leg is still open. Everything below was built on the engineering branch.'},
-    'git': {'source': 'git, local repository', 'generatedAt': now, 'repoPath': ROOT.replace('\\', '/'),
-            'branch': branch, 'defaultBranch': default, 'head': git('rev-parse', '--short', 'HEAD'),
-            'remotes': remotes, 'ahead': ahead, 'shortstat': shortstat, 'dirty': dirty,
-            'tracked': len(tracked), 'byDir': by_dir, 'commits': commits},
-}
+            'rounds': rounds,
+            'approval': approval.group(1).strip() if approval else '—',
+            'approvedBy': approved_by.group(1).strip() if approved_by else '—',
+        },
+        'assumptions': {'source': SPEC, 'generatedAt': now, 'rows': ledger, 'humanList': human},
+        'decisions': {'source': ', '.join(x for x in (SPEC, ADRS and ADRS + '/', BRIEF) if x), 'generatedAt': now,
+                      'notWorkedOut': not_worked, 'adrs': adrs, 'decisions': decisions},
+        'backlog': {'source': '%s (PBI list) + build state kept in projects/%s.json in the dispatch-board repo' % (SPEC, p['id']),
+                    'generatedAt': now, 'pbis': pbis, 'board': data.get('boardNote', '')},
+    }
 
-os.makedirs(OUT, exist_ok=True)
-for key, body in docs.items():
-    with io.open(os.path.join(OUT, key + '.json'), 'w', encoding='utf-8', newline='\n') as f:
-        json.dump(body, f, ensure_ascii=False, indent=1)
-print('wrote %d tab documents to %s: %s' % (len(docs), OUT,
-      ', '.join('%s=%d B' % (k, len(json.dumps(v, ensure_ascii=False).encode('utf-8'))) for k, v in docs.items())))
-print('ledger rows %d (needs you %d); decisions %d; adrs %d; pbis %d; commits %d; goals %d; rounds %d' % (
-    len(ledger), len(human), len(decisions), len(adrs), len(pbis), len(commits), len(goals), len(rounds)))
+
+def git_tab(root, now):
+    branch = git(root, 'branch', '--show-current')
+    default = 'master' if git(root, 'rev-parse', '--verify', '--quiet', 'master') else ('main' if git(root, 'rev-parse', '--verify', '--quiet', 'main') else '')
+    commits = []
+    for line in git(root, 'log', '--pretty=format:%h|%ad|%s', '--date=iso-strict').splitlines():
+        sha, date, subject = line.split('|', 2)
+        commits.append({'sha': sha, 'date': date, 'subject': subject})
+    tracked = git(root, 'ls-files').splitlines()
+    by_dir = {}
+    for f in tracked:
+        d = f.split('/')[0] if '/' in f else '(root)'
+        by_dir[d] = by_dir.get(d, 0) + 1
+    dirty = [l for l in git(root, 'status', '--short').splitlines() if l.strip()]
+    remotes = [l for l in git(root, 'remote', '-v').splitlines() if l.strip()]
+    ahead = git(root, 'rev-list', '--count', '%s..%s' % (default, branch)) if default and branch else ''
+    shortstat = git(root, 'diff', '--shortstat', default, branch) if default and branch else ''
+    return {'source': 'git, local repository', 'generatedAt': now, 'repoPath': root.replace('\\', '/'),
+            'branch': branch, 'defaultBranch': default, 'head': git(root, 'rev-parse', '--short', 'HEAD'),
+            'remotes': remotes, 'ahead': ahead, 'shortstat': shortstat, 'dirty': dirty,
+            'tracked': len(tracked), 'byDir': by_dir, 'commits': commits}
+
+
+def main(config=None, out_dir=None, data_dir=None, now=None):
+    """Export every project into out_dir (default out/); returns the process exit code."""
+    if config is None:
+        with io.open(CONFIG, encoding='utf-8') as f:
+            config = json.load(f)
+    out = out_dir or os.path.join(HERE, 'out')
+    stamp = now or datetime.now(timezone.utc).isoformat(timespec='seconds')
+
+    # Everything is read before out/ is touched, so a failure leaves the last export in place.
+    folder = os.path.join(out, 'projectTabs')
+    exported = []
+    try:
+        for p in board_config.projects(config):
+            if not p['repoPath'] or not os.path.isdir(p['repoPath']):
+                warn('project %s: repository %s does not exist' % (p['id'], p['repoPath'] or '(no repoPath)'))
+                docs = {}
+            else:
+                docs = spec_tabs(p, load_data(data_dir or DATA_DIR, p['id']), stamp)
+                if is_repo(p['repoPath']):
+                    docs['git'] = git_tab(p['repoPath'], stamp)
+            # Kept as the exact bytes, so refresh.py sees no change and pushes nothing for them.
+            kept = {}
+            for tab in TABS:
+                prev = os.path.join(folder, '%s.%s.json' % (p['id'], tab))
+                if tab not in docs and os.path.isfile(prev):
+                    with io.open(prev, 'rb') as f:
+                        kept[tab] = f.read()
+            if kept:
+                warn('project %s: cannot rebuild %s; keeping the last export' % (p['id'], ', '.join(kept)))
+            exported.append((p['id'], docs, kept))
+    except ValueError as e:
+        print('export_board: %s; nothing exported' % e, file=sys.stderr)
+        return 2
+
+    shutil.rmtree(folder, ignore_errors=True)
+    os.makedirs(folder)
+    for pid, docs, kept in exported:
+        for key, body in docs.items():
+            with io.open(os.path.join(folder, '%s.%s.json' % (pid, key)), 'w', encoding='utf-8', newline='\n') as f:
+                json.dump(body, f, ensure_ascii=False, indent=1)
+        for key, raw in kept.items():
+            with io.open(os.path.join(folder, '%s.%s.json' % (pid, key)), 'wb') as f:
+                f.write(raw)
+        print('%s: wrote %d tab documents to %s: %s' % (pid, len(docs), folder, ', '.join(
+            '%s=%d B' % (k, len(json.dumps(v, ensure_ascii=False).encode('utf-8'))) for k, v in docs.items()) or 'none'))
+        if 'assumptions' in docs:
+            print('%s: ledger rows %d (needs you %d); decisions %d; adrs %d; pbis %d; goals %d; rounds %d' % (
+                pid, len(docs['assumptions']['rows']), len(docs['assumptions']['humanList']), len(docs['decisions']['decisions']),
+                len(docs['decisions']['adrs']), len(docs['backlog']['pbis']), len(docs['spec']['goals']), len(docs['spec']['rounds'])))
+    for tab in TABS:  # the single-project layout wrote each tab at the top of out/
+        legacy = os.path.join(out, tab + '.json')
+        if os.path.exists(legacy):
+            os.remove(legacy)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(out_dir=sys.argv[1] if len(sys.argv) > 1 else None))

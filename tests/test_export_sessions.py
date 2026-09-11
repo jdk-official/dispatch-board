@@ -540,6 +540,300 @@ class Privacy(TreeCase):
         self.assertNotIn('firstPrompt', self.t.docs('sessions')[SID])
 
 
+def skill_call(m, tool_id, skill, args=None):
+    inp = {'skill': skill} if args is None else {'skill': skill, 'args': args}
+    return reply(m, 'msg-skill-' + tool_id, tools=[(tool_id, 'Skill', inp)])
+
+
+def typed(m, name, meta=None, order='message-first'):
+    """A slash command the owner typed, recorded as Claude Code writes it."""
+    msg, nm = '<command-message>%s</command-message>' % name.lstrip('/'), '<command-name>%s</command-name>' % name
+    rec = user(m, msg + '\n' + nm if order == 'message-first' else nm + '\n' + msg + '\n<command-args></command-args>')
+    if meta is not None:
+        rec['isMeta'] = meta
+    return rec
+
+
+class CatalogueUsage(TreeCase):
+    """What the agent catalogue tab counts: agentType and start on runs, skillUses on sessions."""
+
+    def test_subagent_runs_carry_agent_type_and_start(self):
+        self.t.basic()
+        self.assertEqual(self.t.run(), 0)
+        run = self.t.docs('runs')['acw11']
+        self.assertEqual((run['agentType'], run['start']), ('engineering-agents:code-writer', ts(1)))
+
+    def test_no_agent_type_when_the_meta_is_missing_or_empty(self):
+        self.t.basic()
+        self.t.agent(SID, 'anometa', [reply(3, 'x', text='hi')])
+        self.t.agent(SID, 'aempty', [reply(4, 'y', text='hi')], {'agentType': '', 'description': 'blank'})
+        self.assertEqual(self.t.run(), 0)
+        runs = self.t.docs('runs')
+        self.assertNotIn('agentType', runs['anometa'])
+        self.assertNotIn('agentType', runs['aempty'])
+        self.assertEqual(runs['anometa']['start'], ts(3))  # falls back to the agent's first timestamp
+
+    def test_no_start_when_the_launch_time_is_unknown(self):
+        self.t.basic()
+        undated = reply(3, 'z', text='hi')
+        del undated['timestamp']
+        self.t.agent(SID, 'aundated', [undated], {'agentType': 'Plan', 'description': 'gate'})
+        self.assertEqual(self.t.run(), 0)
+        run = self.t.docs('runs')['aundated']
+        self.assertNotIn('start', run)
+        self.assertEqual(run['agentType'], 'Plan')
+
+    def test_manual_rows_carry_neither(self):
+        self.t.basic()
+        cfg = config()
+        cfg['runs']['manual'] = [{'id': 'orch-x', 'after': 'acw11', 'label': 'in-line work'}]
+        self.assertEqual(self.t.run(cfg), 0)
+        run = self.t.docs('runs')['orch-x']
+        self.assertNotIn('agentType', run)
+        self.assertNotIn('start', run)
+
+    def test_sessions_without_skill_use_carry_an_empty_map(self):
+        self.t.basic()
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(self.t.docs('sessions')[SID]['skillUses'], {})
+
+    def test_skill_calls_and_typed_plugin_commands_are_counted(self):
+        undated = skill_call(0, 'toolu_sk_undated', 'backlog-delivery:pbi-review')
+        del undated['timestamp']
+        self.t.session(SID, [
+            user(0, 'go'),
+            skill_call(1, 'toolu_sk1', 'backlog-delivery:pbi-plan', args='SECRET-ARGUMENT docs/prd.md'),
+            skill_call(5, 'toolu_sk2', 'backlog-delivery:pbi-plan'),
+            skill_call(3, 'toolu_sk3', 'loop'),  # a bare Skill id is still a use; the page decides what it matches
+            typed(4, '/anthropic-skills:i-have-adhd'),
+            typed(6, '/review-agents:triage', order='name-first'),
+            undated,
+        ])
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(self.t.docs('sessions')[SID]['skillUses'], {
+            'backlog-delivery:pbi-plan': {'count': 2, 'last': ts(5)},
+            'loop': {'count': 1, 'last': ts(3)},
+            'anthropic-skills:i-have-adhd': {'count': 1, 'last': ts(4)},
+            'review-agents:triage': {'count': 1, 'last': ts(6)},
+            'backlog-delivery:pbi-review': {'count': 1},
+        })
+        for coll in ('sessions', 'runs'):
+            for d in self.t.docs(coll).values():
+                self.assertNotIn('SECRET-ARGUMENT', json.dumps(d))
+        with io.open(os.path.join(self.t.out, '.cache', 'sessions.json'), encoding='utf-8') as f:
+            self.assertNotIn('SECRET-ARGUMENT', f.read())
+
+    def test_a_use_without_a_timestamp_leaves_last_unchanged(self):
+        undated = skill_call(0, 'toolu_u', 'backlog-delivery:pbi-plan')
+        del undated['timestamp']
+        self.t.session(SID, [user(0, 'go'), skill_call(2, 'toolu_a', 'backlog-delivery:pbi-plan'), undated])
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(self.t.docs('sessions')[SID]['skillUses'], {'backlog-delivery:pbi-plan': {'count': 2, 'last': ts(2)}})
+
+    def test_a_streamed_skill_call_seen_twice_counts_once(self):
+        call = skill_call(2, 'toolu_same', 'backlog-delivery:pbi-plan')
+        self.t.session(SID, [user(0, 'go'), call, call])
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(self.t.docs('sessions')[SID]['skillUses']['backlog-delivery:pbi-plan']['count'], 1)
+
+    def test_command_text_anywhere_else_is_not_counted(self):
+        cmd = '<command-name>/%s</command-name>'
+        tool_result = {'type': 'user', 'timestamp': ts(2), 'message': {'role': 'user', 'content': [
+            {'type': 'tool_result', 'tool_use_id': 'toolu_b', 'content': cmd % 'in-result:x'}]}}
+        attachment = {'type': 'attachment', 'timestamp': ts(3), 'attachment': {'type': 'text', 'content': cmd % 'in-attachment:x'}}
+        system = {'type': 'system', 'timestamp': ts(3), 'content': cmd % 'in-system:x'}
+        self.t.session(SID, [
+            user(0, 'go'),
+            reply(1, 'm-bash', tools=[('toolu_b', 'Bash', {'command': 'echo "%s"' % (cmd % 'in-tool-use:x')})]),
+            tool_result, attachment, system,
+            typed(4, '/review-agents:dup', meta=True),  # the isMeta copy Claude Code writes after some commands
+            typed(5, '/loop'),  # a bare slash command
+            user(6, 'Please run <command-name>/mid:sentence</command-name> for me'),  # does not start with the tags
+            skill_call(7, 'toolu_bad', 'bad id <img src=x>'),
+            typed(8, '/bad:id with spaces'),
+        ])
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(self.t.docs('sessions')[SID]['skillUses'], {})
+        self.assertIn('bad id', self.t.err)
+
+    def test_skill_calls_inside_agent_transcripts_are_not_counted(self):
+        self.t.basic()
+        self.t.agent(SID, 'askill', [skill_call(3, 'toolu_inner', 'backlog-delivery:pbi-plan')], {'agentType': 'Plan'})
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(self.t.docs('sessions')[SID]['skillUses'], {})
+
+    def test_parser_version_was_bumped(self):
+        # Results cached by parser 3 carry neither skillUses nor agentType, so they must be re-read once.
+        self.assertGreater(es.PARSER_VERSION, 3)
+
+
+def pconfig(*projects, **sessions):
+    s = {'days': 7}
+    s.update(sessions)
+    return {'projects': list(projects), 'sessions': s, 'runs': {'runningWindowMinutes': 10, 'manual': []}}
+
+
+def proj(pid, *sids, **over):
+    p = {'id': pid, 'name': pid.title(), 'repoPath': 'C:/nowhere/' + pid, 'branch': 'main', 'sessions': list(sids)}
+    p.update(over)
+    return p
+
+
+class Projects(TreeCase):
+    def test_sessions_and_runs_carry_their_project(self):
+        self.t.basic()
+        self.t.basic(SID2)
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        sessions, runs = self.t.docs('sessions'), self.t.docs('runs')
+        self.assertEqual(sessions[SID]['project'], 'app')
+        self.assertIsNone(sessions[SID2]['project'])
+        self.assertEqual(runs['acw11']['project'], 'app')
+        self.assertIsNone(runs['acw22']['project'])
+
+    def test_build_flag_marks_only_the_meta_status_project(self):
+        # Older copies of the page show "build" sessions with the single set of tabs, which are that project's.
+        self.t.basic()
+        self.t.basic(SID2)
+        self.assertEqual(self.t.run(pconfig(proj('pc', SID, statusDoc='meta/status'), proj('app', SID2))), 0)
+        sessions = self.t.docs('sessions')
+        self.assertTrue(sessions[SID]['build'])
+        self.assertFalse(sessions[SID2]['build'])
+        self.assertEqual(sessions[SID2]['project'], 'app')
+
+    def test_session_listed_twice_counts_once(self):
+        self.t.basic()
+        self.assertEqual(self.t.run(pconfig(proj('app', SID, SID))), 0)
+        doc, session = self.t.docs('projects')['app'], self.t.docs('sessions')[SID]
+        self.assertEqual((doc['sessions'], doc['runs']), ([SID], 1))
+        self.assertEqual(doc['usage']['totals'], session['usage']['totals'])
+
+    def test_session_keeps_its_folder_name(self):
+        self.t.basic()
+        self.t.run(pconfig())
+        self.assertEqual(self.t.docs('sessions')[SID]['folder'], 'app')
+
+    def test_project_document(self):
+        self.t.basic()
+        self.t.basic(SID2)
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        doc = self.t.docs('projects')['app']
+        session = self.t.docs('sessions')[SID]
+        self.assertEqual((doc['name'], doc['repoPath'], doc['branch'], doc['statusDoc'], doc['order']),
+                         ('App', 'C:/nowhere/app', 'main', 'status/app', 0))
+        self.assertEqual((doc['sessions'], doc['runs'], doc['running'], doc['last']), ([SID], 1, 0, session['last']))
+        self.assertEqual(doc['usage']['totals'], session['usage']['totals'])
+
+    def test_project_usage_combines_its_sessions(self):
+        self.t.basic()
+        self.t.basic(SID2)
+        self.t.run(pconfig(proj('app', SID, SID2), proj('empty')))
+        projects, sessions = self.t.docs('projects'), self.t.docs('sessions')
+        u = projects['app']['usage']
+        self.assertEqual(u['totals']['requests'], sessions[SID]['usage']['totals']['requests'] + sessions[SID2]['usage']['totals']['requests'])
+        self.assertEqual(sorted(a['id'] for a in u['subagents']), ['acw11', 'acw22'])
+        self.assertEqual((projects['app']['runs'], projects['app']['order']), (2, 0))
+        self.assertEqual((projects['empty']['sessions'], projects['empty']['runs'], projects['empty']['usage'], projects['empty']['order']),
+                         ([], 0, None, 1))
+
+    def test_linked_session_without_a_transcript_fails(self):
+        self.t.basic()
+        self.assertNotEqual(self.t.run(pconfig(proj('app', '99999999-0000-0000-0000-000000000000'))), 0)
+        self.assertIn('99999999', self.t.err)
+
+    def test_projects_dropped_from_the_config_are_removed(self):
+        self.t.basic()
+        self.t.run(pconfig(proj('app', SID)))
+        self.t.run(pconfig())
+        self.assertEqual(self.t.docs('projects'), {})
+        self.assertIsNone(self.t.docs('sessions')[SID]['project'])
+
+
+class LegacyProjects(TreeCase):
+    def test_build_block_is_one_project(self):
+        self.t.basic()
+        cfg = config(build=[SID])
+        cfg['build']['repoPath'] = 'C:/x/legacy-app'
+        self.assertEqual(self.t.run(cfg), 0)
+        self.assertEqual(self.t.docs('sessions')[SID]['project'], 'legacy-app')
+        self.assertEqual(self.t.docs('projects')['legacy-app']['statusDoc'], 'meta/status')
+
+    def test_usage_sessions_are_linked_too(self):
+        self.t.basic()
+        cfg = config()
+        cfg['build']['repoPath'] = 'C:/x/legacy-app'
+        cfg['usage'] = {'sessions': [{'label': 'x', 'sessionId': SID}]}
+        self.t.run(cfg)
+        self.assertEqual(self.t.docs('runs')['acw11']['project'], 'legacy-app')
+
+    def test_no_build_block_means_no_projects(self):
+        self.t.basic()
+        self.t.run(config())
+        self.assertEqual(self.t.docs('projects'), {})
+        self.assertIsNone(self.t.docs('sessions')[SID]['project'])
+
+
+def usage_block(first, last, hourly, models, subs, limits, overage=''):
+    tot = lambda k: sum(m[k] for m in models)
+    return {'source': 'x', 'weights': {'input': 1, 'cacheRead': 0.1, 'cacheWrite': 2, 'output': 5},
+            'span': {'first': first, 'last': last},
+            'totals': {k: tot(k) for k in ('input', 'cacheRead', 'cacheWrite', 'output', 'effective', 'requests')},
+            'byModel': models, 'groups': [{'key': 'think', 'label': es.GROUP_LABEL['think'], 'effective': tot('effective')}],
+            'subagents': [{'id': s, 'effective': 1} for s in subs], 'hourly': hourly, 'limits': limits, 'overage': overage}
+
+
+def model(name, requests, effective):
+    return {'model': name, 'label': es.MODEL_LABEL.get(name, name), 'requests': requests, 'input': 1, 'cacheRead': 2,
+            'cacheWrite': 3, 'output': 4, 'effective': effective}
+
+
+class AggregateUsage(unittest.TestCase):
+    def test_nothing_to_aggregate(self):
+        self.assertIsNone(es.aggregate_usage([]))
+        self.assertIsNone(es.aggregate_usage([None]))
+
+    def test_sums_merges_and_concatenates(self):
+        a = usage_block('2026-09-10T10:05:00Z', '2026-09-10T11:40:00Z',
+                        [{'hour': '2026-09-10T10', 'main': 5, 'sub': 1}, {'hour': '2026-09-10T11', 'main': 2, 'sub': 0}],
+                        [model('claude-opus-5', 4, 100)], ['a1'], [{'firstAt': '2026-09-10T11:30:00Z', 'refused': 2}])
+        b = usage_block('2026-09-10T11:10:00Z', '2026-09-10T13:20:00Z',
+                        [{'hour': '2026-09-10T11', 'main': 1, 'sub': 4}, {'hour': '2026-09-10T13', 'main': 3, 'sub': 0}],
+                        [model('claude-haiku-4-5-20251001', 1, 80), model('claude-opus-5', 2, 50)], ['b1'],
+                        [{'firstAt': '2026-09-10T09:00:00Z', 'refused': 1}], overage='paused')
+        u = es.aggregate_usage([a, b])
+        self.assertEqual(u['totals'], {'input': 3, 'cacheRead': 6, 'cacheWrite': 9, 'output': 12, 'effective': 230, 'requests': 7})
+        self.assertEqual([(m['model'], m['label'], m['requests'], m['effective'], m['input']) for m in u['byModel']],
+                         [('claude-opus-5', 'Opus 5', 6, 150, 2), ('claude-haiku-4-5-20251001', 'Haiku 4.5', 1, 80, 1)])
+        self.assertEqual(u['groups'], [{'key': 'think', 'label': es.GROUP_LABEL['think'], 'effective': 230}])
+        self.assertEqual(u['hourly'], [{'hour': '2026-09-10T10', 'main': 5, 'sub': 1}, {'hour': '2026-09-10T11', 'main': 3, 'sub': 4},
+                                       {'hour': '2026-09-10T12', 'main': 0, 'sub': 0}, {'hour': '2026-09-10T13', 'main': 3, 'sub': 0}])
+        self.assertEqual([a['id'] for a in u['subagents']], ['a1', 'b1'])
+        self.assertEqual([l['firstAt'] for l in u['limits']], ['2026-09-10T09:00:00Z', '2026-09-10T11:30:00Z'])
+        self.assertEqual(u['span'], {'first': '2026-09-10T10:05:00Z', 'last': '2026-09-10T13:20:00Z'})
+        self.assertEqual((u['overage'], u['weights']), ('paused', a['weights']))
+        self.assertIn('2 sessions', u['source'])
+
+    def test_limits_sharing_a_reset_are_one_limit(self):
+        # Usage limits are account-wide: two sessions refused before the same reset hit one limit.
+        reset = '2026-09-10T15:00:00+00:00'
+        a = usage_block('2026-09-10T10:00:00Z', '2026-09-10T12:00:00Z', [], [model('m', 1, 1)], [], [
+            {'firstAt': '2026-09-10T11:30:00Z', 'refused': 2, 'type': 'five_hour', 'resetsAt': reset},
+            {'firstAt': '2026-09-10T08:00:00Z', 'refused': 1, 'type': 'five_hour', 'resetsAt': None}])
+        b = usage_block('2026-09-10T10:00:00Z', '2026-09-10T12:00:00Z', [], [model('m', 1, 1)], [], [
+            {'firstAt': '2026-09-10T11:10:00Z', 'refused': 3, 'type': 'five_hour', 'resetsAt': reset},
+            {'firstAt': '2026-09-10T09:00:00Z', 'refused': 4, 'type': 'five_hour', 'resetsAt': None}])
+        u = es.aggregate_usage([a, b])
+        self.assertEqual([(l['firstAt'], l['refused'], l['resetsAt']) for l in u['limits']], [
+            ('2026-09-10T08:00:00Z', 1, None), ('2026-09-10T09:00:00Z', 4, None), ('2026-09-10T11:10:00Z', 5, reset)])
+
+    def test_hourly_series_is_capped_to_the_last_week(self):
+        a = usage_block('2026-08-01T10:00:00Z', '2026-08-01T10:00:00Z', [{'hour': '2026-08-01T10', 'main': 1, 'sub': 0}], [model('m', 1, 1)], [], [])
+        b = usage_block('2026-09-10T10:00:00Z', '2026-09-10T10:00:00Z', [{'hour': '2026-09-10T10', 'main': 2, 'sub': 0}], [model('m', 1, 1)], [], [])
+        u = es.aggregate_usage([a, b])
+        self.assertEqual(len(u['hourly']), es.HOURS)
+        self.assertEqual(u['hourly'][-1], {'hour': '2026-09-10T10', 'main': 2, 'sub': 0})
+        self.assertEqual(u['totals']['requests'], 2)
+
+
 class Redact(unittest.TestCase):
     def test_patterns(self):
         for secret in ('sk-proj-AbCdEfGhIjKlMnOpQrSt', 'gho_abcdefghijklmnopqrstuvwxyz0123', 'ghs_abcdefghijklmnopqrstuvwxyz0123',

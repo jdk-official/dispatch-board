@@ -1,0 +1,115 @@
+{
+  "buildState": {
+    "PBI-000": {
+      "state": "done",
+      "review": "GO-WITH-CONDITIONS, all applied",
+      "open": "",
+      "commit": "4caa5dc"
+    },
+    "PBI-001": {
+      "state": "done",
+      "review": "GO-WITH-CONDITIONS, then GO-WITH-NOTES; all applied",
+      "open": "",
+      "commit": "4caa5dc"
+    },
+    "PBI-002": {
+      "state": "done",
+      "review": "GO-WITH-CONDITIONS; Lows applied",
+      "open": "",
+      "commit": "5238445"
+    },
+    "PBI-003": {
+      "state": "done",
+      "review": "NO-GO, fixed, then GO-WITH-NOTES",
+      "open": "",
+      "commit": "4caa5dc"
+    },
+    "PBI-004": {
+      "state": "done",
+      "review": "NO-GO, fixed, then GO-WITH-NOTES",
+      "open": "",
+      "commit": "4caa5dc"
+    },
+    "PBI-005": {
+      "state": "done",
+      "review": "NO-GO, fixed, then GO-WITH-NOTES",
+      "open": "",
+      "commit": "4caa5dc"
+    },
+    "PBI-006": {
+      "state": "done",
+      "review": "GO-WITH-NOTES; attribution rule recorded as ledger row 31",
+      "open": "",
+      "commit": "4caa5dc"
+    },
+    "PBI-007": {
+      "state": "done",
+      "review": "GO-WITH-NOTES; all applied",
+      "open": "",
+      "commit": "4caa5dc"
+    },
+    "PBI-008": {
+      "state": "done",
+      "review": "Spec gate 3 rounds; code review GO-WITH-CONDITIONS, applied",
+      "open": "",
+      "commit": "b6a8d48"
+    },
+    "PBI-009": {
+      "state": "done",
+      "review": "Round 1 GO-WITH-CONDITIONS, round 2 GO-WITH-NOTES; five Low notes carried into PBI-010",
+      "open": "",
+      "commit": "bb4ac69"
+    },
+    "PBI-010": {
+      "state": "done",
+      "review": "Round 4 GO; three Low notes carried into PBI-011",
+      "open": "Team profile, eligibility verdict and onboarding plan view. Real-browser check found three defects the unit tests could not; all fixed and re-checked in the browser.",
+      "commit": "d3de26d"
+    },
+    "PBI-011": {
+      "state": "partial",
+      "review": "Paused: fix round done, re-review pending",
+      "open": "Bundle budget check, offline scan and axe over every page built; first review GO-WITH-CONDITIONS, all nine findings fixed (919 tests, 154 KB of 350 KB). Paused by the owner before the re-review and headless re-check ran. Uncommitted.",
+      "commit": ""
+    },
+    "PBI-012": {
+      "state": "todo",
+      "review": "—",
+      "open": "GitHub Pages workflow file (authored, not run).",
+      "commit": ""
+    }
+  },
+  "notWorkedOut": [
+    {
+      "item": "Where the catalogue data lives: Markdown or JSON, one file or many",
+      "row": 1,
+      "adr": "ADR-0001"
+    },
+    {
+      "item": "SLA maths for redundant deployments",
+      "row": 6,
+      "adr": null
+    },
+    {
+      "item": "Does a deprecated dependency block an onboarding plan or warn?",
+      "row": 2,
+      "adr": "ADR-0002"
+    },
+    {
+      "item": "Who owns a catalogue entry, and what stops it going stale",
+      "row": 7,
+      "adr": null
+    },
+    {
+      "item": "Does cost / chargeback belong here at all?",
+      "row": 3,
+      "adr": "ADR-0003"
+    },
+    {
+      "item": "Search in a static site",
+      "row": 5,
+      "adr": null
+    }
+  ],
+  "boardNote": "Nothing is on the BOARD: PBIs land under Proposed only after the plan gate passes, and its human leg is still open. Everything below was built on the engineering branch."
+}

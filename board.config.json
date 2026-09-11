@@ -4,10 +4,49 @@
     "title": "Live Dispatch Board",
     "capabilities": { "db": { "rules": [ { "path": "", "read": "interact", "write": "admin" } ] } }
   },
-  "build": {
-    "repoPath": "C:/Users/jdk/platform-catalogue",
-    "branch": "build/logic-core",
-    "sessions": ["7f71729a-c7c5-4855-aab8-25ddf9bac96f"]
+  "projects": [
+    {
+      "id": "platform-catalogue",
+      "name": "platform-catalogue",
+      "repoPath": "C:/Users/jdk/platform-catalogue",
+      "branch": "build/logic-core",
+      "sessions": ["7f71729a-c7c5-4855-aab8-25ddf9bac96f"],
+      "statusDoc": "meta/status",
+      "docs": {
+        "prd": "docs/prd/platform-catalogue.md",
+        "spec": "docs/backlog/specs/platform-catalogue.md",
+        "design": "docs/backlog/specs/pbi-008-design-system.md",
+        "brief": "docs/brief/raw-notes.md",
+        "adrDir": "docs/adr",
+        "board": "docs/backlog/BOARD.md",
+        "reviews": [
+          { "gate": "Plan gate", "path": "docs/backlog/reviews/platform-catalogue/plan-gate-review-r{round}.md" },
+          { "gate": "PBI-008 spec gate", "path": "docs/backlog/reviews/PBI-008/spec-review-r{round}.md" }
+        ]
+      }
+    },
+    {
+      "id": "dispatch-board",
+      "name": "dispatch-board",
+      "repoPath": "C:/Users/jdk/dispatch-board",
+      "branch": "main",
+      "sessions": ["9562c312-123e-4f48-952b-32d375699bf7"],
+      "statusDoc": "status/dispatch-board",
+      "docs": {
+        "prd": "docs/prd/dispatch-board.md",
+        "spec": "docs/backlog/specs/dispatch-board.md",
+        "brief": "docs/brief/raw-notes.md",
+        "adrDir": "docs/adr",
+        "board": "docs/backlog/BOARD.md",
+        "reviews": [
+          { "gate": "Plan gate", "path": "docs/backlog/reviews/dispatch-board/plan-gate-review-r{round}.md" }
+        ]
+      }
+    }
+  ],
+  "catalogue": {
+    "marketplacePath": "~/.claude/plugins/marketplaces/agent-catalog",
+    "installedPath": "~/.claude/plugins/installed_plugins.json"
   },
   "sessions": {
     "days": 7,
@@ -20,15 +59,6 @@
     "manual": [
       { "id": "orch-adrs-spec", "after": "ad8f34de3e0564883", "from": "ad8f34de3e0564883", "lane": "orch", "label": "3 ADRs · pbi-plan → spec rev 1", "verdict": "draft" },
       { "id": "orch-toolchain", "after": "a4584af0b3847e2ea", "lane": "orch", "label": "PBI-000 toolchain (done in-line)", "verdict": "wired" }
-    ]
-  },
-  "usage": {
-    "sessions": [
-      {
-        "label": "Overnight platform-catalogue build",
-        "projectsDir": "C:/Users/jdk/.claude/projects/C--Users-jdk",
-        "sessionId": "7f71729a-c7c5-4855-aab8-25ddf9bac96f"
-      }
     ]
   }
 }
