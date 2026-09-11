@@ -1,5 +1,36 @@
 {
-  "buildState": {},
+  "buildState": {
+    "PBI-017": {
+      "state": "done",
+      "review": "GO-WITH-CONDITIONS (round 3; both notes logged in PBI-002)",
+      "open": "Done: PR #1 merged by the owner on 2026-09-11 (84fa3ee) and finalized. The landing was a merge commit, although squash was declared; this is recorded in the handover.",
+      "commit": "942842b"
+    },
+    "PBI-018": {
+      "state": "done",
+      "review": "GO",
+      "open": "Done: PR #4 squash-merged by the owner (25fa9e7) and finalized. The Later group is live on the Backlog tab.",
+      "commit": "25fa9e7"
+    },
+    "PBI-021": {
+      "state": "conditions",
+      "review": "GO",
+      "open": "PR #2 merged (fd7b926): the six retired tabs/* documents are saved in snapshot/tabs/. Still open: the owner's verbatim approval to delete them from the store (AC-S2), then the delete and its check (AC-S3).",
+      "commit": "fd7b926"
+    },
+    "PBI-022": {
+      "state": "done",
+      "review": "GO-WITH-CONDITIONS, all findings resolved",
+      "open": "Done: PR #3 squash-merged by the owner (3c520d6) and finalized. PRD revision 3 is on main.",
+      "commit": "3c520d6"
+    },
+    "PBI-023": {
+      "state": "partial",
+      "review": "in build",
+      "open": "Building on branch pbi/PBI-023-pr-links: the GitHub tab lists each project's pull requests as links, and Needs attention flags the ones awaiting the owner's merge. code-writer under TDD, then code review.",
+      "commit": ""
+    }
+  },
   "notWorkedOut": [],
-  "boardNote": "Proposed decomposition from the draft solution spec (docs/backlog/specs/dispatch-board.md), awaiting the plan gate: the owner reviews these PBIs and the Assumptions tab, then approves. No PBI is on the BOARD yet."
+  "boardNote": "The plan was approved on 2026-09-11 (spec revision 5). Done: **PBI-017** (Agent catalogue tab), **PBI-018** (Later group) and **PBI-022** (PRD revision 3). **PBI-021** waits for the owner's approval to delete the six retired `tabs/*` documents. Next: **PBI-023** (pull-request links on the board), then **PBI-001** (exporter hardening)."
 }
