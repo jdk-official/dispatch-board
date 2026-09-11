@@ -6,7 +6,7 @@ or writes the repo's out/. Two tests read committed files on purpose: the repo's
 projects/*.json data files, to check they have the shape the exporters expect. The exporter's gh calls go to an
 injected runner: the default one fails the test, so no test can reach the real gh or the network.
 """
-import contextlib, glob, io, json, os, shutil, subprocess, sys, tempfile, unittest
+import ast, contextlib, glob, io, json, os, shutil, subprocess, sys, tempfile, unittest
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(HERE, 'exporters'))
@@ -288,6 +288,65 @@ class FutureIterations(ReposCase):
         self.assertEqual(eb.later_items('### Future iterations (not planned)\n- ** **: idea\n'),
                          [{'title': '** **: idea', 'description': ''}])
 
+    def test_every_markdown_list_marker_with_up_to_three_spaces_starts_an_idea(self):
+        spec = ('### Future iterations (not planned)\n\n'
+                '* **Star**: one.\n'
+                '+ **Plus**: two.\n'
+                '1. **Numbered**: three.\n'
+                '12. **Two digits**: four.\n'
+                '   - **Indented three**: five.\n'
+                ' * **Indented one**: six.\n')
+        self.assertEqual(eb.later_items(spec), [
+            {'title': 'Star', 'description': 'one.'}, {'title': 'Plus', 'description': 'two.'},
+            {'title': 'Numbered', 'description': 'three.'}, {'title': 'Two digits', 'description': 'four.'},
+            {'title': 'Indented three', 'description': 'five.'}, {'title': 'Indented one', 'description': 'six.'}])
+
+    def test_deeper_indented_list_lines_are_nested_items_kept_in_their_ideas_description(self):
+        spec = ('### Future iterations (not planned)\n\n'
+                '- **Parent**: the idea\n'
+                '  wrapped onto a second line.\n'
+                '    - a nested point\n'
+                '      that wraps\n'
+                '    1. a numbered nested point\n'
+                '\t* a tab-indented nested point\n'
+                '- **Next**: another idea.\n')
+        self.assertEqual(eb.later_items(spec), [
+            {'title': 'Parent', 'description': 'the idea wrapped onto a second line. - a nested point that wraps '
+                                               '1. a numbered nested point * a tab-indented nested point'},
+            {'title': 'Next', 'description': 'another idea.'}])
+        # A line indented less than a nested item, after one, still continues the idea.
+        self.assertEqual(eb.later_items('### Future iterations (not planned)\n- **A**: one\n    - nested\n  back to A?\n'),
+                         [{'title': 'A', 'description': 'one - nested back to A?'}])
+
+    def test_an_indented_line_after_a_blank_line_stays_in_its_idea(self):
+        spec = ('### Future iterations (not planned)\n\n'
+                '- **A**: one\n'
+                '    - nested\n'
+                '\n'
+                '    - after blank\n'
+                '\n'
+                '    more under A after a blank\n'
+                '- **B**: two\n')
+        self.assertEqual(eb.later_items(spec), [
+            {'title': 'A', 'description': 'one - nested - after blank more under A after a blank'},
+            {'title': 'B', 'description': 'two'}])
+
+    def test_a_blank_line_then_an_unindented_line_that_starts_no_idea_ends_the_idea(self):
+        spec = ('### Future iterations (not planned)\n\n'
+                '- **A**: one\n\n'
+                'A closing paragraph about the list.\n\n'
+                '    indented under that paragraph, not A\n'
+                '- **B**: two\n')
+        self.assertEqual(eb.later_items(spec), [{'title': 'A', 'description': 'one'}, {'title': 'B', 'description': 'two'}])
+
+    def test_a_thematic_break_is_not_an_idea(self):
+        spec = '### Future iterations (not planned)\n\n- **A**: one.\n\n* * *\n\n- - -\n\n- **B**: two.\n'
+        self.assertEqual([x['title'] for x in eb.later_items(spec)], ['A', 'B'])
+
+    def test_bold_text_at_the_start_of_a_line_is_not_a_marker(self):
+        spec = '### Future iterations (not planned)\n\n- **A**: one\n**still A**.\n'
+        self.assertEqual(eb.later_items(spec), [{'title': 'A', 'description': 'one **still A**.'}])
+
 
 # ---------------------------------------------------------------- missing sources
 
@@ -383,7 +442,7 @@ class MissingSources(ReposCase):
 # ---------------------------------------------------------------- pull requests, from a fake gh
 
 GH_ARGS = ['gh', 'pr', 'list', '--state', 'all', '--search', 'sort:updated-desc', '--limit', '20',
-           '--json', 'number,title,state,url,headRefName,updatedAt']
+           '--json', 'number,title,state,url,headRefName,updatedAt', '--repo', 'o/app']
 GH_PRS = [  # as gh prints them; gh's own order is not by update
     {'number': 7, 'title': 'Older', 'state': 'MERGED', 'url': 'https://github.com/o/app/pull/7', 'headRefName': 'pbi/old',
      'updatedAt': '2026-09-01T10:00:00Z'},
@@ -471,6 +530,45 @@ class PullRequests(ReposCase):
                 self.assertEqual(self.r.err, '')
 
 
+@unittest.skipUnless(HAS_GIT, 'git is not installed')
+class Remotes(ReposCase):
+    def test_credentials_in_a_remote_url_are_never_published(self):
+        root = self.r.repo('app', FULL)
+        urls = {'origin': ('https://jdk:ghp_TOPSECRET0123456789abcdef@github.com/o/app.git', 'https://github.com/o/app.git'),
+                'mirror': ('https://x-access-token:ANOTHERSECRET@gitlab.com/o/app.git', 'https://gitlab.com/o/app.git'),
+                'bare': ('https://ONLYTOKENSECRET@example.com/o/app.git', 'https://example.com/o/app.git'),
+                'scp': ('git@github.com:o/app.git', 'git@github.com:o/app.git')}
+        for name, (url, _) in urls.items():
+            git(root, 'remote', 'add', name, url)
+        self.r.gh = FakeGh('[]')
+        self.assertEqual(self.r.run([project('app', root)]), 0)
+        g = self.r.tabs()['app.git']
+        self.assertEqual(g['remotes'], ['%s\t%s (%s)' % (name, urls[name][1], op) for name in sorted(urls) for op in ('fetch', 'push')])
+        self.assertIn('pulls', g)  # the stripped origin is still recognised as GitHub
+        published = self.r.err
+        for path in glob.glob(os.path.join(self.r.out, '**', '*'), recursive=True):
+            if os.path.isfile(path):
+                with io.open(path, encoding='utf-8') as f:
+                    published += f.read()
+        for secret in ('TOPSECRET', 'ANOTHERSECRET', 'ONLYTOKENSECRET', 'jdk:', 'x-access-token'):
+            self.assertNotIn(secret, published)
+
+
+class PublicRemote(unittest.TestCase):
+    def test_userinfo_is_stripped(self):
+        for line, expected in (
+                ('origin\thttps://jdk:ghp_TOKEN@github.com/o/r.git (fetch)', 'origin\thttps://github.com/o/r.git (fetch)'),
+                ('origin\thttps://TOKEN@github.com/o/r (push)', 'origin\thttps://github.com/o/r (push)'),
+                ('m\thttps://u:p@ss@example.com/o/r (fetch)', 'm\thttps://example.com/o/r (fetch)'),
+                ('o\tssh://git@github.com/o/r.git (fetch)', 'o\tssh://github.com/o/r.git (fetch)')):
+            self.assertEqual(eb.public_remote(line), expected)
+
+    def test_lines_without_userinfo_are_unchanged(self):
+        for line in ('o\tgit@github.com:o/r.git (fetch)', 'o\tC:/repos/app (fetch)', 'o\thttps://github.com/o/r@v2 (fetch)',
+                     'o\tfile:///C:/repos/app (push)', 'o'):
+            self.assertEqual(eb.public_remote(line), line)
+
+
 class GithubOrigin(unittest.TestCase):
     def test_origin_urls_on_github(self):
         for url in ('https://github.com/o/r.git', 'https://GitHub.com/o/r', 'git@github.com:o/r.git',
@@ -482,6 +580,27 @@ class GithubOrigin(unittest.TestCase):
                       ['origin\thttps://evil.example/github.com/o/r (fetch)'], ['upstream\thttps://github.com/o/r (fetch)'],
                       ['originals\thttps://github.com/o/r (fetch)'], [], ['origin']):
             self.assertFalse(eb.github_origin(lines), lines)
+
+    def test_the_repository_is_named_from_the_origin_url(self):
+        for url in ('https://github.com/o/r.git', 'https://github.com/o/r', 'https://github.com/o/r/', 'git@github.com:o/r.git',
+                    'ssh://git@github.com/o/r.git', 'https://x-access-token@github.com/o/r.git'):
+            self.assertEqual(eb.github_repo(['upstream\thttps://github.com/u/x (fetch)', 'origin\t%s (fetch)' % url]), 'o/r', url)
+
+    def test_no_repository_name_without_a_plain_github_origin(self):
+        for lines in (['origin\thttps://gitlab.com/o/r.git (fetch)'], ['upstream\thttps://github.com/o/r (fetch)'],
+                      ['origin\thttps://github.com/o (fetch)'], ['origin\thttps://github.com/o/r/pulls (fetch)'], []):
+            self.assertIsNone(eb.github_repo(lines), lines)
+
+    @unittest.skipUnless(HAS_GIT, 'git is not installed')
+    def test_gh_runs_without_repo_when_the_origin_path_is_not_owner_and_name(self):
+        r = Repos()
+        self.addCleanup(shutil.rmtree, r.tmp, True)
+        root = r.repo('app', FULL)
+        git(root, 'remote', 'add', 'origin', 'https://github.com/o')
+        r.gh = FakeGh('[]')
+        self.assertEqual(r.run([project('app', root)]), 0)
+        [(cmd, _)] = r.gh.calls
+        self.assertEqual(cmd, GH_ARGS[:-2])
 
 
 # ---------------------------------------------------------------- the project list
@@ -539,6 +658,105 @@ class ProjectList(unittest.TestCase):
         [p] = bc.projects({'projects': [{'id': 'a', 'sessions': ['s2', 's1', 's2', 's1', 's3']}]})
         self.assertEqual(p['sessions'], ['s2', 's1', 's3'])
 
+    def test_meta_last_refresh_is_reserved(self):
+        self.assertIsNone(bc.STATUS_DOC.match('meta/lastRefresh'))
+        for ok in ('meta/status', 'meta/lastRefreshed', 'meta/lastrefresh', 'status/lastRefresh'):
+            self.assertTrue(bc.STATUS_DOC.match(ok), ok)
+        with self.assertRaises(ValueError) as cm:
+            bc.projects({'projects': [{'id': 'a', 'repoPath': 'C:/a', 'statusDoc': 'meta/lastRefresh'}]})
+        self.assertIn('meta/lastRefresh', str(cm.exception))
+
+
+class ManualRows(unittest.TestCase):
+    ROW = {'id': 'orch-x', 'after': 'a1', 'from': 'a1', 'lane': 'orch', 'label': 'In-line work', 'kind': 'done', 'verdict': 'wired'}
+
+    def manual(self, *rows):
+        return bc.manual({'runs': {'manual': list(rows)}})
+
+    def test_valid_rows_are_returned_as_they_are(self):
+        self.assertEqual(self.manual(self.ROW, {'id': 'b', 'label': 'minimal'}), [self.ROW, {'id': 'b', 'label': 'minimal'}])
+        self.assertEqual(bc.manual({}), [])
+        self.assertEqual(bc.manual({'runs': {}}), [])
+
+    def test_every_run_lane_and_kind_is_accepted(self):
+        self.assertEqual(set(bc.RUN_LANES), set('orch req plan cw tw cr ver human other'.split()))
+        self.assertEqual(set(bc.RUN_KINDS), set('running done go changes nogo killed'.split()))
+        for lane in bc.RUN_LANES:
+            self.manual(dict(self.ROW, lane=lane))
+        for kind in bc.RUN_KINDS:
+            self.manual(dict(self.ROW, kind=kind))
+
+    def test_lanes_and_kinds_match_the_local_record_shapes(self):
+        # Read as data, not imported: the exporters must not depend on the local app.
+        with io.open(os.path.join(HERE, 'local', 'records.shapes.json'), encoding='utf-8') as f:
+            enums = json.load(f)['run']['enums']
+        self.assertEqual(sorted(bc.RUN_LANES), sorted(enums['lane']))
+        self.assertEqual(sorted(bc.RUN_KINDS), sorted(enums['kind']))
+
+    def test_a_bad_row_is_refused_naming_it_and_the_field(self):
+        for change, field in (({'lane': 'orhc'}, 'lane'), ({'lane': 'ORCH'}, 'lane'), ({'lane': None}, 'lane'),
+                              ({'kind': 'finished'}, 'kind'), ({'kind': None}, 'kind'), ({'verdict': 3}, 'verdict'),
+                              ({'from': ['a1']}, 'from'), ({'label': None}, 'label'), ({'verdict': None}, 'verdict')):
+            with self.subTest(change=change):
+                with self.assertRaises(ValueError) as cm:
+                    self.manual({'id': 'fine', 'label': 'ok'}, dict(self.ROW, **change))
+                self.assertIn('orch-x', str(cm.exception))
+                self.assertIn(field, str(cm.exception))
+                self.assertIn('runs.manual[1]', str(cm.exception))
+
+    def test_a_row_without_a_string_id_or_label_is_refused(self):
+        for row, field in (({'label': 'x'}, 'id'), ({'id': 5, 'label': 'x'}, 'id'), ({'id': 'r'}, 'label')):
+            with self.subTest(row=row):
+                with self.assertRaises(ValueError) as cm:
+                    self.manual(row)
+                self.assertIn('runs.manual[0]', str(cm.exception))
+                self.assertIn(field, str(cm.exception))
+
+    def test_an_id_that_is_not_one_safe_path_segment_is_refused(self):
+        for rid in ('../x', 'a/b', 'a\\b', '.', '..', '', 'a\x00b', 'a\nb', 'x\n', 'a\x85b'):
+            with self.subTest(id=rid):
+                with self.assertRaises(ValueError) as cm:
+                    self.manual({'id': 'fine', 'label': 'ok'}, dict(self.ROW, id=rid))
+                self.assertIn('runs.manual[1]', str(cm.exception))
+                self.assertIn('id %r' % rid, str(cm.exception))
+
+    def test_an_id_unsafe_as_a_windows_file_name_is_refused(self):
+        # The id is joined onto out/runs on the Windows refresher: a colon makes it drive-relative, the reserved
+        # characters crash the write after out/ is emptied, a leading dot hides it from the *.json glob, Windows
+        # strips a trailing dot or space, and a device name opens the device rather than a file.
+        for rid in ('d:x', 'a?b', 'a*b', 'a|b', 'a"b', 'a<b', 'a>b', '.x', '..x', 'x.', 'x..', 'x ', 'CON', 'con.json',
+                    'LPT1', 'prn', 'Aux', 'NUL.txt', 'COM1', 'com9.tar.gz', 'lpt9'):
+            with self.subTest(id=rid):
+                with self.assertRaises(ValueError) as cm:
+                    self.manual({'id': 'fine', 'label': 'ok'}, dict(self.ROW, id=rid))
+                self.assertIn('runs.manual[1]', str(cm.exception))
+                self.assertIn('id %r' % rid, str(cm.exception))
+
+    def test_ids_that_only_contain_dots_among_other_characters_are_accepted(self):
+        for rid in ('a..b', 'orch-r2.1', 'in-line work', 'orch-adrs-spec', 'orch-toolchain', 'CONSOLE', 'con-x',
+                    'COM10', 'LPT0', 'nul_x'):
+            with self.subTest(id=rid):
+                self.assertEqual(self.manual(dict(self.ROW, id=rid))[0]['id'], rid)
+
+    def test_the_id_form_matches_the_local_run_id_form(self):
+        # Read as data, not imported: the exporters must not depend on the local app.
+        with io.open(os.path.join(HERE, 'local', 'records.py'), encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+        assigned = {t.id: node.value for node in tree.body if isinstance(node, ast.Assign)
+                    for t in node.targets if isinstance(t, ast.Name)}
+        self.assertEqual(ast.literal_eval(assigned['_SEGMENT'].args[0]), bc.RUN_ID.pattern)
+        forms = assigned['_ID_FORMS']
+        run_form = forms.values[[ast.literal_eval(k) for k in forms.keys].index('run')]
+        self.assertEqual(run_form.id, '_SEGMENT')
+
+    def test_manual_that_is_not_a_list_of_objects_is_refused(self):
+        for cfg, named in (({'runs': {'manual': {'id': 'x'}}}, 'runs.manual'), ({'runs': {'manual': ['x']}}, 'runs.manual[0]'),
+                           ({'runs': []}, '"runs"')):
+            with self.subTest(cfg=cfg):
+                with self.assertRaises(ValueError) as cm:
+                    bc.manual(cfg)
+                self.assertIn(named, str(cm.exception))
+
 
 # ---------------------------------------------------------------- committed files
 
@@ -552,6 +770,10 @@ class CommittedFiles(unittest.TestCase):
         self.assertEqual({k: pc['docs'][k] for k in bc.LEGACY_DOCS}, bc.LEGACY_DOCS)
         self.assertEqual((db['repoPath'], db['branch'], db['statusDoc']), ('C:/Users/jdk/dispatch-board', 'main', 'status/dispatch-board'))
         self.assertIn('9562c312-123e-4f48-952b-32d375699bf7', db['sessions'])
+
+    def test_repo_config_manual_rows_are_well_formed(self):
+        with io.open(os.path.join(HERE, 'board.config.json'), encoding='utf-8') as f:
+            self.assertTrue(bc.manual(json.load(f)))
 
     def test_data_files_are_well_formed(self):
         files = glob.glob(os.path.join(HERE, 'projects', '*.json'))

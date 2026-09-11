@@ -7,14 +7,30 @@ existed) is read as one project made from build.* and usage.sessions, with the d
 export_board.py always read for it.
 
 catalogue() reads the "catalogue" block: where export_catalogue.py finds the agent-catalog marketplace clone
-and the installed-plugins file.
+and the installed-plugins file. manual() reads runs.manual: the rows for work the orchestrator did in-line.
 """
 import os, re
 
 # Ids become file names under out/ and store document ids, so they are kept to one safe path segment.
 ID = re.compile(r'^[A-Za-z0-9_-]{1,100}$')
-# A status document must stay out of the collections refresh.py replaces and deletes.
-STATUS_DOC = re.compile(r'^(meta|status)/[A-Za-z0-9_-]{1,100}$')
+# A status document must stay out of the collections refresh.py replaces and deletes. meta/lastRefresh is
+# reserved for the local app's record of the last refresh, so no project's status may take that path.
+STATUS_DOC = re.compile(r'^(?!meta/lastRefresh$)(meta|status)/[A-Za-z0-9_-]{1,100}$')
+# The lanes and kinds a runs.manual row may use: the run values the local app's record shapes accept
+# (local/records.shapes.json). Copied rather than imported, because the local app depends on the exporters
+# and never the other way round.
+RUN_LANES = ('orch', 'req', 'plan', 'cw', 'tw', 'cr', 'ver', 'human', 'other')
+RUN_KINDS = ('running', 'done', 'go', 'changes', 'nogo', 'killed')
+# A runs.manual id becomes a file name under out/runs and a run record's id, so it takes the local app's run-id
+# form (_SEGMENT in local/records.py), applied with fullmatch: one path segment with no "/" or "\", no C0 or C1
+# control character, and not "." or "..". Copied rather than imported, like RUN_LANES.
+RUN_ID = re.compile(r'(?!\.\.?\Z)[^/\\\x00-\x1f\x7f-\x9f]+')
+# The exporter also writes that id as out/runs/<id>.json on the Windows refresher, where RUN_ID is not enough:
+# a colon makes the path drive-relative (d:x lands on D:), * ? < > | " fail the write after out/ has been emptied,
+# a leading dot hides the file from the *.json glob refresh.py pushes, Windows strips a trailing dot or space, and
+# a device name (with or without an extension) opens the device. Kept separate so RUN_ID stays the local form;
+# refusing more than the local form is safe, because every id the exporter writes still passes local to_row.
+UNSAFE_FILE_NAME = re.compile(r'[:*?<>|"]|\A\.|[. ]\Z|\A(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?\Z', re.I | re.S)
 LEGACY_DOCS = {
     'spec': 'docs/backlog/specs/platform-catalogue.md',
     'design': 'docs/backlog/specs/pbi-008-design-system.md',
@@ -81,7 +97,7 @@ def projects(cfg):
             raise ValueError('project id %r must be letters, digits, "-" and "_" only' % (pid,))
         status = p.get('statusDoc') or 'status/' + pid
         if not STATUS_DOC.match(status):
-            raise ValueError('project %s: statusDoc %r must be meta/<id> or status/<id>' % (pid, status))
+            raise ValueError('project %s: statusDoc %r must be meta/<id> or status/<id>, and not meta/lastRefresh' % (pid, status))
         if pid in ids:
             raise ValueError('project id %s is listed twice' % pid)
         if status in docs:
@@ -93,3 +109,35 @@ def projects(cfg):
                     'branch': p.get('branch') or '', 'sessions': list(dict.fromkeys(p.get('sessions') or [])),
                     'statusDoc': status, 'docs': dict(p.get('docs') or {})})
     return out
+
+
+def manual(cfg):
+    """The runs.manual rows, as written. Raises ValueError, naming the row and the field, for a "runs" block that
+    is not an object, a "manual" value that is not a list, or a row that is not an object, lacks a string id or
+    label, has an id that is not of the RUN_ID form or is UNSAFE_FILE_NAME, has a verdict or from that is not a
+    string, or has a lane or kind outside RUN_LANES / RUN_KINDS. A row may leave out lane, kind, verdict and from,
+    which take their defaults when the row is exported."""
+    block = cfg.get('runs', {})
+    if not isinstance(block, dict):
+        raise ValueError('"runs" must be an object, not %s' % type(block).__name__)
+    rows = block.get('manual', [])
+    if not isinstance(rows, list):
+        raise ValueError('runs.manual must be a list, not %s' % type(rows).__name__)
+    for i, row in enumerate(rows):
+        where = 'runs.manual[%d]' % i
+        if not isinstance(row, dict):
+            raise ValueError('%s must be an object, not %r' % (where, row))
+        if isinstance(row.get('id'), str):
+            where += ' (%s)' % row['id']
+        for key in ('id', 'label', 'verdict', 'from'):
+            if (key in ('id', 'label') or key in row) and not isinstance(row.get(key), str):
+                raise ValueError('%s: %s must be a string, not %r' % (where, key, row.get(key)))
+        if not RUN_ID.fullmatch(row['id']) or UNSAFE_FILE_NAME.search(row['id']):
+            raise ValueError('%s: id %r must be one path segment that is a safe Windows file name: not empty, no "/", '
+                             '"\\", ":", "*", "?", "<", ">", "|" or \'"\', no control character, no leading dot, no '
+                             'trailing dot or space, and not "." or ".." or a device name such as CON, NUL, COM1 or '
+                             'LPT1' % (where, row['id']))
+        for key, allowed in (('lane', RUN_LANES), ('kind', RUN_KINDS)):
+            if key in row and row[key] not in allowed:
+                raise ValueError('%s: %s %r must be one of %s' % (where, key, row[key], ', '.join(allowed)))
+    return rows

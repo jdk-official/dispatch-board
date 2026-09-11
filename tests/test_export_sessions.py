@@ -137,6 +137,8 @@ class VerdictOf(unittest.TestCase):
         self.assertIsNone(es.verdict_of('Verdict: GO', 'cw'))
         self.assertIsNone(es.verdict_of('Verdict: DONE', 'cr'))
         self.assertIsNone(es.verdict_of('nothing to report', 'cr'))
+        self.assertIsNone(es.verdict_of('Verdict: exercised', 'cr'))
+        self.assertIsNone(es.verdict_of('Verdict: fallback-declared', 'cw'))
 
     def test_rereview_quoting_an_earlier_verdict_takes_the_last_label(self):
         text = 'Round 1 Verdict: NO-GO. All four findings were fixed.\n\nVerdict: GO-WITH-NOTES'
@@ -146,6 +148,53 @@ class VerdictOf(unittest.TestCase):
     def test_builders_keep_the_leading_token(self):
         self.assertEqual(es.verdict_of('Verdict: NOT-DONE\n... once fixed it will be Verdict: DONE', 'cw'), 'NOT-DONE')
         self.assertEqual(es.verdict_of('DONE. Earlier attempt was NOT-DONE', 'tw'), 'DONE')
+
+    # A verifier leads with its outcome, then says what it observed or why it could not run the flow.
+    def test_a_fallback_headline_that_goes_on_to_say_not_exercised_stays_fallback_declared(self):
+        text = 'fallback-declared - no headless entrypoint; the live path was not exercised.'
+        self.assertEqual(es.verdict_of(text, 'ver'), 'fallback-declared')
+
+    def test_a_json_outcome_is_read_before_the_prose(self):
+        block = ('```json\n{"schema_version": "1", "report": {"agent": "verifier", "outcome": "%s", '
+                 '"summary": "..."}, "fallback_reason": "no headless entrypoint"}\n```\n')
+        self.assertEqual(es.verdict_of(block % 'fallback-declared' + 'The flow was not exercised.', 'ver'), 'fallback-declared')
+        self.assertEqual(es.verdict_of(block % 'exercised' + 'The error path was not exercised.', 'ver'), 'exercised')
+
+    def test_the_verifier_words_are_read_in_any_case(self):
+        self.assertEqual(es.verdict_of('Outcome: Exercised', 'ver'), 'exercised')
+        self.assertEqual(es.verdict_of('**Outcome:** `FALLBACK-DECLARED`', 'ver'), 'fallback-declared')
+        self.assertEqual(es.verdict_of('Exercised - ran the /greet flow.', 'ver'), 'exercised')
+
+    def test_a_negated_verifier_word_is_never_the_outcome(self):
+        for negated in ('not exercised', 'could not be exercised', "wasn't exercised", 'was never exercised',
+                        "hasn't been exercised", 'cannot be exercised', 'not **exercised**', 'not fallback-declared'):
+            with self.subTest(negated=negated):
+                self.assertIsNone(es.verdict_of('The live path was %s: no headless entrypoint.' % negated, 'ver'))
+
+    def test_the_first_bare_verifier_word_leads_but_a_bare_fallback_is_preferred(self):
+        self.assertEqual(es.verdict_of('exercised - ran /greet; the error path was not exercised', 'ver'), 'exercised')
+        self.assertEqual(es.verdict_of('Unit checks exercised, but the live flow is fallback-declared.', 'ver'), 'fallback-declared')
+
+    # Without an outcome label, a bold, code-quoted or Verdict-labelled exercised must not outrank a bare
+    # fallback-declared: claiming a run that never happened is the one-sided risk.
+    def test_without_an_outcome_label_any_fallback_wins_whatever_form_each_word_takes(self):
+        for text in ('fallback-declared (headless run infeasible; `exercised` needs a browser)',
+                     'fallback-declared: the flow could only be `exercised` in a browser',
+                     'fallback-declared. **Exercised** requires Playwright, which I lack.',
+                     'fallback-declared, as the Verdict: exercised run needs a browser'):
+            with self.subTest(text=text):
+                self.assertEqual(es.verdict_of(text, 'ver'), 'fallback-declared')
+
+    def test_an_outcome_label_still_decides_over_any_other_mention(self):
+        self.assertEqual(es.verdict_of('Outcome: exercised. Last round was **fallback-declared**.', 'ver'), 'exercised')
+        self.assertEqual(es.verdict_of('{"outcome": "exercised"} `fallback-declared` was round 1', 'ver'), 'exercised')
+
+    def test_unable_to_rather_than_and_instead_of_negate_the_word_after_them(self):
+        for negated in ('unable to be exercised', 'unable to exercise it, so not exercised', 'skipped rather than exercised',
+                        'read instead of being exercised'):
+            with self.subTest(negated=negated):
+                self.assertIsNone(es.verdict_of('The live path was %s: no headless entrypoint.' % negated, 'ver'))
+        self.assertEqual(es.verdict_of('exercised rather than fallback-declared: Playwright ran the flow.', 'ver'), 'exercised')
 
 
 class KindOf(unittest.TestCase):
@@ -209,6 +258,16 @@ class Classify(unittest.TestCase):
         self.assertEqual(self.c(age=60)[:2], ('running', 'running'))
         self.assertEqual(self.c(age=900)[:2], ('killed', 'no result'))
 
+    def test_verifier_result_words_are_the_verdict_and_the_kind_stays_done(self):
+        for word in ('exercised', 'fallback-declared'):
+            self.assertEqual(self.c(lane='ver', fin=fin(30, result='Verdict: %s' % word))[:2], ('done', word))
+        # A labelled or bold word wins over one mentioned in passing.
+        self.assertEqual(self.c(lane='ver', fin=fin(30, result='**fallback-declared**: the live path was not exercised'))[:2],
+                         ('done', 'fallback-declared'))
+        self.assertEqual(self.c(lane='cr', fin=fin(30, result='Verdict: exercised'))[:2], ('done', 'finished'))
+        self.assertEqual(self.c(lane='ver', fin=fin(30, result='fallback-declared - no headless entrypoint; the live path was not exercised'))[:2],
+                         ('done', 'fallback-declared'))
+
     def test_minutes(self):
         self.assertEqual(self.c(fin=fin(30, ms='120000'))[2], 2)
         self.assertEqual(self.c(fin=fin(30, ms=''))[2], 30)
@@ -217,6 +276,22 @@ class Classify(unittest.TestCase):
         self.assertEqual(self.c(fin=fin(30, ms='soon'))[2], 30)
         self.assertEqual(self.c(fin=fin(30, ms='1e400'))[2], 30)
         self.assertEqual(self.c(begin='not a date')[2], 0)
+
+
+class Carried(unittest.TestCase):
+    ROW = {'id': 'a', 'kind': 'running', 'verdict': 'running', 'end': ts(0)}
+
+    def test_only_a_running_row_past_the_window_changes(self):
+        at = es.epoch(ts(0))
+        self.assertEqual(es.carried(self.ROW, 600, at + 599), self.ROW)
+        self.assertEqual(es.carried(self.ROW, 600, at + 600), dict(self.ROW, kind='killed', verdict='no result'))
+        done = dict(self.ROW, kind='done', verdict='DONE')
+        self.assertEqual(es.carried(done, 600, at + 9999), done)
+        self.assertEqual(self.ROW['kind'], 'running')  # the cached row itself is not changed
+
+    def test_a_running_row_without_a_readable_end_is_killed(self):
+        for end in (None, 'soon', 5):
+            self.assertEqual(es.carried(dict(self.ROW, end=end), 600, time.time())['kind'], 'killed', end)
 
 
 # ---------------------------------------------------------------- link()
@@ -266,6 +341,10 @@ class Records(TreeCase):
         p = self.t.write(os.path.join(self.t.tmp, 'x.jsonl'), ['1', '[]', 'null', '"s"', '{"a": 1}', '{broken'])
         self.assertEqual([o for _, o in es.records(p)], [{'a': 1}])
 
+    def test_a_deeply_nested_line_is_skipped(self):
+        p = self.t.write(os.path.join(self.t.tmp, 'x.jsonl'), ['[' * 100000 + ']' * 100000, '{"a": 1}'])
+        self.assertEqual([o for _, o in es.records(p)], [{'a': 1}])
+
 
 class Pipeline(TreeCase):
     def test_basic_export(self):
@@ -294,6 +373,15 @@ class Pipeline(TreeCase):
         self.assertEqual(self.t.run(), 0)
         run = self.t.docs('runs')['acw']
         self.assertEqual((run['kind'], run['verdict'], run['tok'], run['min']), ('done', 'DONE', 77, 4))
+
+    def test_verifier_that_exercised_its_checks(self):
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_ver'),
+                             notify(10, 'aver', result='Verdict: exercised. The happy path and both failure paths ran.')])
+        self.t.agent(SID, 'aver', [reply(2, 'a', text='exercised')],
+                     {'agentType': 'review-agents:verifier', 'description': 'Verify PBI-001', 'toolUseId': 'toolu_ver'})
+        self.assertEqual(self.t.run(), 0)
+        run = self.t.docs('runs')['aver']
+        self.assertEqual((run['lane'], run['kind'], run['verdict']), ('ver', 'done', 'exercised'))
 
     def test_window_days_on_the_session_doc(self):
         self.t.basic()
@@ -373,6 +461,52 @@ class Malformed(TreeCase):
         self.assertEqual(self.t.run(), 0)
         self.assertEqual(sorted(self.t.docs('runs')), ['acw11'])
 
+    def test_a_running_agent_that_cannot_be_reread_is_killed_once_the_window_has_passed(self):
+        # The agent's last record is three hours old but its file was just written, so the first run sees it running.
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_cw')])
+        self.t.agent(SID, 'acw', [reply(2, 'a', text='working')], CW_META)
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(self.t.docs('runs')['acw']['kind'], 'running')
+        with self.flaky_read('acw'):
+            self.assertEqual(self.t.run(), 0)
+        run = self.t.docs('runs')['acw']
+        self.assertEqual((run['kind'], run['verdict']), ('killed', 'no result'))
+        self.assertEqual(self.t.docs('sessions')[SID]['running'], 0)
+
+    def test_a_running_agent_that_cannot_be_reread_stays_running_within_the_window(self):
+        # BASE is three hours ago, so minute 178 is two minutes ago: well inside the 10-minute window.
+        self.t.session(SID, [user(176, 'go'), launch(177, 'toolu_cw')])
+        self.t.agent(SID, 'acw', [reply(178, 'a', text='working')], CW_META)
+        self.assertEqual(self.t.run(), 0)
+        with self.flaky_read('acw'):
+            self.assertEqual(self.t.run(), 0)
+        run = self.t.docs('runs')['acw']
+        self.assertEqual((run['kind'], run['verdict']), ('running', 'running'))
+
+    def test_a_string_token_count_skips_only_that_response(self):
+        def bad(m, mid, value):
+            r = reply(m, mid, text='x')
+            r['message']['usage']['output_tokens'] = value
+            return r
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_cw'), bad(2, 'm-bad-main', float('nan')),
+                             notify(20, 'acw', result='DONE', tokens='5000'), notify(21, 'aother', result='found it')])
+        self.t.agent(SID, 'acw', [reply(3, 'a', text='DONE'), bad(4, 'm-bad-agent', '10')], CW_META)
+        self.t.agent(SID, 'aother', [reply(5, 'x', text='hi')], {'agentType': 'Explore', 'description': 'look around'})
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(sorted(self.t.docs('runs')), ['acw', 'aother'])
+        session = self.t.docs('sessions')[SID]
+        self.assertEqual(session['runs'], 2)
+        self.assertEqual(session['usage']['totals']['requests'], 3)  # the launch reply and one reply per agent
+
+    def test_a_deeply_nested_line_costs_only_that_line(self):
+        # An exclude list makes the exporter read each transcript's working folder before anything else.
+        deep = '[' * 100000 + ']' * 100000
+        self.t.session(SID, [deep, user(0, 'go'), launch(1, 'toolu_cw'), notify(5, 'acw', result='DONE')])
+        self.t.agent(SID, 'acw', [deep, reply(2, 'a', text='DONE')], CW_META)
+        self.assertEqual(self.t.run(config(exclude=['*-private'])), 0)
+        self.assertEqual(self.t.docs('runs')['acw']['kind'], 'done')
+        self.assertEqual(self.t.docs('sessions')[SID]['cwd'], CWD)
+
     def test_malformed_numeric_tags(self):
         self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_cw'), notify(20, 'acw', result='DONE', tokens='12k', ms='soon')])
         self.t.agent(SID, 'acw', [reply(2, 'a', text='DONE')], CW_META)
@@ -421,6 +555,21 @@ class Malformed(TreeCase):
         self.assertEqual(self.t.run(), 0)
         self.assertEqual(self.t.docs('sessions')[SID]['last'], ts(40))
 
+    def test_a_running_row_in_a_session_that_cannot_be_parsed_is_killed_once_the_window_has_passed(self):
+        # The agent's last record is three hours old but its file was just written, so the first run sees it running.
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_cw')])
+        self.t.agent(SID, 'acw', [reply(2, 'a', text='working')], CW_META)
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(self.t.docs('runs')['acw']['kind'], 'running')
+        with mock.patch.object(es, 'parse_session', side_effect=RuntimeError('boom')):
+            self.assertEqual(self.t.run(), 0)
+        run = self.t.docs('runs')['acw']
+        self.assertEqual((run['kind'], run['verdict']), ('killed', 'no result'))
+        self.assertEqual(self.t.docs('sessions')[SID]['running'], 0)
+        # Only the export changes: the cache keeps the row as it was read, so the session is re-read next run.
+        with io.open(os.path.join(self.t.out, '.cache', 'sessions.json'), encoding='utf-8') as f:
+            self.assertEqual([r['kind'] for r in json.load(f)[SID]['result']['rows']], ['running'])
+
     def test_failed_parse_without_a_cached_result_omits_the_session(self):
         self.t.basic()
         self.t.basic(SID2)
@@ -433,6 +582,53 @@ class Malformed(TreeCase):
         with mock.patch.object(es, 'parse_session', flaky):
             self.assertEqual(self.t.run(), 0)
         self.assertEqual(sorted(self.t.docs('sessions')), [SID])
+
+
+class ConfigTypes(TreeCase):
+    def assert_refused(self, cfg, key):
+        self.assertEqual(self.t.run(cfg), 2)
+        self.assertIn(key, self.t.err)
+        self.assertEqual(self.t.docs('sessions'), {})
+
+    def test_show_first_prompt_as_a_string_is_refused(self):
+        self.t.basic()
+        self.assert_refused(config(showFirstPrompt='false'), 'sessions.showFirstPrompt')
+
+    def test_exclude_as_a_string_is_refused(self):
+        self.t.basic()
+        self.assert_refused(config(exclude='*-private'), 'sessions.exclude')
+
+    def test_each_documented_type_is_checked(self):
+        self.t.basic()
+        for block, key, value in (('sessions', 'days', '7'), ('sessions', 'days', True), ('sessions', 'projectsRoot', 5),
+                                  ('sessions', 'exclude', ['*-private', 3]), ('sessions', 'showFirstPrompt', 0),
+                                  ('runs', 'runningWindowMinutes', '10'), ('runs', 'manual', {'id': 'x'})):
+            with self.subTest(key=key, value=value):
+                cfg = config()
+                cfg[block][key] = value
+                self.assert_refused(cfg, '%s.%s' % (block, key))
+
+    def test_a_block_that_is_not_an_object_is_refused(self):
+        self.t.basic()
+        for block in ('sessions', 'runs'):
+            with self.subTest(block=block):
+                cfg = config()
+                cfg[block] = ['x']
+                self.assert_refused(cfg, '"%s"' % block)
+
+    def test_documented_types_are_accepted(self):
+        self.t.basic()
+        cfg = config(days=2, exclude=['*-private'], showFirstPrompt=False, projectsRoot=self.t.root)
+        cfg['runs']['runningWindowMinutes'] = 15
+        self.assertEqual(self.t.run(cfg), 0)
+        self.assertEqual(self.t.err, '')
+
+    def test_a_bad_manual_row_is_refused_by_name(self):
+        self.t.basic()
+        cfg = config()
+        cfg['runs']['manual'] = [{'id': 'orch-typo', 'after': 'acw11', 'label': 'x', 'lane': 'orhc'}]
+        self.assert_refused(cfg, 'orch-typo')
+        self.assertIn('lane', self.t.err)
 
 
 class Discovery(TreeCase):
@@ -739,6 +935,27 @@ class Projects(TreeCase):
         self.t.basic()
         self.assertNotEqual(self.t.run(pconfig(proj('app', '99999999-0000-0000-0000-000000000000'))), 0)
         self.assertIn('99999999', self.t.err)
+
+    def test_a_linked_session_last_active_30_days_ago_is_still_exported_with_its_project(self):
+        def aged(recs):
+            for r in recs:
+                t = datetime.fromisoformat(r['timestamp'].replace('Z', '+00:00')) - timedelta(days=30)
+                r['timestamp'] = t.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+            return recs
+        # SID is linked to the project; SID2, just as old, is linked to nothing and falls outside the window.
+        for sid in (SID, SID2):
+            self.t.session(sid, aged([user(0, 'go'), launch(1, 'toolu_cw'), notify(30, 'acw' + sid[:2], result='DONE')]))
+            self.t.agent(sid, 'acw' + sid[:2], aged([reply(2, 'a', text='DONE')]), CW_META)
+        old = time.time() - 30 * 86400
+        for folder, _, files in os.walk(self.t.root):
+            for f in files:
+                os.utime(os.path.join(folder, f), (old, old))
+        self.assertEqual(self.t.run(pconfig(proj('app', SID), days=7)), 0)
+        sessions, runs = self.t.docs('sessions'), self.t.docs('runs')
+        self.assertEqual(sorted(sessions), [SID])
+        self.assertEqual(sessions[SID]['project'], 'app')
+        self.assertEqual((sorted(runs), runs['acw11']['project']), (['acw11'], 'app'))
+        self.assertEqual(self.t.docs('projects')['app']['sessions'], [SID])
 
     def test_projects_dropped_from_the_config_are_removed(self):
         self.t.basic()

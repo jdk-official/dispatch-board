@@ -372,6 +372,32 @@ class Catalogue(unittest.TestCase):
         self.assertEqual(keys(rf.plan(self.o.out, allow_mass_delete=True)), {('delete', 'catalogue/index')})
 
 
+class Answers(unittest.TestCase):
+    """Answers are recorded only by a human, so an export that holds one is refused whatever the flags."""
+
+    def setUp(self):
+        self.o = Out()
+        self.addCleanup(self.o.cleanup)
+
+    def test_an_answers_document_refuses_the_plan_and_leaves_nothing_pending(self):
+        self.o.pushed()
+        self.o.edit('runs', 'ro1', kind='go')  # a real change, so there would otherwise be a plan
+        with io.open(self.o.pending, 'w', encoding='utf-8') as f:
+            json.dump({'state': {'runs/zz': 'stale'}}, f)
+        self.o.doc('answers', 'row-5', {'answer': 'yes'})
+        for flag in (False, True):
+            with self.subTest(allow_mass_delete=flag):
+                with self.assertRaises(rf.AnswersRefused) as cm:
+                    rf.plan(self.o.out, allow_mass_delete=flag)
+                self.assertIn('answers', str(cm.exception))
+                self.assertFalse(os.path.exists(self.o.pending))
+
+    def test_an_answers_document_in_a_sub_folder_counts(self):
+        self.o.doc(os.path.join('answers', 'p'), 'row-5', {'answer': 'yes'})
+        with self.assertRaises(rf.AnswersRefused):
+            rf.plan(self.o.out)
+
+
 class Export(unittest.TestCase):
     """export() runs each exporter as a subprocess; the real exporters are never run here."""
 
@@ -451,6 +477,16 @@ class Cli(unittest.TestCase):
         self.assertFalse(os.path.exists(self.o.pending))
         self.assertEqual(self.main('--allow-mass-delete')[0], 0)
         self.assertTrue(os.path.exists(self.o.pending))
+
+    def test_an_answers_document_exits_non_zero_naming_the_collection(self):
+        self.o.doc('answers', 'row-5', {'answer': 'yes'})
+        for argv in ((), ('--allow-mass-delete',)):
+            with self.subTest(argv=argv):
+                code, out, err = self.main(*argv)
+                self.assertNotEqual(code, 0)
+                self.assertIn('answers', err)
+                self.assertEqual(out, '')
+                self.assertFalse(os.path.exists(self.o.pending))
 
     def test_export_failure_stops_before_planning(self):
         code, _, err = self.main(run_export=lambda out: 'export_sessions.py failed:\nboom')
