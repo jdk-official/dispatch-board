@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-10T18:25:16+00:00",
+  "generatedAt": "2026-09-11T05:43:08+00:00",
   "humanList": [
     1,
     2,
@@ -289,7 +289,7 @@
       "n": 27,
       "needsYou": true,
       "question": "Verification of layout-dependent criteria",
-      "resolution": "AC-32 and NFR-8 (no horizontal scroll at 360/768/1280/1920), the network-disabled half of AC-26, and NFR-4 are **manual owner gates** on the deployed build; AC-31 runs under happy-dom with `color-contrast` excluded (no layout engine), NFR-9 is discharged by PBI-008's token-contrast test",
+      "resolution": "AC-32 and NFR-8 (no horizontal scroll at 360/768/1280/1920), the network-disabled half of AC-26, and NFR-4 are **manual owner gates** on the deployed build; AC-31 runs under happy-dom with `color-contrast` excluded (no layout engine), NFR-9 is discharged by PBI-008's token-contrast test. Also undecidable under happy-dom and therefore manual owner gates beside `color-contrast` (added after the PBI-011 review, 2026-09-11): `link-in-text-block` (serious, WCAG 1.4.1) returns *incomplete*; `target-size` passes vacuously and `scrollable-region-focusable` is inapplicable with no layout",
       "source": "Planner (review N2); no real-browser harness in row 26",
       "status": "ASSUMED"
     },
@@ -329,7 +329,7 @@
       "n": 31,
       "needsYou": true,
       "question": "Blocker attribution in an onboarding plan when a step passes its own requirements but a dependency step fails (PRD FR-22 vs FR-30)",
-      "resolution": "The failing dependency step carries the `ineligible` blocker; the dependant step carries none (no duplicate blame; `blocked` is still true). PBI-010 must mark the dependant ineligible in the catalogue view (FR-22) while its plan row shows the dependency's blocker",
+      "resolution": "The failing dependency step carries the `ineligible` blocker; the dependant step carries none (no duplicate blame; `blocked` is still true). PBI-010 must mark the dependant ineligible in the catalogue view (FR-22), while the dependant's plan shows the blocker on the dependency's row",
       "source": "Planner (final library code review CR-R2-2)",
       "status": "ASSUMED"
     }

@@ -1,14 +1,49 @@
 {
-  "ahead": "11",
+  "ahead": "18",
   "branch": "build/logic-core",
   "byDir": {
     "(root)": 9,
     "catalogue": 16,
-    "docs": 9,
+    "docs": 12,
     "scripts": 1,
-    "src": 58
+    "src": 68
   },
   "commits": [
+    {
+      "date": "2026-09-11T06:51:42+01:00",
+      "sha": "c8614cd",
+      "subject": "Increment 2 PRD rev 3: owner plan-gate answers"
+    },
+    {
+      "date": "2026-09-11T06:33:16+01:00",
+      "sha": "aba708c",
+      "subject": "Increment 2 PRD rev 2 and owner plan-gate answers"
+    },
+    {
+      "date": "2026-09-10T22:37:02+01:00",
+      "sha": "b5e313c",
+      "subject": "Increment 2 PRD rev 1: architect tool (draft, before review)"
+    },
+    {
+      "date": "2026-09-10T21:18:04+01:00",
+      "sha": "d209bca",
+      "subject": "Increment 2 brief: architect tool, with Terraform AVM grounding"
+    },
+    {
+      "date": "2026-09-10T21:18:04+01:00",
+      "sha": "d3de26d",
+      "subject": "PBI-010: team profile, eligibility verdict and onboarding plan view"
+    },
+    {
+      "date": "2026-09-10T20:21:15+01:00",
+      "sha": "2a8ce40",
+      "subject": "Specs: sanction the plan's BLOCKED label; clarify ledger row 31"
+    },
+    {
+      "date": "2026-09-10T20:18:38+01:00",
+      "sha": "bb4ac69",
+      "subject": "PBI-009 review fixes: shelf stamp, dead utility, narrow-screen ledger"
+    },
     {
       "date": "2026-09-10T18:55:31+01:00",
       "sha": "b6a8d48",
@@ -72,14 +107,30 @@
   ],
   "defaultBranch": "master",
   "dirty": [
-    "M .gitignore",
-    "?? scripts/export-board.py"
+    "M docs/backlog/specs/platform-catalogue.md",
+    " M package.json",
+    " M src/styles/index.css",
+    " M src/ui/components/filter.test.ts",
+    " M src/ui/components/filter.ts",
+    " M src/ui/components/ledger-region.test.ts",
+    " M src/ui/components/ledger-region.ts",
+    " M src/ui/components/plan-view.test.ts",
+    " M src/ui/components/plan-view.ts",
+    " M src/ui/loader.ts",
+    " M src/ui/views/service.test.ts",
+    " M src/ui/views/service.ts",
+    "?? .github/",
+    "?? README.md",
+    "?? docs/HANDOVER.md",
+    "?? scripts/check-bundle.ts",
+    "?? src/ui/a11y.test.ts",
+    "?? src/ui/check-bundle.test.ts"
   ],
-  "generatedAt": "2026-09-10T18:25:16+00:00",
-  "head": "b6a8d48",
+  "generatedAt": "2026-09-11T05:53:05+00:00",
+  "head": "c8614cd",
   "remotes": [],
   "repoPath": "C:/Users/jdk/platform-catalogue",
-  "shortstat": "91 files changed, 8550 insertions(+), 4 deletions(-)",
+  "shortstat": "104 files changed, 11258 insertions(+), 4 deletions(-)",
   "source": "git, local repository",
-  "tracked": 93
+  "tracked": 106
 }
