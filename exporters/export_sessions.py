@@ -36,11 +36,14 @@ when the documents are written. Writes out/sessions/*.json, out/runs/*.json and 
 replacing all three.
 
 A malformed or vanished transcript file costs only that agent or session (a warning on stderr; an
-agent or session that cannot be re-read keeps its last cached result). The exit code is non-zero, and out/ is
+agent or session that cannot be re-read keeps its last cached result, except that an agent's row kept as
+running becomes killed once the running window has passed since its end). A line nested too deeply to parse,
+or a response whose token counts are not numbers, costs only that record. The exit code is non-zero, and out/ is
 left as it was, only when the export itself cannot be trusted: projectsRoot is missing, the project list
-is unusable, or a linked session's transcript cannot be found.
+is unusable, a sessions or runs value is not its documented type or a runs.manual row is malformed, or a
+linked session's transcript cannot be found.
 """
-import fnmatch, glob, io, json, os, re, shutil, sys, tempfile, time
+import fnmatch, glob, io, json, math, os, re, shutil, sys, tempfile, time
 from datetime import datetime, timezone, timedelta
 
 import board_config
@@ -48,7 +51,7 @@ import board_config
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(HERE, 'board.config.json')
 HOURS = 168  # hourly usage series covers the last week of a session's activity
-PARSER_VERSION = 4  # bump when parsing changes, to drop cached results
+PARSER_VERSION = 5  # bump when parsing changes, to drop cached results
 # Skill ids become keys in session documents and are matched against catalogue ids, so they are kept to a safe set.
 SKILL_ID = re.compile(r'^[A-Za-z0-9_.:-]{1,100}$')
 
@@ -60,6 +63,18 @@ TOKEN = r'(NO-GO|NOT-DONE|GO-WITH-CONDITIONS|GO-WITH-NOTES|CHANGES-REQUIRED|APPR
 REVIEW_TOKENS = ('NO-GO', 'GO-WITH-CONDITIONS', 'GO-WITH-NOTES', 'CHANGES-REQUIRED', 'APPROVE-WITH-NOTES',
                  'APPROVE-WITH-CONDITIONS', 'APPROVE', 'APPROVED', 'REJECT', 'REJECTED', 'GO')
 BUILD_TOKENS = ('NOT-DONE', 'DONE-WITH-CONDITIONS', 'DONE')
+# A verifier reports whether it could exercise the change or had to declare a fallback, rather than a review verdict.
+VERIFIER_TOKENS = ('exercised', 'fallback-declared')
+VERIFIER_WORD = r'(exercised|fallback-declared)'
+VERIFIER_TIERS = (
+    (r'\boutcome\W{0,6}' + VERIFIER_WORD + r'\b',),  # the JSON "outcome" key or an "Outcome:" label
+    (r'\bverdict\W{0,6}' + VERIFIER_WORD + r'\b', r'(?:\*\*|`)' + VERIFIER_WORD + r'(?:\*\*|`)'),
+    (r'\b' + VERIFIER_WORD + r'\b',),
+)
+# A verifier leads with its outcome and then says what it observed or why it could not run the flow, so a word
+# straight after a negation ("not exercised", "could not be exercised", "wasn't exercised") is never its outcome.
+NEGATED = re.compile(r"(?:\b(?:not|never|no|cannot|without|unable\s+to|rather\s+than|instead\s+of)|n't)"
+                     r"(?:[\s-]+(?:be|been|being|yet|fully|actually|really))*[\s*`-]*$", re.I)
 RATE_LIMIT = re.compile(r"hit your (?:session|weekly|usage) limit", re.I)
 FIX = re.compile(r'\b(review|LOWs?|notes|fix(?:es)?|CR-\d)', re.I)
 # Obvious credentials in prompt text. The long-run rule needs a digit, an upper- and a lower-case letter
@@ -82,8 +97,39 @@ GROUP_LABEL = {
 }
 
 
+def is_number(v):
+    """A usable JSON number: an int or a finite float, never a bool (JSON true reads as a Python int)."""
+    return not isinstance(v, bool) and (isinstance(v, int) or (isinstance(v, float) and math.isfinite(v)))
+
+
+# (block, key, check, what the value must be) for each typed value under sessions and runs; board_config.manual
+# checks the runs.manual rows. A value of the wrong type is refused rather than read loosely: bool("false") is
+# True, and a string exclude would be matched one character at a time, so "*-private" would exclude everything.
+CONFIG_TYPES = (
+    ('sessions', 'days', is_number, 'a number'),
+    ('sessions', 'projectsRoot', lambda v: isinstance(v, str), 'a string'),
+    ('sessions', 'exclude', lambda v: isinstance(v, list) and all(isinstance(p, str) for p in v), 'a list of strings'),
+    ('sessions', 'showFirstPrompt', lambda v: isinstance(v, bool), 'true or false'),
+    ('runs', 'runningWindowMinutes', is_number, 'a number'),
+)
+
+
+def check_types(cfg):
+    """Raise ValueError, naming the key, for a sessions or runs block that is not an object or a value in it that
+    does not have its CONFIG_TYPES type. A value that is left out takes its default."""
+    for block in ('sessions', 'runs'):
+        if not isinstance(cfg.get(block, {}), dict):
+            raise ValueError('"%s" must be an object, not %s' % (block, type(cfg[block]).__name__))
+    for block, key, ok, what in CONFIG_TYPES:
+        values = cfg.get(block, {})
+        if key in values and not ok(values[key]):
+            raise ValueError('%s.%s must be %s, not %r' % (block, key, what, values[key]))
+
+
 def settings(cfg, projects_root=None):
-    """The parts of board.config.json this exporter reads, with their defaults."""
+    """The parts of board.config.json this exporter reads, with their defaults. Raises ValueError for an unusable
+    project list, a value of the wrong type or a malformed runs.manual row."""
+    check_types(cfg)
     scfg, rcfg = cfg.get('sessions', {}), cfg.get('runs', {})
     projects, project_of = board_config.projects(cfg), {}
     for p in projects:
@@ -101,7 +147,7 @@ def settings(cfg, projects_root=None):
         'project_of': project_of,
         'window': rcfg.get('runningWindowMinutes', 10) * 60,
         'window_minutes': rcfg.get('runningWindowMinutes', 10),
-        'manual': rcfg.get('manual', []),
+        'manual': board_config.manual(cfg),
         'exclude': list(scfg.get('exclude') or []),
         'show_first_prompt': bool(scfg.get('showFirstPrompt', False)),
     }
@@ -145,7 +191,7 @@ def records(path):
         for line in f:
             try:
                 o = json.loads(line)
-            except ValueError:
+            except (ValueError, RecursionError):  # RecursionError: nested deeper than the parser can follow
                 continue
             if isinstance(o, dict):
                 yield line, o
@@ -201,8 +247,28 @@ def redact(text):
     return text
 
 
+def verifier_outcome(text):
+    """A verifier's outcome word, exercised or fallback-declared, or None, read in any case. An outcome label (the
+    first of VERIFIER_TIERS) decides when there is one. Without it, every other mention counts together, whether
+    Verdict-labelled, bold, code-quoted or bare, so a quoted exercised in the explanation cannot outrank a bare
+    fallback-declared headline. A word after a negation is skipped. Wherever both words are found, fallback-declared
+    wins: a verifier that ran part of a flow and declared a fallback for the rest did not exercise the change, and
+    under-claiming is the safe direction."""
+    for tiers in (VERIFIER_TIERS[:1], VERIFIER_TIERS[1:]):
+        found = {m.group(1).lower() for tier in tiers for pat in tier for m in re.finditer(pat, text, re.I)
+                 if not NEGATED.search(text[max(0, m.start() - 60):m.start()])}
+        if found:
+            return 'fallback-declared' if 'fallback-declared' in found else 'exercised'
+    return None
+
+
 def verdict_of(text, lane):
-    """The agent's own verdict token: a labelled 'Verdict:' first, then a bold or code-quoted token, then a bare one."""
+    """The agent's own verdict token: a labelled 'Verdict:' first, then a bold or code-quoted token, then a bare one.
+    On the ver lane, the verifier's outcome word comes first."""
+    if lane == 'ver':
+        outcome = verifier_outcome(text)
+        if outcome:
+            return outcome
     allowed = REVIEW_TOKENS if lane in REVIEW_LANES else BUILD_TOKENS
     for pat in (r'[Vv]erdict\W{0,6}' + TOKEN, r'(?:\*\*|`)' + TOKEN + r'(?:\*\*|`)', r'\b' + TOKEN + r'\b'):
         found = [t for t in re.findall(pat, text) if t in allowed]
@@ -214,8 +280,8 @@ def verdict_of(text, lane):
 
 
 def kind_of(token, lane):
-    if not token:
-        return 'done'
+    if not token or token in VERIFIER_TOKENS:
+        return 'done'  # a verifier's word is neither a pass nor a fail, so only its verdict text carries it
     if lane in BUILD_LANES:
         return 'changes' if token == 'NOT-DONE' else 'done'
     if lane not in REVIEW_LANES:
@@ -255,6 +321,20 @@ def classify(lane, fin, stop_at, text, begin, end, age, window):
     return kind, verdict, minutes
 
 
+def carried(row, window, now):
+    """The last row of an agent that could not be re-read, as it is carried over. Nothing reads its file, so a row
+    kept as running would never end: once the running window has passed since its end, or it has no readable
+    end, it becomes killed with no result, as classify() judges an agent that went quiet. A changed row is a copy;
+    any other row is returned as it is."""
+    if row.get('kind') != 'running':
+        return row
+    try:
+        quiet = now - epoch(row['end']) >= window
+    except (AttributeError, KeyError, TypeError, ValueError):
+        quiet = True
+    return dict(row, kind='killed', verdict='no result') if quiet else row
+
+
 def pbis(desc):
     """PBI ids named in a description, including the PBI-003/004/005 shorthand."""
     out = []
@@ -264,11 +344,17 @@ def pbis(desc):
     return sorted(set(out))
 
 
+TOKEN_FIELDS = ('input_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens', 'output_tokens')
+
+
 def response(by, o):
     """Record one assistant response, deduplicated by message id (streamed responses span several lines)."""
     m = o.get('message')
     if o.get('type') != 'assistant' or not isinstance(m, dict) or not isinstance(m.get('usage'), dict) or not m['usage'] \
             or m.get('model') == '<synthetic>':
+        return
+    # A count that is not a number would break every sum over the session, so the record is skipped instead.
+    if not all(m['usage'].get(k) is None or is_number(m['usage'][k]) for k in TOKEN_FIELDS):
         return
     r = by.setdefault(m.get('id') or o.get('uuid'), {'model': m.get('model'), 'ts': stamp(o), 'tools': [], 'usage': None})
     r['usage'] = m['usage']
@@ -655,7 +741,7 @@ def main(config=None, out_dir=None, projects_root=None, now=None):
             config = json.load(f)
     try:
         st = settings(config, projects_root)
-    except ValueError as e:  # an unusable project list
+    except ValueError as e:  # an unusable project list, or a config value of the wrong type
         print('export_sessions: %s; nothing exported' % e, file=sys.stderr)
         return 2
     out = out_dir or os.path.join(HERE, 'out')
@@ -694,6 +780,7 @@ def main(config=None, out_dir=None, projects_root=None, now=None):
             continue
         hit = cache.get(sid) if isinstance(cache.get(sid), dict) else None
         cached = (hit or {}).get('result') or {}
+        stale = False
         # A result that skipped an unreadable agent is never reused: a finished agent's file does not change
         # again, so a signature match would keep that agent missing for good.
         if hit and hit.get('sig') == sig and not cached.get('skipped') and not any(r['kind'] == 'running' for r in cached.get('rows', [])):
@@ -703,7 +790,7 @@ def main(config=None, out_dir=None, projects_root=None, now=None):
                 result = parse_session(base, sid, main_path, st, t0)
                 if result and result['skipped']:
                     # Until it reads again, a skipped agent keeps its last row, so refresh.py does not delete its run.
-                    result['rows'] += [r for r in cached.get('rows', []) if r['id'] in result['skipped']]
+                    result['rows'] += [carried(r, st['window'], t0) for r in cached.get('rows', []) if r['id'] in result['skipped']]
                 fresh[sid] = {'sig': sig, 'result': result}
                 parsed += 1
             except Exception as e:  # one unreadable session must not stop the export
@@ -712,7 +799,12 @@ def main(config=None, out_dir=None, projects_root=None, now=None):
                 if not hit:
                     continue
                 fresh[sid] = hit  # keeps the old signature, so the session is re-read next run
+                stale = True
         result = fresh[sid]['result']
+        if stale and result:
+            # Nothing re-read the session's agents either, so the export gets a copy whose running rows are judged
+            # as carried() judges an agent that could not be read. The cache keeps the rows as they were read.
+            result = dict(result, rows=[carried(r, st['window'], t0) for r in result.get('rows', [])])
         # A transcript can be touched without new activity, so the window is judged on the last timestamp.
         if result and (sid in st['build'] or (result['doc'].get('last') and t0 - epoch(result['doc']['last']) <= st['days'] * 86400)):
             results[sid] = result

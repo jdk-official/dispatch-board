@@ -24,6 +24,10 @@ that would delete any projects/ document, one that would delete every pushed pro
 project, or one that would delete catalogue/index, is taken to be a broken export rather than real change:
 refresh.py prints why, exits non-zero and leaves nothing pending, unless --allow-mass-delete is given.
 
+Answers to plan-gate questions are recorded only by a human, never by an exporter or an agent. An export that
+holds any document in the answers collection is refused outright: refresh.py names the collection, exits
+non-zero and leaves nothing pending, and no flag lifts that.
+
 State: out/.pushed.json (what the store holds), out/.pending.json (the last printed plan).
 """
 import glob, hashlib, io, json, os, subprocess, sys, tempfile
@@ -39,6 +43,10 @@ META_STATUS = 'meta/status'
 
 
 class MassDelete(Exception):
+    pass
+
+
+class AnswersRefused(Exception):
     pass
 
 
@@ -93,8 +101,15 @@ def split(key):
 
 def plan(out, allow_mass_delete=False):
     """Diff out/ against the last push. Returns {batches, live, writes} and records it as pending, or None
-    when nothing changed. Raises MassDelete, leaving nothing pending, for a delete that looks like a broken export."""
+    when nothing changed. Raises MassDelete, leaving nothing pending, for a delete that looks like a broken export,
+    and AnswersRefused, leaving nothing pending whatever allow_mass_delete says, for an export holding an answer."""
     pushed_path, pending_path = os.path.join(out, '.pushed.json'), os.path.join(out, '.pending.json')
+    answers = sorted(glob.glob(os.path.join(out, 'answers', '**', '*.json'), recursive=True))
+    if answers:
+        discard(pending_path)
+        names = [os.path.relpath(f, out).replace('\\', '/')[:-len('.json')] for f in answers]
+        raise AnswersRefused('refusing the plan: it would write to the answers collection (%s). Answers are recorded '
+                             'only by a human, so no exporter may produce one. Nothing is pending.' % ', '.join(names[:5]))
     docs = {}  # "collection/doc_id" -> file
     for coll in MANAGED:
         for f in glob.glob(os.path.join(out, coll, '*.json')):
@@ -196,7 +211,7 @@ def main(argv=None, out=OUT, run_export=export):
         return 1
     try:
         p = plan(out, allow_mass_delete='--allow-mass-delete' in argv)
-    except MassDelete as e:
+    except (MassDelete, AnswersRefused) as e:
         print('refresh.py: %s' % e, file=sys.stderr)
         return 2
     if p is None:

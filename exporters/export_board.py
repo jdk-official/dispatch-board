@@ -72,29 +72,46 @@ def bullets(block):
 
 
 LATER = '### Future iterations (not planned)'
+# A list item's marker, "-", "*", "+" or "1.", then a space or the end of the line: never "-text" or "**bold".
+MARKER = re.compile(r'(?:[-*+]|\d{1,9}\.)(?: (.*))?$')
+# A horizontal rule such as "---", "* * *" or "- - -", which would otherwise read as a list item.
+RULE = re.compile(r' {0,3}([-*_])(?: *\1){2,} *$')
 
 
 def later_items(spec):
     """The ideas listed under the spec's LATER heading, as [{title, description}]; [] without the heading.
 
     The list runs to the next heading of the same level or higher, so a #### sub-heading inside it only groups
-    more ideas. Each top-level "- " bullet is one idea, and a wrapped or indented line straight after it
-    continues it. The title is the first bold span, less a trailing colon, and the description is the text
-    after that span, less a leading colon. A bullet with words before its bold span keeps them: its
-    description is the whole bullet. A bullet without a bold span is all title with no description, so no
-    idea is dropped for how it is formatted.
+    more ideas. Each list item ("-", "*", "+" or "1." marker) indented by at most three spaces is one idea, and
+    a wrapped or indented line straight after it continues it. A list line indented further (four spaces or a
+    tab) is a nested item: it is not an idea of its own, and it and the lines that continue it are kept in its
+    idea's text, marker included. An indented line after a blank line (a loose list's nested item or paragraph)
+    also stays in the idea, so nothing written under an idea is lost; a blank line followed by an unindented
+    line that starts no idea, or a horizontal rule, ends it. The title is the first bold span,
+    less a trailing colon, and the description is the text after that span, less a leading colon. A bullet with words before its bold span
+    keeps them: its description is the whole bullet. A bullet without a bold span is all title with no
+    description, so no idea is dropped for how it is formatted.
     """
     block = section(spec.replace('\r\n', '\n'), LATER)
-    found, current = [], None
+    found, current, blank = [], None, False
     for line in block.split('\n'):
-        m = re.match(r'-(?: (.*))?$', line)   # "- text" or a bare "-", never "-text" or a --- rule
-        if m:
+        text = line.expandtabs(4)
+        body = text.lstrip(' ')
+        m = MARKER.match(body)
+        indent = len(text) - len(body)
+        if not line.strip():
+            blank = True
+            continue
+        if RULE.match(text):
+            current = None
+        elif m and indent <= 3:
             current = [m.group(1) or '']
             found.append(current)
-        elif line.strip() and current is not None:
-            current.append(line.strip())
-        else:
-            current = None
+        elif blank and not indent:
+            current = None  # a paragraph after the list, not part of the idea above it
+        elif current is not None:
+            current.append(line.strip())  # a wrapped line, or a nested item or a line that continues one
+        blank = False
     items = []
     for parts in found:
         text = clean(' '.join(p.strip() for p in parts))
@@ -259,6 +276,15 @@ def spec_tabs(p, data, now):
     }
 
 
+# The userinfo of a URL remote: everything between "://" and the last "@" before the host's first "/".
+USERINFO = re.compile(r'(?<=://)[^/\s]*@')
+
+
+def public_remote(line):
+    """A `git remote -v` line without the userinfo of its URL, so a token stored in a remote URL is never published."""
+    return USERINFO.sub('', line)
+
+
 def git_tab(root, now):
     branch = git(root, 'branch', '--show-current')
     default = 'master' if git(root, 'rev-parse', '--verify', '--quiet', 'master') else ('main' if git(root, 'rev-parse', '--verify', '--quiet', 'main') else '')
@@ -272,7 +298,7 @@ def git_tab(root, now):
         d = f.split('/')[0] if '/' in f else '(root)'
         by_dir[d] = by_dir.get(d, 0) + 1
     dirty = [l for l in git(root, 'status', '--short').splitlines() if l.strip()]
-    remotes = [l for l in git(root, 'remote', '-v').splitlines() if l.strip()]
+    remotes = [public_remote(l) for l in git(root, 'remote', '-v').splitlines() if l.strip()]
     ahead = git(root, 'rev-list', '--count', '%s..%s' % (default, branch)) if default and branch else ''
     shortstat = git(root, 'diff', '--shortstat', default, branch) if default and branch else ''
     return {'source': 'git, local repository', 'generatedAt': now, 'repoPath': root.replace('\\', '/'),
@@ -300,11 +326,24 @@ def github_origin(remotes):
     return False
 
 
-def pulls(pid, root, run):
+def github_repo(remotes):
+    """"owner/name" from the origin remote's github.com URL, or None when origin is not on github.com or its path
+    is not just an owner and a repository name."""
+    for line in remotes:
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] == 'origin' and GITHUB_URL.match(parts[1]):
+            m = re.match(r'([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$', parts[1][GITHUB_URL.match(parts[1]).end():])
+            return '%s/%s' % m.groups() if m else None
+    return None
+
+
+def pulls(pid, root, run, repo=None):
     """The repo's pull requests from gh, most recently updated first, or None (with a warning) when gh cannot
-    list them. run stands in for subprocess.run."""
+    list them. run stands in for subprocess.run. repo ("owner/name"), when known, is passed as --repo: gh
+    otherwise picks the base repository by its own rules, which need not be the origin."""
     try:
-        r = run(PR_LIST, cwd=root, capture_output=True, text=True, encoding='utf-8', timeout=PR_TIMEOUT)
+        r = run(PR_LIST + (['--repo', repo] if repo else []), cwd=root, capture_output=True, text=True, encoding='utf-8',
+                timeout=PR_TIMEOUT)
         if r.returncode != 0:
             detail = next((l.strip() for l in (r.stderr or '').splitlines() if l.strip()), '')
             reason = 'gh exited %d' % r.returncode + (': ' + detail if detail else '')
@@ -349,7 +388,7 @@ def main(config=None, out_dir=None, data_dir=None, now=None, run=None):
                 if is_repo(p['repoPath']):
                     docs['git'] = git_tab(p['repoPath'], stamp)
                     if github_origin(docs['git']['remotes']):
-                        prs = pulls(p['id'], p['repoPath'], run or subprocess.run)
+                        prs = pulls(p['id'], p['repoPath'], run or subprocess.run, github_repo(docs['git']['remotes']))
                         if prs is not None:
                             docs['git']['pulls'] = prs
             # Kept as the exact bytes, so refresh.py sees no change and pushes nothing for them.
