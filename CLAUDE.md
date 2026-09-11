@@ -2,8 +2,9 @@
 
 A live dashboard of an agent-built software project. It shows which Claude Code agents ran, what
 came back from review, what the spec says, which assumptions are waiting on a human, the backlog,
-the repository, and Claude usage. It currently tracks the **platform-catalogue** build at
-`C:/Users/jdk/platform-catalogue` (branch `build/logic-core`).
+the repository, and Claude usage. It tracks the projects listed under `projects` in `board.config.json`:
+**platform-catalogue** (`C:/Users/jdk/platform-catalogue`, branch `build/logic-core`) and **dispatch-board**
+(this repo, branch `main`).
 
 ## The published page
 
@@ -11,6 +12,12 @@ the repository, and Claude usage. It currently tracks the **platform-catalogue**
 - Source: `site/index.html`. It is authored as page content only — no `<html>`, `<head>` or `<body>`; the Artifact tool wraps it.
 - **To update it from a new session:** first `Artifact` with `action: "read"` and that `url`, then publish with `file_path: site/index.html` **and the same `url`**. Publishing without `url` creates a separate artifact. Omit `capabilities` and `favicon` on redeploys so the stored ones carry forward.
 - Capabilities: `db` only, rule `{ path: "", read: "interact", write: "admin" }` — viewers read, only editors write. The page never writes; the building session does.
+- **Switching the published page to project-first navigation** (while the published page is still the version from before projects): do these three steps back to back.
+  1. Push the data (the Refresh procedure below).
+  2. Publish `site/index.html` straight away.
+  3. Reload any open copy of the page, because an open copy keeps running the script it loaded.
+
+  Between steps 1 and 2 the old page still works from the retired `tabs/*` and each session's `build` flag, which marks only platform-catalogue's sessions. A copy of the new page opened before the first project push moves from "Other sessions" to a project once the projects arrive, unless the viewer chose "Other sessions".
 
 ## How data gets onto the page
 
@@ -18,24 +25,32 @@ The page holds no data. It subscribes to the artifact's store and re-renders on 
 
 | Store path | Written by | Shape |
 |---|---|---|
-| `sessions/<id>` (one per Claude Code session active in the last `sessions.days` days; id = session id) | `exporters/export_sessions.py`, discovered under `sessions.projectsRoot` | `title`, `project`, `cwd`, `firstPrompt` (only with `sessions.showFirstPrompt`, secrets redacted), `start`, `last`, `build` (listed in `build.sessions`, so the project tabs describe it), `windowDays` (`sessions.days`, for the picker's labels), `windowMinutes` (`runs.runningWindowMinutes`: how long after its last activity the page still shows a session as live), `runs`, `running`, `usage` (the usage tab's data) |
-| `runs/<id>` (one per agent run; id = the subagent's agent id) | `exporters/export_sessions.py`, from each session's transcripts; in-line orchestrator work comes from `runs.manual` in `board.config.json` | `session`, `seq` (order within the session), `lane` (`orch`/`req`/`plan`/`cw`/`tw`/`cr`/`ver`/`human`), `label`, `kind` (`running`/`done`/`go`/`changes`/`nogo`/`killed`; a builder that reports NOT-DONE is `changes`), `verdict` (short text), `tok`, `min`, optional `from` / `feeds` (another run id: hand-off / verdict fed back), optional `group` (parallel batch id) |
-| `meta/status` | `title`, `message`, `metrics`: the orchestrating session by hand. `live`, `updatedAt`: `exporters/refresh.py`, only when build data changed (a `tabs/*` doc, a build session, or one of its runs) or `live` flipped | `title`, `message`, `live` (bool), `updatedAt` (ISO), `metrics` `{ tests, testFiles, coverage, bundle, measuredAt, measuredOn }` |
-| `tabs/spec`, `tabs/assumptions`, `tabs/decisions`, `tabs/backlog`, `tabs/git` | `exporters/export_board.py` | read from the build repo's spec, PRD, brief, ADRs, local review notes and git |
+| `sessions/<id>` (one per Claude Code session active in the last `sessions.days` days, plus every session linked to a project; id = session id) | `exporters/export_sessions.py`, discovered under `sessions.projectsRoot` | `title`, `folder` (the working folder's name), `cwd`, `firstPrompt` (only with `sessions.showFirstPrompt`, secrets redacted), `start`, `last`, `project` (the id of the project whose `sessions` list it, or null), `build` (true only for sessions of the project whose `statusDoc` is `meta/status`, platform-catalogue: what copies of the page from before projects call the build, shown with the retired `tabs/*`; nothing else reads it), `windowDays` (`sessions.days`, for the picker's labels), `windowMinutes` (`runs.runningWindowMinutes`: how long after its last activity the page still shows a session as live), `runs`, `running`, `usage` (the usage tab's data) |
+| `runs/<id>` (one per agent run; id = the subagent's agent id) | `exporters/export_sessions.py`, from each session's transcripts; in-line orchestrator work comes from `runs.manual` in `board.config.json` | `session`, `project` (its session's project, or null), `seq` (order within the session), `lane` (`orch`/`req`/`plan`/`cw`/`tw`/`cr`/`ver`/`human`), `label`, `kind` (`running`/`done`/`go`/`changes`/`nogo`/`killed`; a builder that reports NOT-DONE is `changes`), `verdict` (short text), `tok`, `min`, optional `from` / `feeds` (another run id: hand-off / verdict fed back), optional `group` (parallel batch id) |
+| `projects/<projectId>` (one per entry in `projects` in `board.config.json`) | `exporters/export_sessions.py` | `name`, `repoPath`, `branch`, `sessions` (its linked sessions that were exported), `statusDoc`, `order` (position in the config: the picker's order), `runs`, `running`, `last` (latest activity across its sessions), `usage` (all its sessions combined, in the same shape as a session's `usage`) |
+| `projectTabs/<projectId>.<tab>` (tab = `spec`, `assumptions`, `decisions`, `backlog`, `git`) | `exporters/export_board.py` | read from the project's repo: the files named in its `docs`, its local review notes and git, plus its data file (see Projects). A tab whose source has never existed is not written (spec, assumptions, decisions and backlog need the spec; git needs a git repository), and the page shows its "not exported yet" state. Once exported, a tab whose source goes missing keeps its last export (a warning on stderr) |
+| `meta/status` (platform-catalogue's `statusDoc`) | `title`, `message`, `metrics`: its build session by hand. `live`, `updatedAt`: `exporters/refresh.py`, only when that project's data changed (its `projects`/`projectTabs` docs, a linked session, or one of that session's runs) or `live` flipped | `title`, `message`, `live` (bool), `updatedAt` (ISO), `metrics` `{ tests, testFiles, coverage, bundle, measuredAt, measuredOn }` |
+| `status/<projectId>` (every other project's `statusDoc`) | `live`, `updatedAt`: `exporters/refresh.py`, under the same rule; created with `set` on its first write, merged into after. `title`, `message`, `metrics` are optional, by hand | same shape as `meta/status` |
+
+Retired: `tabs/spec`, `tabs/assumptions`, `tabs/decisions`, `tabs/backlog`, `tabs/git` (the single-project tabs, replaced by `projectTabs`). The page no longer reads them, and `refresh.py` never deletes them: it deletes only in the collections it manages (`runs`, `sessions`, `projects`, `projectTabs`). They stay in the store until the owner approves deleting them.
 
 `snapshot/` holds a copy of every store document as of the move (2026-09-10). Restore any of it with `write_db` (`file_path` per document).
 
 ## Refresh procedure
 
 No session reports to the board; a refresher session reads what sessions leave on disk. Sessions are
-discovered automatically. The page has a session picker: Dispatch, usage and the Overview follow the
-selected session; the project tabs (spec, assumptions, decisions, backlog, GitHub) show only for build
-sessions. Add a session id to `build.sessions` in `board.config.json` to mark it as a build of the
-tracked project.
+discovered automatically. The page's picker lists the projects, then "Other sessions". A project always
+shows all its tabs (Overview, Spec, Assumptions, Decisions, Backlog, GitHub, Dispatch, Claude usage).
+Dispatch, usage and the Overview's agent tiles combine every session linked to the project, and a
+session filter narrows them to one. "Other sessions" is the session-scoped view (Overview, Dispatch,
+usage) for sessions linked to no project. Add a session id to a project's `sessions` in
+`board.config.json` to link it.
 
 1. `python exporters/refresh.py` runs both exporters (`export_board.py`, `export_sessions.py`) and prints the store writes that changed since the last push (`nothing to push` if none). Entries point at files under `out/`. If it exits non-zero instead, push nothing:
-   - `export_sessions.py` fails when `sessions.projectsRoot` is missing or a `build.sessions` transcript cannot be found, rather than exporting an empty board. A single malformed transcript only costs that session or agent (a warning on stderr).
-   - **Mass-delete guard:** if the export has no sessions, or would delete more than half of the pushed `runs` and `sessions`, refresh.py refuses and leaves nothing pending. Check the projects root and transcripts; only if the deletions are really intended, re-run as `python exporters/refresh.py --allow-mass-delete`.
+   - `export_sessions.py` fails when `sessions.projectsRoot` is missing or a linked session's transcript (`projects[].sessions`) cannot be found, rather than exporting an empty board. A single malformed transcript only costs that session or agent (a warning on stderr).
+   - `export_board.py` fails when a project data file (`projects/<projectId>.json`) is not valid JSON, rather than resetting that project's build state. A tab that was exported before but cannot be rebuilt (the project's `repoPath` is missing or moved, its spec was renamed, git is unavailable) keeps its last export, with a warning on stderr, while the other projects refresh as usual. Fix the source; a project's tabs go only when it is removed from `projects`.
+   - Both exporters fail when `projects` in `board.config.json` is not a list of objects, or a project's `id` or `statusDoc` is unusable.
+   - **Mass-delete guard:** refresh.py refuses, and leaves nothing pending, if the export has no sessions, would delete more than half of the pushed `runs` and `sessions`, would delete any `projects/*` document, or would delete every pushed `projectTabs` document of a project. Check the projects root, the transcripts and `projects` in `board.config.json`; only if the deletions are really intended (for example, a project was removed from the config), re-run as `python exporters/refresh.py --allow-mass-delete`.
 2. `Artifact` `action: "write_db"`, `db_op: "batch"`, `url` = the live page, `writes` = the printed array (it splits into several batches past 50).
 3. Only after the write succeeds: `python exporters/refresh.py --commit`. If a write fails, skip this; the next run re-offers the same changes.
 
@@ -53,9 +68,29 @@ Session privacy, in `sessions` in `board.config.json`:
 - `showFirstPrompt` (default `false`): publish each session's first prompt as `firstPrompt`. Obvious secrets (`sk-…`, `gh[pousr]_…`, `AKIA…`, hex or base64 runs of 32+ characters, `password=` / `token=` values) are replaced with `[redacted]` first. While it is off, a session without a title shows its short id rather than its prompt.
   - Session titles are published whatever this setting says, and Claude Code's AI-generated titles are a summary of the first prompt. Redaction is not applied to titles, run labels (the agents' task descriptions) or the usage tab's agent descriptions, so a secret in any of those is published as written; exclude the session if that matters.
 
-Tests: `python -m unittest discover -s tests` (stdlib only). They build synthetic transcripts and `out/` folders in temporary directories, pass their own config, and never touch the real `out/` or the live board.
+Tests, run both:
 
-Per-PBI build state is not recorded anywhere in the build repo, so it lives in `BUILD_STATE` at the top of `exporters/export_board.py` and must be edited by hand as work items move. `NOT_WORKED_OUT` there maps the brief's open questions to ledger rows.
+- `python -m unittest discover -s tests` (stdlib only). They build synthetic transcripts and `out/` folders in temporary directories, pass their own config, and never touch the real `out/` or the live board.
+- `node tests/page.test.mjs` (node built-ins only, no `npm install`). It runs the inline script of `site/index.html` against a stub DOM and a fake store, and checks the project picker and session filter; it exits non-zero on the first failed check.
+
+## Projects
+
+Projects are listed under `projects` in `board.config.json`, in picker order. Each entry has:
+
+- `id` (letters, digits, `-` and `_`; used in store ids and file names), `name`, `repoPath`, `branch`.
+- `sessions`: the Claude Code session ids that build it. Build sessions run from `C:\Users\jdk`, not the repo folder, so they are listed rather than found.
+- `statusDoc`: `meta/status` for platform-catalogue; `status/<id>` otherwise (the default).
+- `docs`: paths relative to `repoPath`: `spec`, `prd`, `brief`, `adrDir`, `board`, optionally `design` (a design spec whose revision the Spec tab shows) and `reviews` (`[{ "gate", "path" }]`; `{round}` in the path stands for rounds 1 to 3). `board` is recorded but not read yet: the Backlog tab's note about the BOARD comes from the data file.
+
+A config without `projects` (the older `build.*` / `usage.sessions` shape) is still read, as one project whose `statusDoc` is `meta/status`.
+
+**Hand-kept build state lives in `projects/<projectId>.json`** in this repo (not in the build repo, not in `out/`); platform-catalogue's is `projects/platform-catalogue.json`. It records what the build repo does not, and the build session edits it by hand as work items move:
+
+- `buildState`: per PBI, `{ "state", "review", "open", "commit" }`. `state` is `done`, `conditions`, `partial` or `todo`; a PBI that is not listed is `todo`.
+- `notWorkedOut`: `[{ "item", "row", "adr" }]`, the brief's "Things I haven't worked out" mapped to spec ledger rows (`adr` may be `null`).
+- `boardNote`: the text the Backlog tab shows about the BOARD.
+
+A project without a data file has no build state. A data file that is not valid JSON stops `export_board.py`, so `refresh.py` pushes nothing until it is fixed. `tests/test_export_board.py` checks every data file's shape.
 
 ## Design rules (the owner's stated preferences)
 
@@ -69,11 +104,12 @@ Per-PBI build state is not recorded anywhere in the build repo, so it lives in `
 ## Open items
 
 - **Two token figures disagree.** Dispatch shows agents' self-reported tokens (~2.4M); the usage tab shows transcript-derived effective usage (agents ~8.3M). Switch Dispatch to transcript figures so there is one number.
-- **Leftover documents.** The store still holds the hand-written `runs/r01`…`r36` and a stale `tabs/usage`. The page never shows those runs, because they have no `session` field and it lists only the selected session's runs. `refresh.py` never deletes them either: it deletes only documents recorded in `out/.pushed.json`, and these never were. Remove them by hand with `write_db` delete ops if wanted, and tell the build session to stop writing `runs` rows by hand.
+- **Retired tabs.** Since project-first navigation, the store's `tabs/spec`, `tabs/assumptions`, `tabs/decisions`, `tabs/backlog` and `tabs/git` are leftovers too. Nothing reads or deletes them; remove them by hand with `write_db` delete ops once the owner agrees.
+- **Leftover documents.** Besides the retired `tabs/*`, the store holds a stale `tabs/usage`. `refresh.py` never deletes it, because it deletes only documents recorded in `out/.pushed.json`. Remove it by hand with a `write_db` delete once the owner agrees. The hand-written `runs/r01`…`r36` were deleted at the switch to generated rows on 2026-09-10.
 - Inferred links are heuristics: `feeds` needs a PBI id or the word review/notes/LOWs/fix in the task description; runs without one (e.g. "Align types.ts…") get no link.
 - The usage tab is not a plan meter: transcripts record only the moments a limit refused a request.
 - The Browser pane cannot open files outside an open project folder; preview `site/index.html` from this project instead.
 
 ## The build it tracks (paused)
 
-platform-catalogue, branch `build/logic-core`, 12 commits, not merged to `master`, no remote. Remaining: fix PBI-009's two review items; finish PBI-010 (profile picker, onboarding-plan view); PBI-011 delivery checks and a verifier pass; PBI-012 Pages workflow file; local merge; handover. The plan gate still needs the owner's confirmation of 20 assumptions. Nothing is pushed or deployed without the owner saying so.
+platform-catalogue, branch `build/logic-core`, not merged to `master`, no remote. Its work-item state is recorded in `projects/platform-catalogue.json`, which is the source of truth (the Backlog tab shows it). What the plan gate still needs from the owner is in the spec (the Assumptions tab). This file does not restate either, so it cannot fall out of step with them. Nothing is pushed or deployed without the owner saying so.

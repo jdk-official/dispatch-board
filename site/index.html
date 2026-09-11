@@ -54,8 +54,10 @@
   .status { display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 6px; background: var(--raised); font-size: 12.5px; font-weight: 600; }
   .status i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
   .status.on { color: var(--live); } .status.on i { background: var(--live); }
-  .tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin-bottom: -1px; }
-  .tabs::-webkit-scrollbar { display: none; }
+  /* Tabs wrap onto a second row rather than scroll, so none is ever clipped out of sight. */
+  .tabs { display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: -1px; }
+  .tabs .grp { position: relative; margin-left: 12px; }
+  .tabs .grp::before { content: ""; position: absolute; left: -7px; top: 10px; bottom: 12px; width: 1px; background: var(--rule-2); }
   .tabs button { font: 500 13.5px/1 inherit; font-family: inherit; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--ink-2); padding: 11px 12px 12px; cursor: pointer; white-space: nowrap; display: inline-flex; gap: 7px; align-items: center; }
   .tabs button:hover { color: var(--ink); }
   .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
@@ -183,7 +185,7 @@
 
   @media (max-width: 1100px) { .g-2-1, .g-1-1, .g-3 { grid-template-columns: 1fr; } .cells { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); } }
   @media (max-width: 640px) {
-    .wrap { padding: 0 16px; } .crumb, .updated { display: none; } .picker select { max-width: 52vw; }
+    .wrap { padding: 0 16px; } .crumb, .updated { display: none; } .brand { flex-wrap: wrap; } .picker select { max-width: 44vw; }
     .track { grid-template-columns: 1fr; gap: 6px; } .facts { grid-template-columns: 1fr; gap: 2px; } .facts dd { margin-bottom: 8px; }
     .hbars .r { grid-template-columns: 110px minmax(0, 1fr) 26px; }
   }
@@ -195,8 +197,9 @@
       <div class="brand">
         <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 8.5h11M6.5 12h7M6.5 15.5h4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="17.5" cy="15.5" r="2" fill="var(--human)"/></svg>
         <span class="t">Dispatch board</span>
-        <label class="picker"><span class="sr">Session</span><select id="session" disabled><option>Loading sessions…</option></select></label>
-        <span class="crumb" id="crumb" hidden>build/logic-core</span>
+        <label class="picker"><span class="sr">Project</span><select id="project" disabled><option>Loading projects…</option></select></label>
+        <label class="picker"><span class="sr">Session</span><select id="session" disabled><option>All sessions</option></select></label>
+        <span class="crumb" id="crumb" hidden></span>
       </div>
       <div class="right">
         <span class="faint updated" id="updated"></span>
@@ -205,12 +208,12 @@
     </div>
     <nav class="tabs" role="tablist" aria-label="Dashboard sections">
       <button role="tab" id="tab-overview" aria-controls="panel-overview" data-tab="overview">Overview</button>
-      <button role="tab" id="tab-dispatch" aria-controls="panel-dispatch" data-tab="dispatch">Dispatch</button>
       <button role="tab" id="tab-spec" aria-controls="panel-spec" data-tab="spec">Spec</button>
       <button role="tab" id="tab-assumptions" aria-controls="panel-assumptions" data-tab="assumptions">Assumptions <span class="count human" id="c-assumptions" hidden></span></button>
       <button role="tab" id="tab-decisions" aria-controls="panel-decisions" data-tab="decisions">Decisions &amp; not worked out</button>
       <button role="tab" id="tab-backlog" aria-controls="panel-backlog" data-tab="backlog">Backlog &amp; status <span class="count warn" id="c-backlog" hidden></span></button>
       <button role="tab" id="tab-git" aria-controls="panel-git" data-tab="git">GitHub details</button>
+      <button role="tab" id="tab-dispatch" aria-controls="panel-dispatch" data-tab="dispatch" class="grp">Dispatch</button>
       <button role="tab" id="tab-usage" aria-controls="panel-usage" data-tab="usage">Claude usage</button>
     </nav>
   </div>
@@ -251,7 +254,9 @@
   const stateLabel = { done: 'Built and reviewed', conditions: 'Conditions open', partial: 'Partly built', todo: 'Not started' };
   const kindLabel = { done: 'Done', go: 'Approved', changes: 'Changes required', nogo: 'Rejected', killed: 'Cut off', running: 'Running' };
 
-  let allRuns = [], runs = [], sessions = [], sel = null, loaded = false, offline = false, status = null;
+  // view is "p:<projectId>" or "other"; sel is the session filter ('' = all of the project's sessions).
+  let allRuns = [], runs = [], sessions = [], projects = [], tabDocs = {}, statuses = {}, view = null, sel = '';
+  let gotSessions = false, gotProjects = false, loaded = false, offline = false, status = null;
   const docs = { spec: null, assumptions: null, decisions: null, backlog: null, git: null, usage: null };
   const lanes = [
     ['orch', 'Orchestrator', 'this session'], ['req', 'requirements-author', 'engineering-agents'],
@@ -262,15 +267,26 @@
   const OTHER = ['other', 'Other agents', 'general-purpose, Explore, …'];
   const laneName = Object.fromEntries([...lanes, OTHER].map(l => [l[0], l[1]]));
   const agentName = r => r.lane === 'other' ? (r.agent || 'agent') : (laneName[r.lane] || r.lane);
+  const OTHER_VIEW = 'other';
+  const proj = () => view && view.startsWith('p:') ? projects.find(p => 'p:' + p.id === view) || null : null;
+  const inProject = () => !!proj();
   const cur = () => sessions.find(s => s.id === sel);
-  const isBuild = () => !!cur()?.build;
   const windowDays = () => sessions.find(s => s.windowDays)?.windowDays || 7;
   const sessionLive = s => !!s && (s.running > 0 || Date.now() - new Date(s.last) < (Number(s.windowMinutes) || 10) * 60000);
-  // A build keeps every pipeline lane in its swimlane; any other session shows only the lanes it used.
-  const laneList = () => { const used = new Set(runs.map(r => r.lane)); const base = isBuild() ? lanes : lanes.filter(l => used.has(l[0])); return used.has('other') ? [...base, OTHER] : base; };
-  const sorted = () => runs.slice().sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+  // A session whose project is not on the board, or that has none, belongs under "Other sessions".
+  const unlinked = () => sessions.filter(s => !projects.some(p => p.id === s.project));
+  const filterSessions = () => { const p = proj(); return p ? sessions.filter(s => s.project === p.id) : unlinked(); };
+  const scopeName = () => inProject() && !sel ? "this project's sessions" : 'this session';
+  // A project keeps every pipeline lane in its swimlane; a session outside one shows only the lanes it used.
+  const laneList = () => { const used = new Set(runs.map(r => r.lane)); const base = inProject() ? lanes : lanes.filter(l => used.has(l[0])); return used.has('other') ? [...base, OTHER] : base; };
+  const sessionStart = id => sessions.find(s => s.id === id)?.start || '';
+  // seq orders runs within one session; a project's sessions follow each other in the order they started.
+  const sorted = () => runs.slice().sort((a, b) => a.session === b.session ? (a.seq ?? 0) - (b.seq ?? 0)
+    : String(sessionStart(a.session)).localeCompare(String(sessionStart(b.session))) || String(a.session).localeCompare(String(b.session)));
   const agentRuns = () => runs.filter(r => r.lane !== 'orch');
-  const isLive = () => isBuild() ? (runs.some(r => r.kind === 'running') || status?.live === true) : sessionLive(cur());
+  // A project is live while any of its runs is running, whichever session the filter shows.
+  const isLive = () => { const p = proj(); return p ? (allRuns.some(r => r.project === p.id && r.kind === 'running') || status?.live === true) : sessionLive(cur()); };
+  const scopeLive = () => sel ? sessionLive(cur()) : isLive();
   // Review verdicts come from reviewing lanes only; a builder's NOT-DONE is also kind 'changes'.
   const verdictRuns = () => runs.filter(r => ['plan', 'cr', 'ver'].includes(r.lane) && ['go', 'changes', 'nogo'].includes(r.kind));
 
@@ -301,13 +317,13 @@
 
   // ---------------- header ----------------
   function renderHeader() {
-    const live = isLive();
+    const live = isLive(), p = proj();
     $('status').className = 'status' + (live ? ' on' : '');
-    const b = isBuild(), upd = b ? status?.updatedAt : cur()?.last;
-    $('statusText').textContent = !loaded ? (offline ? 'Offline' : 'Connecting') : b ? (live ? 'Building' : (status?.title || 'Idle')) : (live ? 'Active' : 'Idle');
-    $('updated').textContent = upd ? (b ? 'Updated ' : 'Last activity ') + ago(upd) : '';
-    $('crumb').hidden = !(b && docs.git?.branch);
-    if (docs.git?.branch) $('crumb').textContent = docs.git.branch;
+    const upd = p ? status?.updatedAt : cur()?.last, branch = docs.git?.branch || p?.branch;
+    $('statusText').textContent = !loaded ? (offline ? 'Offline' : 'Connecting') : p ? (live ? 'Building' : (status?.title || 'Idle')) : (live ? 'Active' : 'Idle');
+    $('updated').textContent = upd ? (p ? 'Updated ' : 'Last activity ') + ago(upd) : '';
+    $('crumb').hidden = !(p && branch);
+    if (branch) $('crumb').textContent = branch;
     const you = docs.assumptions?.humanList?.length || 0, cA = $('c-assumptions');
     cA.hidden = !you; cA.textContent = you;
     const pb = docs.backlog?.pbis || [], open = pb.filter(p => p.state === 'conditions' || p.state === 'partial').length, cB = $('c-backlog');
@@ -369,7 +385,7 @@
     s += node(X[2], BY, NW, NH, 'test-writer', 'backfills tests', rn(count('tw')), { run: running('tw') });
     s += node(X[3], BY, NW, NH, 'code-reviewer', `${verdicts} verdicts`, rn(count('cr')), { run: running('cr') });
     s += node(X[4], BY, NW, NH, 'verifier', count('ver') ? 'runs the app' : 'not run yet', rn(count('ver')), { run: running('ver'), dim: !count('ver'), dash: !count('ver') });
-    s += node(X[5], BY, NW, NH, 'Branch', 'build/logic-core', `${commits} commits`);
+    s += node(X[5], BY, NW, NH, 'Branch', docs.git?.branch || proj()?.branch || '—', `${commits} commits`);
     return s + '</g></svg>';
   }
 
@@ -378,14 +394,14 @@
     const R = sorted(), recent = R.slice().reverse().slice(0, 7);
     return `<div class="panel"><div class="ph"><h3>Recent agent activity</h3><button class="linkbtn" data-go="dispatch">All runs</button></div>
         <div class="pb flush scroll"><table><thead><tr><th>#</th><th>Agent</th><th>Run</th><th>Outcome</th><th>Detail</th><th class="num">Tokens</th></tr></thead><tbody>
-        ${recent.map(r => `<tr><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(agentName(r))}</td><td>${esc(r.label)}</td><td><span class="tag ${esc(r.kind)}">${esc(kindLabel[r.kind] || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td class="num muted">${r.tok ? esc(Number(r.tok).toLocaleString()) : '—'}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No agents dispatched in this session.</td></tr>'}
+        ${recent.map(r => `<tr><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(agentName(r))}</td><td>${esc(r.label)}</td><td><span class="tag ${esc(r.kind)}">${esc(kindLabel[r.kind] || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td class="num muted">${r.tok ? esc(Number(r.tok).toLocaleString()) : '—'}</td></tr>`).join('') || `<tr><td colspan="6" class="muted">No agents dispatched in ${esc(scopeName())}.</td></tr>`}
         </tbody></table></div></div>`;
   }
 
-  // A session that is not a tracked build: its own activity, usage and agents, and no project tabs.
+  // A session linked to no project: its own activity, usage and agents, and no project tabs.
   function renderSessionOverview(p) {
     const s = cur();
-    if (!s) { p.innerHTML = `<div class="empty">${loaded ? `No Claude Code session was active in the last ${esc(windowDays())} days.` : offline ? 'This view cannot reach the live store.' : 'Connecting to the live store…'}</div>`; return; }
+    if (!s) { p.innerHTML = `<div class="empty">${loaded ? `No Claude Code session outside a project was active in the last ${esc(windowDays())} days.` : offline ? 'This view cannot reach the live store.' : 'Connecting to the live store…'}</div>`; return; }
     const t = s.usage?.totals || {}, ar = agentRuns(), now = runs.filter(r => r.kind === 'running').length;
     p.innerHTML = `
       <div class="tiles">
@@ -395,7 +411,7 @@
         ${tile('Limit hits', (s.usage?.limits || []).length, 'usage limit', 'var(--nogo)')}
       </div>
       <div class="grid g-2-1">
-        <div class="panel"><div class="ph"><h3>Session</h3><span class="faint">Spec, backlog and GitHub tabs appear for build sessions</span></div><div class="pb">
+        <div class="panel"><div class="ph"><h3>Session</h3><span class="faint">Not linked to a project</span></div><div class="pb">
           <dl class="facts">
             <dt>Title</dt><dd>${esc(s.title)}</dd>
             <dt>Folder</dt><dd><code>${esc(s.cwd || '—')}</code></dd>
@@ -410,7 +426,7 @@
 
   function renderOverview() {
     const p = $('panel-overview');
-    if (!isBuild()) return renderSessionOverview(p);
+    if (!inProject()) return renderSessionOverview(p);
     const pbis = docs.backlog?.pbis || [], m = status?.metrics || {}, g = docs.git;
     const cnt = k => pbis.filter(x => x.state === k).length;
     const built = cnt('done') + cnt('conditions');
@@ -516,8 +532,8 @@
     const tokens = agentRuns().reduce((a, r) => a + (Number(r.tok) || 0), 0);
     p.innerHTML = `
       <div class="tiles">
-        ${tile('Agent runs', agentRuns().length, 'dispatched in this session', 'var(--live)')}
-        ${tile('Running now', runs.filter(r => r.kind === 'running').length, isLive() ? 'live' : 'paused', 'var(--live)')}
+        ${tile('Agent runs', agentRuns().length, `dispatched in ${esc(scopeName())}`, 'var(--live)')}
+        ${tile('Running now', runs.filter(r => r.kind === 'running').length, scopeLive() ? 'live' : 'paused', 'var(--live)')}
         ${tile('Review verdicts', verdictRuns().length, `${verdictRuns().filter(r => r.kind === 'go').length} approved`, 'var(--go)')}
         ${tile('Cut off', runs.filter(r => r.kind === 'killed').length, 'stopped or cut off before finishing', 'var(--nogo)')}
         ${tile('Agent tokens', (tokens / 1e6).toFixed(2) + '<small> M</small>', 'across all runs', 'var(--rule-2)')}
@@ -652,7 +668,7 @@
         ${tile('Partly built', cnt('partial'), 'interrupted', 'var(--live)')}
         ${tile('Not started', cnt('todo'), '', 'var(--rule-2)')}
       </div>
-      <div class="callout warn">${icon('warn')}<p>${esc(d.board)}</p></div>
+      ${d.board ? `<div class="callout warn">${icon('warn')}<p>${esc(d.board)}</p></div>` : ''}
       <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Dependencies</h3><span class="faint">arrows run from a prerequisite to what depends on it</span></div><div class="pb scroll">${g}</div></div>
       <div class="panel"><div class="ph"><h3>Work items</h3><span class="faint">${pbis.length}</span></div>
         <div class="pb flush scroll"><table><thead><tr><th>Item</th><th>Delivers</th><th>Depends on</th><th>State</th><th>Review</th><th>Still open</th></tr></thead><tbody>
@@ -761,7 +777,7 @@
         ${tile('Limit hits', lim.length, `${refused} requests refused`, 'var(--nogo)')}
         ${tile('Output written', fmtTok(t.output), `${fmtTok(t.cacheRead)} tokens read from cache`, 'var(--rule-2)')}
       </div>
-      <div class="callout warn">${icon('warn')}<p>Measured from this session's transcripts on your computer, ${esc(when(u.span?.first))} to ${esc(when(u.span?.last))}. It is not your plan's usage meter: Claude records the moments a limit was hit, not a percentage used. <b>Effective usage</b> weights each kind of token by relative cost (cache reads ×0.1, cache writes ×2, output ×5) so the session compares fairly with itself; it is not a price.</p></div>
+      <div class="callout warn">${icon('warn')}<p>Measured from the transcripts of ${esc(scopeName())} on your computer, ${esc(when(u.span?.first))} to ${esc(when(u.span?.last))}. It is not your plan's usage meter: Claude records the moments a limit was hit, not a percentage used. <b>Effective usage</b> weights each kind of token by relative cost (cache reads ×0.1, cache writes ×2, output ×5) so usage compares fairly with itself; it is not a price.</p></div>
       <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>In plain terms</h3></div><div class="pb"><ul class="list">${bullets.map(b => `<li>${b}</li>`).join('')}</ul></div></div>
       <div class="grid g-1-1">
         <div class="panel"><div class="ph"><h3>Where it went</h3><span class="faint">effective usage by activity</span></div>
@@ -785,59 +801,108 @@
 
   function renderAll() { renderHeader(); renderOverview(); renderDispatch(); renderSpec(); renderAssumptions(); renderDecisions(); renderBacklog(); renderGit(); renderUsage(); }
 
-  // ---------------- session picker ----------------
+  // ---------------- project picker and session filter ----------------
   const PROJECT_TABS = ['spec', 'assumptions', 'decisions', 'backlog', 'git'];
+  const viewOf = p => 'p:' + p.id;
+  const projectLive = p => p.running > 0 || sessions.some(s => s.project === p.id && sessionLive(s));
+  const views = () => [...projects.map(viewOf), ...(unlinked().length ? [OTHER_VIEW] : [])];
+  // autoView: the page chose the view itself, rather than taking the viewer's saved or picked one.
+  let autoView = false, hadProjects = false;
+  function pickView() {
+    let saved = null;
+    try { saved = localStorage.getItem('board-view'); } catch (e) {}
+    const live = projects.find(projectLive);
+    autoView = !views().includes(saved);
+    return !autoView ? saved : live ? viewOf(live) : (views()[0] || null);
+  }
+  // A project defaults to all its sessions; "Other sessions" always shows one.
   function pickSession() {
     let saved = null;
-    try { saved = localStorage.getItem('board-session'); } catch (e) {}
-    const builds = sessions.filter(s => s.build);
-    return (sessions.find(s => s.id === saved) || builds.find(sessionLive) || builds[0] || sessions[0] || {}).id || null;
+    try { saved = localStorage.getItem('board-filter'); } catch (e) {}
+    const list = filterSessions();
+    if (inProject()) return list.some(s => s.id === saved) ? saved : '';
+    return (list.find(s => s.id === saved) || list.find(sessionLive) || list[0] || {}).id || '';
   }
-  function fillPicker() {
+  // Before both lists load, nothing is chosen: choosing then would pass over the saved view.
+  function sync() {
+    loaded = gotSessions && gotProjects;
     if (!loaded) return;
-    const dup = {};
-    sessions.forEach(s => { dup[s.title] = (dup[s.title] || 0) + 1; });
-    const opt = s => `<option value="${esc(s.id)}"${s.id === sel ? ' selected' : ''}>${esc(s.title + (dup[s.title] > 1 && s.project ? ' · ' + s.project : '') + (sessionLive(s) ? ' · live' : ''))}</option>`;
-    const b = sessions.filter(s => s.build), o = sessions.filter(s => !s.build);
-    $('session').innerHTML = (b.length ? `<optgroup label="Builds">${b.map(opt).join('')}</optgroup>` : '')
-      + (o.length ? `<optgroup label="Other sessions · last ${esc(windowDays())} days">${o.map(opt).join('')}</optgroup>` : '')
-      || '<option>No recent sessions</option>';
-    $('session').disabled = !sessions.length;
+    // A page opened before the first project push could only choose "Other sessions"; when projects
+    // arrive, it chooses again, unless that view was the viewer's own choice.
+    const firstProjects = !hadProjects && projects.length > 0;
+    hadProjects = projects.length > 0;
+    if (!views().includes(view) || (firstProjects && autoView)) { view = pickView(); sel = pickSession(); }
+    else if ((sel || !inProject()) && !filterSessions().some(s => s.id === sel)) sel = pickSession();
   }
-  function applySession() {
-    runs = allRuns.filter(r => r.session === sel);
-    docs.usage = cur()?.usage || null;
-    PROJECT_TABS.forEach(t => { $('tab-' + t).hidden = !isBuild(); });
-    // Before sessions load no build is selected, so every project tab is hidden; falling back then would
+  // A picker that has focus is not rebuilt (that would close it while open); its blur catches it up.
+  function fillPickers() {
+    if (!loaded) return;
+    const P = $('project'), S = $('session');
+    if (document.activeElement !== P) {
+      P.innerHTML = projects.map(p => `<option value="${esc(viewOf(p))}"${viewOf(p) === view ? ' selected' : ''}>${esc(p.name + (projectLive(p) ? ' · live' : ''))}</option>`).join('')
+        + (unlinked().length ? `<option value="${OTHER_VIEW}"${view === OTHER_VIEW ? ' selected' : ''}>Other sessions · last ${esc(windowDays())} days</option>` : '')
+        || '<option>No recent sessions</option>';
+      P.disabled = !views().length;
+    }
+    if (document.activeElement !== S) {
+      const list = filterSessions(), dup = {};
+      list.forEach(s => { dup[s.title] = (dup[s.title] || 0) + 1; });
+      const opt = s => `<option value="${esc(s.id)}"${s.id === sel ? ' selected' : ''}>${esc(s.title + (dup[s.title] > 1 && s.folder ? ' · ' + s.folder : '') + (sessionLive(s) ? ' · live' : ''))}</option>`;
+      S.innerHTML = (inProject() ? `<option value=""${sel ? '' : ' selected'}>All sessions · ${esc(list.length)}</option>` : '') + list.map(opt).join('')
+        || '<option>No sessions</option>';
+      S.disabled = !list.length;
+    }
+  }
+  function apply() {
+    const p = proj();
+    runs = p ? allRuns.filter(r => r.project === p.id && (!sel || r.session === sel)) : allRuns.filter(r => r.session === sel);
+    status = p ? statuses[p.statusDoc] || null : null;
+    PROJECT_TABS.forEach(t => { docs[t] = p ? tabDocs[p.id + '.' + t] || null : null; $('tab-' + t).hidden = !p; });
+    docs.usage = (p && !sel ? p.usage : cur()?.usage) || null;
+    // Before the lists load no project is chosen, so every project tab is hidden; falling back then would
     // overwrite the saved tab.
     if (loaded && tabs.find(t => t.getAttribute('aria-selected') === 'true')?.hidden) select('overview');
     renderAll();
   }
+  $('project').addEventListener('change', e => {
+    view = e.target.value;
+    autoView = false;
+    try { localStorage.setItem('board-view', view); } catch (x) {}
+    sel = pickSession();
+    fillPickers();
+    apply();
+  });
   $('session').addEventListener('change', e => {
     sel = e.target.value;
-    try { localStorage.setItem('board-session', sel); } catch (x) {}
-    applySession();
+    try { localStorage.setItem('board-filter', sel); } catch (x) {}
+    apply();
   });
-  // Updates are not drawn into the picker while it has focus, so catch up once it loses it.
-  $('session').addEventListener('blur', fillPicker);
-  applySession();
-  setInterval(() => { renderHeader(); if (document.activeElement !== $('session')) fillPicker(); }, 60000);
+  $('project').addEventListener('blur', fillPickers);
+  $('session').addEventListener('blur', fillPickers);
+  apply();
+  setInterval(() => { renderHeader(); fillPickers(); }, 60000);
 
   (async () => {
     const db = await window.claude?.use?.('db');
     if (!db) { offline = true; renderHeader(); renderOverview(); $('foot').textContent = 'This view cannot reach the live store, so it shows no data.'; return; }
     const fail = e => { $('foot').textContent = 'A live subscription ended (' + e.code + '). Reload the page to reconnect.'; };
-    db.collection('sessions').orderBy('last').onSnapshot(snap => {
-      sessions = snap.docs.filter(x => x.exists).map(x => ({ id: x.id, ...x.data() })).reverse();
-      loaded = true;
-      if (!cur()) sel = pickSession();
-      if (document.activeElement !== $('session')) fillPicker(); // rebuilding it would close an open picker
-      applySession();
+    const all = snap => snap.docs.filter(x => x.exists).map(x => ({ id: x.id, ...x.data() }));
+    const refresh = () => { sync(); fillPickers(); apply(); };
+    const watched = new Set();
+    const watchStatus = path => {
+      if (!path || watched.has(path)) return;
+      watched.add(path);
+      db.doc(path).onSnapshot(snap => { statuses[path] = snap.exists ? snap.data() : null; apply(); }, fail);
+    };
+    db.collection('sessions').orderBy('last').onSnapshot(snap => { sessions = all(snap).reverse(); gotSessions = true; refresh(); }, fail);
+    db.collection('projects').orderBy('order').onSnapshot(snap => {
+      projects = all(snap);
+      gotProjects = true;
+      projects.forEach(p => watchStatus(p.statusDoc));
+      refresh();
     }, fail);
-    db.collection('runs').orderBy('seq').onSnapshot(snap => { allRuns = snap.docs.filter(x => x.exists).map(x => ({ id: x.id, ...x.data() })); applySession(); }, fail);
-    db.doc('meta/status').onSnapshot(snap => { status = snap.exists ? snap.data() : null; renderHeader(); renderOverview(); }, fail);
-    const sub = (id, after) => db.doc('tabs/' + id).onSnapshot(snap => { docs[id] = snap.exists ? snap.data() : null; renderHeader(); renderOverview(); after(); }, fail);
-    sub('spec', renderSpec); sub('assumptions', renderAssumptions); sub('decisions', renderDecisions); sub('backlog', renderBacklog); sub('git', renderGit);
+    db.collection('runs').orderBy('seq').onSnapshot(snap => { allRuns = all(snap); apply(); }, fail);
+    db.collection('projectTabs').orderBy('generatedAt').onSnapshot(snap => { tabDocs = Object.fromEntries(all(snap).map(d => [d.id, d])); apply(); }, fail);
   })();
 })();
 </script>

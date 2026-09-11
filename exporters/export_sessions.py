@@ -4,11 +4,12 @@ folder, activity, usage) and one runs/<agentId> row per agent the session dispat
     python exporters/export_sessions.py [out_dir]
 
 Sessions are discovered, not listed: every main transcript under sessions.projectsRoot written to in
-the last sessions.days days, plus the build sessions in board.config.json (build.sessions, and
-usage.sessions from older configs). Build sessions are the ones the project tabs (spec, backlog, ...)
-describe; the page shows those tabs only when a build session is selected. Sessions whose working
-folder or project folder name matches a sessions.exclude glob are never read. The first prompt is
-published only with sessions.showFirstPrompt, and then with obvious secrets redacted.
+the last sessions.days days, plus every session linked to a project in board.config.json
+(projects[].sessions; build.sessions and usage.sessions in the older shape). Each session and run
+records its project id, or null when it is linked to none, and out/projects/<projectId>.json combines
+a project's linked sessions: run counts, latest activity, and one usage block for all of them. Sessions
+whose working folder or project folder name matches a sessions.exclude glob are never read. The first
+prompt is published only with sessions.showFirstPrompt, and then with obvious secrets redacted.
 
 Per session, the main transcript records when each agent was launched (Agent tool use), stopped
 (TaskStop) and finished (a <task-notification> with status, result, subagent_tokens and duration_ms);
@@ -21,21 +22,24 @@ Effective usage weights token types by relative cost: input 1, cache read 0.1, c
 
 Parsed sessions are cached in out/.cache/sessions.json and re-read only when a transcript or the
 running window changes, while one of the session's agents is running, or after one of its agent files
-could not be read. Everything else taken from the config (build flag, window, first prompt) is applied
-when the documents are written. Writes out/sessions/*.json and out/runs/*.json, replacing both.
+could not be read. Everything else taken from the config (project links, window, first prompt) is applied
+when the documents are written. Writes out/sessions/*.json, out/runs/*.json and out/projects/*.json,
+replacing all three.
 
 A malformed or vanished transcript file costs only that agent or session (a warning on stderr; an
 agent or session that cannot be re-read keeps its last cached result). The exit code is non-zero, and out/ is
-left as it was, only when the export itself cannot be trusted: projectsRoot is missing or a build
-session's transcript cannot be found.
+left as it was, only when the export itself cannot be trusted: projectsRoot is missing, the project list
+is unusable, or a linked session's transcript cannot be found.
 """
 import fnmatch, glob, io, json, os, re, shutil, sys, tempfile, time
 from datetime import datetime, timezone, timedelta
 
+import board_config
+
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(HERE, 'board.config.json')
 HOURS = 168  # hourly usage series covers the last week of a session's activity
-PARSER_VERSION = 2  # bump when parsing changes, to drop cached results
+PARSER_VERSION = 3  # bump when parsing changes, to drop cached results
 
 LANE = {'requirements-author': 'req', 'Plan': 'plan', 'code-writer': 'cw', 'test-writer': 'tw',
         'code-reviewer': 'cr', 'verifier': 'ver'}
@@ -70,10 +74,20 @@ GROUP_LABEL = {
 def settings(cfg, projects_root=None):
     """The parts of board.config.json this exporter reads, with their defaults."""
     scfg, rcfg = cfg.get('sessions', {}), cfg.get('runs', {})
+    projects, project_of = board_config.projects(cfg), {}
+    for p in projects:
+        for sid in p['sessions']:
+            project_of.setdefault(sid, p['id'])  # a session listed under two projects belongs to the first
+    meta = {p['id'] for p in projects if p['statusDoc'] == 'meta/status'}
     return {
         'root': projects_root or scfg.get('projectsRoot') or os.path.join(os.path.expanduser('~'), '.claude', 'projects'),
         'days': scfg.get('days', 7),
-        'build': set(cfg.get('build', {}).get('sessions', [])) | {s['sessionId'] for s in cfg.get('usage', {}).get('sessions', [])},
+        'build': set(project_of),  # linked sessions: always exported, and a missing transcript is fatal
+        # The session document's "build" flag is read only by copies of the page from before projects, which
+        # show a build session with the one set of tabs they know: those of meta/status's project.
+        'legacy_build': {sid for sid, pid in project_of.items() if pid in meta},
+        'projects': projects,
+        'project_of': project_of,
         'window': rcfg.get('runningWindowMinutes', 10) * 60,
         'window_minutes': rcfg.get('runningWindowMinutes', 10),
         'manual': rcfg.get('manual', []),
@@ -449,7 +463,7 @@ def parse_session(base, sid, main_path, st, now):
             last = max(last, s['last']) if last else s['last']
 
     first = redact(first)[:200] if first else ''
-    doc = {'title': title or ai_title, 'cwd': cwd or '', 'project': os.path.basename((cwd or '').rstrip('\\/')),
+    doc = {'title': title or ai_title, 'cwd': cwd or '', 'folder': os.path.basename((cwd or '').rstrip('\\/')),
            'firstPrompt': first, 'start': start, 'last': last, 'usage': usage_doc(main, subs, (start, last))}
     return {'doc': doc, 'rows': rows, 'skipped': skipped}
 
@@ -463,8 +477,73 @@ def session_doc(result, sid, st, runs, running):
     doc['title'] = doc.get('title') or (first[:60] if first else sid[:8])
     if first:
         doc['firstPrompt'] = first
-    doc.update(build=sid in st['build'], windowDays=st['days'], windowMinutes=st['window_minutes'], runs=runs, running=running)
+    doc.update(build=sid in st['legacy_build'], project=st['project_of'].get(sid), windowDays=st['days'],
+               windowMinutes=st['window_minutes'], runs=runs, running=running)
     return doc
+
+
+def aggregate_usage(usages):
+    """One usage block for several sessions, in usage_doc()'s shape: totals, byModel and groups summed,
+    hourly merged by hour (gaps filled, the last HOURS hours kept), subagents concatenated. Usage limits are
+    account-wide, so limits that share a resetsAt are one limit: they become one entry with the earliest
+    firstAt and the refused counts summed. Limits without a resetsAt stay separate. Limits are listed in time
+    order. None when no session has usage."""
+    usages = [u for u in usages if u]
+    if not usages:
+        return None
+    totals, models, groups, hourly = {}, {}, {}, {}
+    for u in usages:
+        for k, v in (u.get('totals') or {}).items():
+            totals[k] = totals.get(k, 0) + v
+        for m in u.get('byModel') or []:
+            mm = models.setdefault(m['model'], {'model': m['model'], 'label': m.get('label')})
+            for k, v in m.items():
+                if k not in ('model', 'label'):
+                    mm[k] = mm.get(k, 0) + v
+        for g in u.get('groups') or []:
+            gg = groups.setdefault(g['key'], {'key': g['key'], 'label': g.get('label'), 'effective': 0})
+            gg['effective'] += g.get('effective') or 0
+        for h in u.get('hourly') or []:
+            b = hourly.setdefault(h['hour'], {'main': 0, 'sub': 0})
+            b['main'] += h.get('main') or 0
+            b['sub'] += h.get('sub') or 0
+    # The chart places bars by position, so hours with no activity between sessions are kept as zeros.
+    series = []
+    if hourly:
+        end = datetime.fromisoformat(max(hourly) + ':00:00+00:00')
+        t = max(datetime.fromisoformat(min(hourly) + ':00:00+00:00'), end - timedelta(hours=HOURS - 1))
+        while t <= end:
+            k = t.strftime('%Y-%m-%dT%H')
+            series.append(dict({'hour': k}, **hourly.get(k, {'main': 0, 'sub': 0})))
+            t += timedelta(hours=1)
+    firsts = [u['span']['first'] for u in usages if (u.get('span') or {}).get('first')]
+    lasts = [u['span']['last'] for u in usages if (u.get('span') or {}).get('last')]
+    agents = [a for u in usages for a in u.get('subagents') or []]
+    limits, by_reset = [], {}
+    for l in (l for u in usages for l in u.get('limits') or []):
+        key = l.get('resetsAt')
+        if key is None or key not in by_reset:
+            limits.append(dict(l))
+            if key is not None:
+                by_reset[key] = limits[-1]
+            continue
+        m = by_reset[key]
+        m['refused'] = (m.get('refused') or 0) + (l.get('refused') or 0)
+        if l.get('firstAt') and (not m.get('firstAt') or l['firstAt'] < m['firstAt']):
+            m['firstAt'] = l['firstAt']
+    order = list(GROUP_LABEL)
+    return {
+        'source': 'Claude Code transcripts for %d session%s and %d agent run%s, on this computer' % (
+            len(usages), '' if len(usages) == 1 else 's', len(agents), '' if len(agents) == 1 else 's'),
+        'weights': usages[0].get('weights'),
+        'span': {'first': min(firsts) if firsts else None, 'last': max(lasts) if lasts else None},
+        'totals': totals,
+        'byModel': sorted(models.values(), key=lambda m: -(m.get('effective') or 0)),
+        'groups': sorted(groups.values(), key=lambda g: order.index(g['key']) if g['key'] in order else len(order)),
+        'subagents': agents, 'hourly': series,
+        'limits': sorted(limits, key=lambda l: l.get('firstAt') or ''),
+        'overage': next((u['overage'] for u in usages if u.get('overage')), ''),
+    }
 
 
 def link(rows):
@@ -540,7 +619,11 @@ def main(config=None, out_dir=None, projects_root=None, now=None):
     if config is None:
         with io.open(CONFIG, encoding='utf-8') as f:
             config = json.load(f)
-    st = settings(config, projects_root)
+    try:
+        st = settings(config, projects_root)
+    except ValueError as e:  # an unusable project list
+        print('export_sessions: %s; nothing exported' % e, file=sys.stderr)
+        return 2
     out = out_dir or os.path.join(HERE, 'out')
     cache_path = os.path.join(out, '.cache', 'sessions.json')
     t0 = time.time() if now is None else now
@@ -553,7 +636,7 @@ def main(config=None, out_dir=None, projects_root=None, now=None):
     found = {os.path.basename(p)[:-len('.jsonl')] for p in mains}
     missing = sorted(st['build'] - found)
     if missing:
-        print('export_sessions: no transcript under %s for build session(s) %s; nothing exported' % (st['root'], ', '.join(missing)), file=sys.stderr)
+        print('export_sessions: no transcript under %s for project session(s) %s; nothing exported' % (st['root'], ', '.join(missing)), file=sys.stderr)
         return 2
 
     try:
@@ -614,27 +697,36 @@ def main(config=None, out_dir=None, projects_root=None, now=None):
             row['from'] = m['from']
         rows.insert(anchor + 1, row)
 
-    for d in ('sessions', 'runs'):
+    for d in ('sessions', 'runs', 'projects'):
         shutil.rmtree(os.path.join(out, d), ignore_errors=True)
         os.makedirs(os.path.join(out, d))
-    running = {}
+    running, counts = {}, {}
     for sid in results:
         mine = [r for r in rows if r['session'] == sid]
         link(mine)
         for i, r in enumerate(mine, 1):
             doc = {k: r[k] for k in ('session', 'lane', 'label', 'kind', 'verdict', 'tok', 'min')}
             doc['seq'] = i
+            doc['project'] = st['project_of'].get(sid)
             for k in ('from', 'feeds', 'group', 'agent'):
                 if r.get(k):
                     doc[k] = r[k]
             write_json(os.path.join(out, 'runs', r['id'] + '.json'), doc)
-        running[sid] = sum(r['kind'] == 'running' for r in mine)
+        running[sid], counts[sid] = sum(r['kind'] == 'running' for r in mine), len(mine)
         write_json(os.path.join(out, 'sessions', sid + '.json'), session_doc(results[sid], sid, st, len(mine), running[sid]))
+    for order, p in enumerate(st['projects']):
+        linked = [sid for sid in p['sessions'] if sid in results and st['project_of'][sid] == p['id']]
+        lasts = [results[sid]['doc']['last'] for sid in linked if results[sid]['doc'].get('last')]
+        write_json(os.path.join(out, 'projects', p['id'] + '.json'), {
+            'name': p['name'], 'repoPath': p['repoPath'], 'branch': p['branch'], 'sessions': linked,
+            'statusDoc': p['statusDoc'], 'order': order, 'runs': sum(counts[sid] for sid in linked),
+            'running': sum(running[sid] for sid in linked), 'last': max(lasts) if lasts else None,
+            'usage': aggregate_usage([results[sid]['doc'].get('usage') for sid in linked])})
     legacy = os.path.join(out, 'usage.json')  # replaced by the usage block in each session document
     if os.path.exists(legacy):
         os.remove(legacy)
-    print('wrote %d sessions (%d re-read) and %d runs, %d running | %.1fs' % (
-        len(results), parsed, len(rows), sum(running.values()), time.time() - t0))
+    print('wrote %d sessions (%d re-read), %d runs (%d running) and %d projects | %.1fs' % (
+        len(results), parsed, len(rows), sum(running.values()), len(st['projects']), time.time() - t0))
     return 0
 
 

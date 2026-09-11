@@ -36,7 +36,9 @@ Audience: the owner (one person). The page is a claude.ai artifact, private unti
 - `CLAUDE.md` / `README.md`: data model, refresh procedure and design rules.
 
 Store collections: `sessions/<id>`, `runs/<agentId>`, `tabs/{spec,assumptions,decisions,backlog,git}`,
-`meta/status`. Leftovers the page no longer reads: `tabs/usage`, and `runs/r01`–`r36` (hand-written).
+`meta/status`. One leftover the page no longer reads: `tabs/usage`. The hand-written `runs/r01`–`r36`
+were deleted at the switch to generated rows on 2026-09-10 (`snapshot/runs` keeps r01–r33; r34–r36
+were written by the build session after the snapshot and deleted with the rest).
 
 ## How it stays live
 
@@ -114,7 +116,7 @@ GO-WITH-CONDITIONS (1 MEDIUM regression, 4 LOW), then GO with 4 LOW notes, still
   cause unknown.
 - **Sharing exposes every session's title and folder.** AI-generated titles summarise first prompts,
   and redaction does not cover titles, run labels or agent descriptions.
-- **Store leftovers** (`tabs/usage`, `runs/r01`–`r36`) await deletion.
+- **Store leftovers** await deletion: `tabs/usage`, plus the five retired single-project `tabs/*` once project-first navigation ships. `runs/r01`–`r36` are already gone.
 - **No backlog-delivery rails in this repo**: no config, BOARD, ADRs or PRD. The build it tracks
   (C:\Users\jdk\platform-catalogue) uses `docs/brief`, `docs/prd`, `docs/adr`, `docs/backlog/`
   (BOARD.md, specs/, done-log.md) and `backlog-delivery.config`.
@@ -145,6 +147,20 @@ GO-WITH-CONDITIONS (1 MEDIUM regression, 4 LOW), then GO with 4 LOW notes, still
     (the same ingest-API shape as a cloud host). The server must not read SQLite over a network
     share, because SQLite locking over SMB/NFS is unreliable. The cloud option (Azure Static Web
     Apps, Functions, a database, Entra ID) remains a later alternative.
+
+18. **Project-first navigation (owner, 2026-09-11; supersedes decision 13 "one project" and the
+    tab-visibility recommendation). This is the build priority.**
+    - Each project has a spec, a backlog and build sessions.
+    - The owner picks a **project** from the dropdown and sees its spec, requirements, assumptions,
+      decisions, backlog and repo.
+    - Dispatch and usage for a project combine the runs of every session building it, with a filter
+      to narrow to one session.
+    - Sessions linked to no project stay viewable on their own.
+    - Projects and their build sessions are listed in `board.config.json`, because build sessions run
+      from `C:\Users\jdk`, not the repo folder.
+    - The first two projects are **platform-catalogue** and **dispatch-board** (this repo), so the dispatch
+      board's own PBIs appear on the board once they exist.
+    - The owner chose to build this now, before the PRD revision and pbi-plan are finished.
 
 ## Candidate features for the next iteration (owner-approved for the PRD, 2026-09-11; not built)
 
