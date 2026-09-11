@@ -65,6 +65,31 @@ DATA = {
 }
 FULL = {'docs/backlog/specs/app.md': SPEC, 'docs/prd/app.md': PRD, 'docs/brief/raw-notes.md': BRIEF,
         'docs/adr/0001-data.md': ADR, 'docs/backlog/reviews/app/plan-gate-review-r1.md': REVIEW}
+FUTURE = """### Future iterations (not planned)
+
+Ideas for after this iteration. They are not PBIs.
+
+- **Phone notifications**: a review returns NO-GO (see [ADR-0002](docs/adr/0002-push.md)).
+- **Hosting**: Static Web Apps: Functions and `Entra ID`.
+- **Archive:** keep sessions older than 7 days.
+- A plain idea with no bold span
+- **Wrapped idea**: the first line
+  and its continuation.
+- Maybe **later still**: words before the bold span.
+-
+
+### Allowed and blocked areas (per PBI)
+
+- **Not an idea**: this bullet belongs to the next section.
+"""
+LATER = [
+    {'title': 'Phone notifications', 'description': 'a review returns NO-GO (see ADR-0002).'},
+    {'title': 'Hosting', 'description': 'Static Web Apps: Functions and `Entra ID`.'},
+    {'title': 'Archive', 'description': 'keep sessions older than 7 days.'},
+    {'title': 'A plain idea with no bold span', 'description': ''},
+    {'title': 'Wrapped idea', 'description': 'the first line and its continuation.'},
+    {'title': 'later still', 'description': 'Maybe **later still**: words before the bold span.'},
+]
 DOCS = {'prd': 'docs/prd/app.md', 'spec': 'docs/backlog/specs/app.md', 'brief': 'docs/brief/raw-notes.md',
         'adrDir': 'docs/adr', 'board': 'docs/backlog/BOARD.md',
         'reviews': [{'gate': 'Plan gate', 'path': 'docs/backlog/reviews/app/plan-gate-review-r{round}.md'}]}
@@ -198,6 +223,50 @@ class ExportProject(ReposCase):
         root = self.r.repo('app', dict(FULL, **{'docs/backlog/specs/app.md': SPEC.replace('**Rows the human', 'Rows nobody')}))
         self.assertEqual(self.r.run([project('app', root)]), 0)
         self.assertEqual(self.r.tabs()['app.assumptions']['humanList'], [])
+
+
+# ---------------------------------------------------------------- future iterations (the Backlog's Later group)
+
+class FutureIterations(ReposCase):
+    def export(self, spec):
+        root = self.r.repo('app', dict(FULL, **{'docs/backlog/specs/app.md': spec}))
+        self.assertEqual(self.r.run([project('app', root)]), 0)
+        return self.r.tabs()['app.backlog']
+
+    def test_each_bullet_under_the_heading_is_a_later_item(self):
+        b = self.export(SPEC + '\n' + FUTURE)
+        self.assertEqual(b['later'], LATER)
+        self.assertEqual([p['id'] for p in b['pbis']], ['PBI-001', 'PBI-002'])
+
+    def test_spec_without_the_heading_has_no_later_items_and_no_error(self):
+        b = self.export(SPEC)
+        self.assertEqual(b['later'], [])
+        self.assertEqual(self.r.err, '')
+
+    def test_crlf_line_endings(self):
+        crlf = (SPEC + '\n' + FUTURE).replace('\n', '\r\n')
+        self.assertEqual(eb.later_items(crlf), LATER)
+        self.assertEqual(self.export(crlf)['later'], LATER)
+
+    def test_the_section_ends_at_the_next_heading_of_its_level_or_higher(self):
+        for nxt in ('### Allowed and blocked areas', '## Assumptions', '# Appendix'):
+            spec = '### Future iterations (not planned)\n\n- **Idea**: kept.\n\n%s\n\n- **Not an idea**: next section.\n' % nxt
+            self.assertEqual(eb.later_items(spec), [{'title': 'Idea', 'description': 'kept.'}], nxt)
+
+    def test_a_sub_heading_inside_the_section_does_not_end_it(self):
+        spec = '### Future iterations (not planned)\n\n- **A**: one.\n\n#### Further out\n\n- **B**: two.\n\n### Next\n\n- **C**: no.\n'
+        self.assertEqual([x['title'] for x in eb.later_items(spec)], ['A', 'B'])
+
+    def test_heading_at_the_end_of_the_file(self):
+        self.assertEqual(eb.later_items(SPEC + '\n### Future iterations (not planned)\n- **Last**: no final newline'),
+                         [{'title': 'Last', 'description': 'no final newline'}])
+
+    def test_heading_without_bullets(self):
+        self.assertEqual(eb.later_items('### Future iterations (not planned)\n\nNothing yet.\n\n## Next\n- x\n'), [])
+
+    def test_a_blank_bold_span_counts_as_no_bold_span(self):
+        self.assertEqual(eb.later_items('### Future iterations (not planned)\n- ** **: idea\n'),
+                         [{'title': '** **: idea', 'description': ''}])
 
 
 # ---------------------------------------------------------------- missing sources

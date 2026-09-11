@@ -1,4 +1,5 @@
-// Checks the page's project picker and session filter, the project Overview and the Agent catalogue tab: runs the inline script from
+// Checks the page's project picker and session filter, the project Overview, the Agent catalogue tab and the Backlog's
+// Later group: runs the inline script from
 // site/index.html against a stub DOM and a fake store, fires store snapshots and picker changes, and asserts on
 // what the page renders.
 //
@@ -462,6 +463,66 @@ const groupOf = (html, plugin) => { const m = html.match(new RegExp(`data-plugin
   assert.deepEqual(tileOf(H, 'Agent runs'), ['2', '1 review verdicts · 0.00M tokens']);
   assert.match(H, /<span class="id">PBI-001<\/span>/);
   ok('project Overview: the summary tiles and backlog cells come from the project\'s backlog and runs');
+}
+
+// ---- 9. the Backlog's Later group: future-iteration ideas from the spec, never counted as work items
+{
+  const HOSTILE_TITLE = 'Evil <img src=x onerror=alert(1)> title';
+  const LATER = [
+    { title: 'Phone notifications', description: 'a review returns **NO-GO** or `run` is cut off' },
+    { title: HOSTILE_TITLE, description: '<script>alert(2)</script> "quoted"' },
+    { title: 'A plain idea with no bold span', description: '' },
+  ];
+  const PBIS = [
+    { id: 'PBI-001', title: 't', dependsOn: '—', state: 'done', group: 'g', risk: 'Low' },
+    { id: 'PBI-002', title: 'u', dependsOn: 'PBI-001', state: 'conditions', group: 'g', risk: 'Low', open: 'fix it' },
+  ];
+  const withBacklog = backlog => TABS.map(t => t.id === 'platform-catalogue.backlog' ? { ...t, pbis: PBIS, ...backlog } : t);
+  const load = async backlog => {
+    const e = env({ 'board-view': 'p:platform-catalogue' });
+    await tick();
+    e.fire('c:projects', PROJECTS); e.fire('c:sessions', SESSIONS); e.fire('c:runs', RUNS); e.fire('c:projectTabs', withBacklog(backlog));
+    return e;
+  };
+  const e = await load({ later: LATER }), B = e.el('panel-backlog').innerHTML;
+  const later = (B.match(/<div class="panel" data-later[\s\S]*$/) || [''])[0];
+  assert.ok(later, 'the Later panel is drawn');
+  assert.ok(B.indexOf('data-later') > B.indexOf('<h3>Work items</h3>'), 'Later sits below the work items');
+  assert.equal((later.match(/<div class="tile idea">/g) || []).length, 3);
+  assert.match(later, /<h3>Later<\/h3>/);
+  assert.ok(text(later).includes('Phone notifications a review returns NO-GO or run is cut off'));
+  assert.ok(later.includes('<b>NO-GO</b>') && later.includes('<code>run</code>'), 'repo text keeps bold and code spans');
+  ok('backlog: later items render as a separate Later group of idea cards below the work items');
+
+  assert.ok(later.includes('Evil &lt;img src=x onerror=alert(1)&gt; title'));
+  assert.ok(later.includes('&lt;script&gt;alert(2)&lt;/script&gt; &quot;quoted&quot;'));
+  assert.ok(!later.includes('<img') && !later.includes('<script'));
+  ok('backlog: Later titles and descriptions are escaped');
+
+  assert.ok(!/--tone|--human|--go|--changes|--nogo|--live|class="tag/.test(later), 'idea cards carry no state or human colour');
+  ok('backlog: idea cards are neutral');
+
+  const plain = await load({}), P = plain.el('panel-backlog').innerHTML;
+  assert.deepEqual(tileOf(B, 'Built and reviewed'), tileOf(P, 'Built and reviewed'));
+  assert.deepEqual(tileOf(B, 'Built and reviewed'), ['1', 'of 2 work items']);
+  assert.deepEqual(tileOf(B, 'Not started'), tileOf(P, 'Not started'));
+  assert.match(B, /<h3>Work items<\/h3><span class="faint">2<\/span>/);
+  assert.match(B, /Dependency graph of 2 work items/);
+  assert.equal(e.el('c-backlog').textContent, plain.el('c-backlog').textContent);
+  const O = e.el('panel-overview').innerHTML;
+  assert.equal(O, plain.el('panel-overview').innerHTML, 'the Overview is unchanged by later items');
+  assert.deepEqual(tileOf(O, 'Work items built'), ['2 / 2', '1 with open conditions · 0 partly built']);
+  assert.equal((O.match(/<div class="cell /g) || []).length, 2);
+  assert.ok(!O.includes('Phone notifications') && !O.includes('Evil'), 'no later item in the cells or Needs attention');
+  ok('backlog: later items are left out of the PBI totals, the Overview tile, the backlog cells and Needs attention');
+
+  assert.doesNotMatch(P, /data-later|<h3>Later<\/h3>/);
+  for (const bad of [{ later: [] }, { later: null }, { later: 'x' }, { later: [null, 3] }]) {
+    const H = (await load(bad)).el('panel-backlog').innerHTML;
+    assert.doesNotMatch(H, /data-later/, JSON.stringify(bad));
+    assert.match(H, /<h3>Work items<\/h3>/, JSON.stringify(bad));
+  }
+  ok('backlog: no Later group without later items (a spec without the heading, or an older export)');
 }
 noPageErrors('after the last check');
 console.log(`all ${passed} page checks passed`);
