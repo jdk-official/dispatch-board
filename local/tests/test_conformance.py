@@ -400,9 +400,28 @@ class ConformanceV1(unittest.TestCase):
         expected = {'alpha.%s.json' % t for t in ('spec', 'assumptions', 'decisions', 'backlog')} | (
             {'alpha.git.json'} if HAS_GIT else set())
         self.assertEqual(set(self.f.first_tabs), expected)
-        self.assertEqual(self.f.tab_bytes('alpha'), self.f.first_tabs)
+        # The first carry adds carriedSince, the carrying run's time in UTC with a Z, and changes nothing else.
+        carried = self.f.tab_bytes('alpha')
+        self.assertEqual(set(carried), expected)
+        for name, raw in self.f.first_tabs.items():
+            first = json.loads(raw.decode('utf-8'))
+            self.assertNotIn('carriedSince', first, name)
+            self.assertEqual(json.loads(carried[name].decode('utf-8')), dict(first, carriedSince='2026-09-11T12:00:00Z'), name)
         self.assertEqual(set(self.f.tab_bytes('beta')), {'beta.%s.json' % t for t in ('spec', 'assumptions', 'decisions', 'backlog')})
         self.assertEqual(self.f.tab_bytes('gamma'), {})
+        # A later run while alpha is still missing leaves the kept bytes as they were, first carriedSince included,
+        # so refresh.py plans no write for them. It runs on a copy of projectTabs, the only part of out/ that
+        # export_board reads, so the out/ the other tests share is left as it is.
+        again = os.path.join(self.f.tmp, 'out-again')
+        shutil.copytree(os.path.join(self.f.out, 'projectTabs'), os.path.join(again, 'projectTabs'))
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            code = export_board.main(self.f.config(), again, self.f.data_dir, '2026-09-12T09:00:00+00:00')
+        self.assertEqual(code, 0)
+        folder, kept = os.path.join(again, 'projectTabs'), {}
+        for name in carried:
+            with io.open(os.path.join(folder, name), 'rb') as f:
+                kept[name] = f.read()
+        self.assertEqual(kept, carried)
 
     def test_the_catalogue_was_exported(self):
         cat = self.docs['catalogue/index'][2]

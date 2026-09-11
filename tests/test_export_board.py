@@ -15,6 +15,8 @@ import export_board as eb  # noqa: E402
 
 HAS_GIT = shutil.which('git') is not None
 NOW = '2026-09-11T00:00:00+00:00'
+# Later run times, for the keep-last tests: carriedSince is the run time in UTC, written with a Z.
+NOW_Z, CARRIED, CARRIED_Z, LATEST = '2026-09-11T00:00:00Z', '2026-09-11T08:30:00+00:00', '2026-09-11T08:30:00Z', '2026-09-12T09:00:00+00:00'
 
 SPEC = """---
 revision: 4
@@ -157,10 +159,10 @@ class Repos:
         with io.open(os.path.join(self.data_dir, pid + '.json'), 'w', encoding='utf-8') as f:
             f.write(obj if isinstance(obj, str) else json.dumps(obj))
 
-    def run(self, projects):
+    def run(self, projects, now=NOW):
         err = io.StringIO()
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
-            code = eb.main(config={'projects': projects}, out_dir=self.out, data_dir=self.data_dir, now=NOW, run=self.gh)
+            code = eb.main(config={'projects': projects}, out_dir=self.out, data_dir=self.data_dir, now=now, run=self.gh)
         self.err = err.getvalue()
         return code
 
@@ -390,7 +392,7 @@ class MissingSources(ReposCase):
         self.assertIn('other', self.r.err)
         after = self.r.tabs()
         self.assertEqual({k: v for k, v in after.items() if k.startswith('other.')},
-                         {k: v for k, v in before.items() if k.startswith('other.')})
+                         {k: dict(v, carriedSince=NOW_Z) for k, v in before.items() if k.startswith('other.')})
         self.assertTrue(any(k.startswith('other.') for k in after))
         self.assertEqual(after['app.spec']['revision'], '5')
 
@@ -403,18 +405,138 @@ class MissingSources(ReposCase):
         self.assertIn('app', self.r.err)
         after = self.r.tabs()
         for tab in ('spec', 'assumptions', 'decisions', 'backlog'):
-            self.assertEqual(after['app.' + tab], before['app.' + tab], tab)
+            self.assertEqual(after['app.' + tab], dict(before['app.' + tab], carriedSince=NOW_Z), tab)
 
-    def test_kept_tabs_are_byte_identical(self):
-        # refresh.py diffs file contents, so a carried-forward tab must not look like a change.
+    def test_a_kept_tab_is_marked_with_the_time_its_carry_began(self):
         root = self.r.repo('app', FULL)
         self.r.run([project('app', root)])
-        path = os.path.join(self.r.out, 'projectTabs', 'app.spec.json')
-        with io.open(path, 'rb') as f:
-            before = f.read()
-        self.r.run([project('app', os.path.join(self.r.tmp, 'nowhere'))])
-        with io.open(path, 'rb') as f:
-            self.assertEqual(f.read(), before)
+        before = self.r.tabs()
+        self.assertEqual(self.r.run([project('app', os.path.join(self.r.tmp, 'nowhere'))], now=CARRIED), 0)
+        self.assertIn('project app: cannot rebuild spec, assumptions, decisions, backlog', self.r.err)
+        self.assertIn('keeping the last export', self.r.err)
+        after = self.r.tabs()
+        self.assertEqual(set(after), set(before))
+        for name, body in before.items():
+            self.assertEqual(after[name], dict(body, carriedSince=CARRIED_Z), name)
+
+    def test_kept_tabs_are_byte_identical(self):
+        # refresh.py diffs file contents: the first carry adds carriedSince, which is one change to push, and
+        # every later run while the source is still missing must leave the kept file byte for byte as it was,
+        # with its first carriedSince, so refresh.py plans no write for it.
+        root, gone = self.r.repo('app', FULL), os.path.join(self.r.tmp, 'nowhere')
+        folder = os.path.join(self.r.out, 'projectTabs')
+        self.r.run([project('app', root)])
+        original = {}
+        for name in self.r.tabs():
+            with io.open(os.path.join(folder, name + '.json'), 'rb') as f:
+                original[name] = f.read()
+        self.r.run([project('app', gone)], now=CARRIED)
+        first = {}
+        for name, raw in original.items():
+            with io.open(os.path.join(folder, name + '.json'), 'rb') as f:
+                first[name] = f.read()
+            # A carried tab is written in the same format as a rebuilt one, so the marker line is the only difference.
+            self.assertTrue(raw.endswith(b'\n}'), name)
+            self.assertEqual(first[name], raw[:-2] + (',\n "carriedSince": "%s"\n}' % CARRIED_Z).encode('utf-8'), name)
+        self.r.run([project('app', gone)], now=LATEST)
+        self.assertEqual(sorted(os.listdir(folder)), sorted(n + '.json' for n in first))
+        for name, raw in first.items():
+            with io.open(os.path.join(folder, name + '.json'), 'rb') as f:
+                self.assertEqual(f.read(), raw, name)
+
+    def test_a_tab_whose_source_comes_back_is_rebuilt_without_carried_since(self):
+        root = self.r.repo('app', FULL)
+        self.r.run([project('app', root)])
+        shutil.move(root, root + '-moved')
+        self.r.run([project('app', root)], now=CARRIED)
+        self.assertTrue(all('carriedSince' in body for body in self.r.tabs().values()))
+        shutil.move(root + '-moved', root)
+        self.assertEqual(self.r.run([project('app', root)], now=LATEST), 0)
+        self.assertNotIn('cannot rebuild', self.r.err)
+        after = self.r.tabs()
+        self.assertIn('app.spec', after)
+        for name, body in after.items():
+            self.assertNotIn('carriedSince', body, name)
+            self.assertEqual(body['generatedAt'], LATEST, name)
+
+    def test_a_source_lost_again_after_recovery_starts_a_new_carry(self):
+        root, again = self.r.repo('app', FULL), '2026-09-13T07:15:00+00:00'
+        self.r.run([project('app', root)])
+        shutil.move(root, root + '-moved')
+        self.r.run([project('app', root)], now=CARRIED)
+        shutil.move(root + '-moved', root)
+        self.r.run([project('app', root)], now=LATEST)
+        rebuilt = self.r.tabs()
+        shutil.move(root, root + '-moved')
+        self.assertEqual(self.r.run([project('app', root)], now=again), 0)
+        after = self.r.tabs()
+        self.assertIn('app.spec', rebuilt)
+        self.assertEqual(set(after), set(rebuilt))
+        for name, body in rebuilt.items():
+            self.assertNotIn('carriedSince', body, name)
+            self.assertEqual(after[name], dict(body, carriedSince='2026-09-13T07:15:00Z'), name)
+
+    def test_carried_since_is_the_run_time_converted_to_utc(self):
+        root = self.r.repo('app', FULL)
+        self.r.run([project('app', root)])
+        self.r.run([project('app', os.path.join(self.r.tmp, 'nowhere'))], now='2026-09-11T09:30:00+01:00')
+        tabs = self.r.tabs()
+        self.assertIn('app.spec', tabs)
+        for name, body in tabs.items():
+            self.assertEqual(body['carriedSince'], '2026-09-11T08:30:00Z', name)
+
+    def test_a_tab_that_exports_normally_never_has_carried_since(self):
+        a, b = self.r.repo('app', FULL), self.r.repo('other', FULL)
+        self.r.run([project('app', a), project('other', b)])
+        self.assertFalse([n for n, body in self.r.tabs().items() if 'carriedSince' in body])
+        # Beside a carried project, and beside tabs of its own that are carried, a rebuilt tab stays unmarked.
+        os.rename(os.path.join(a, 'docs/backlog/specs/app.md'), os.path.join(a, 'docs/backlog/specs/renamed.md'))
+        shutil.move(b, b + '-moved')
+        self.r.run([project('app', a), project('other', b)], now=CARRIED)
+        spec_tabs = ('spec', 'assumptions', 'decisions', 'backlog')
+        marked = {n for n, body in self.r.tabs().items() if 'carriedSince' in body}
+        self.assertEqual(marked, {'app.' + t for t in spec_tabs} | {'other.' + t for t in spec_tabs} | (
+            {'other.git'} if HAS_GIT else set()))
+        if HAS_GIT:
+            self.assertNotIn('carriedSince', self.r.tabs()['app.git'])
+
+    def test_a_kept_file_that_is_not_a_json_object_is_kept_as_it_was(self):
+        root = self.r.repo('app', FULL)
+        self.r.run([project('app', root)])
+        folder = os.path.join(self.r.out, 'projectTabs')
+        odd = {'app.spec': b'{"truncated": ', 'app.backlog': b'[1, 2]', 'app.decisions': b'\xff\xfe not utf-8'}
+        for name, raw in odd.items():
+            with io.open(os.path.join(folder, name + '.json'), 'wb') as f:
+                f.write(raw)
+        self.assertEqual(self.r.run([project('app', os.path.join(self.r.tmp, 'nowhere'))], now=CARRIED), 0)
+        for name, raw in odd.items():
+            with io.open(os.path.join(folder, name + '.json'), 'rb') as f:
+                self.assertEqual(f.read(), raw, name)
+        with io.open(os.path.join(folder, 'app.assumptions.json'), encoding='utf-8') as f:
+            self.assertEqual(json.load(f)['carriedSince'], CARRIED_Z)  # a readable kept tab beside them is still marked
+
+    def test_a_kept_file_json_cannot_round_trip_is_kept_as_it_was_while_others_export(self):
+        # Both are valid JSON text: 200000 levels of nesting exhaust the parser's recursion limit, and the escape
+        # for U+D800 parses to a lone surrogate that UTF-8 cannot encode.
+        a, b = self.r.repo('app', FULL), self.r.repo('other', FULL)
+        self.r.run([project('app', a), project('other', b)])
+        folder = os.path.join(self.r.out, 'projectTabs')
+        odd = {'app.spec': b'{"deep": ' + b'[' * 200000 + b']' * 200000 + b'}', 'app.decisions': b'{"note": "\\ud800"}'}
+        for name, raw in odd.items():
+            with io.open(os.path.join(folder, name + '.json'), 'wb') as f:
+                f.write(raw)
+        gone = os.path.join(self.r.tmp, 'nowhere')
+        self.assertEqual(self.r.run([project('app', gone), project('other', b)], now=CARRIED), 0)
+        for name, raw in odd.items():
+            with io.open(os.path.join(folder, name + '.json'), 'rb') as f:
+                self.assertEqual(f.read(), raw, name)
+            self.assertEqual(self.r.err.count(name + '.json'), 1, name)  # one warning naming the file left unmarked
+        with io.open(os.path.join(folder, 'app.assumptions.json'), encoding='utf-8') as f:
+            self.assertEqual(json.load(f)['carriedSince'], CARRIED_Z)
+        with io.open(os.path.join(folder, 'other.spec.json'), encoding='utf-8') as f:
+            healthy = json.load(f)
+        self.assertEqual(healthy['generatedAt'], CARRIED)
+        self.assertNotIn('carriedSince', healthy)
 
     def test_project_list_that_is_not_a_list_stops_the_export(self):
         root = self.r.repo('app', FULL)
