@@ -162,6 +162,9 @@ GO-WITH-CONDITIONS (1 MEDIUM regression, 4 LOW), then GO with 4 LOW notes, still
       board's own PBIs appear on the board once they exist.
     - The owner chose to build this now, before the PRD revision and pbi-plan are finished.
 
+19. **Agent catalogue tab, built first (owner, 2026-09-11).** The owner's words: "Can we add a PBI for a new tab to show all the agents in the catalogue with coverage of what we are using? Make this the first thing we build." Added to the plan as PBI-017.
+20. **Future iterations on the Backlog (owner, 2026-09-11).** The owner asked: "In the backlog, do we show future iterations?" Today it doesn't; later ideas live only in the brief and the PRD's out-of-scope list. Added to the plan as PBI-018: a "Later" group of idea cards, read from the spec's "Future iterations (not planned)" list.
+
 ## Candidate features for the next iteration (owner-approved for the PRD, 2026-09-11; not built)
 
 The owner asked for all of these to go into the plan. None has been built.

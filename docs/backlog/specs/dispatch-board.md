@@ -2,7 +2,7 @@
 title: Dispatch board — next iteration (local-first app, features 1–9, answers) and v1 defect fixes
 status: draft
 spec_version: 6
-revision: 1
+revision: 2
 parent_prd: docs/prd/dispatch-board.md
 ---
 
@@ -15,6 +15,9 @@ parent_prd: docs/prd/dispatch-board.md
 
 **Status: draft, awaiting the plan gate.** The PBI list below is the *proposed* decomposition shown
 for review; no PBI file or BOARD entry exists until the owner approves this spec.
+
+**Revision 2 (2026-09-11):** the owner added PBI-017, an agent catalogue tab showing every catalogue
+agent and how much of it the projects use, and asked for it to be built first (G-7, rows 19–22).
 
 **Already delivered, not re-planned here:** v1 (session picker, generated runs, refresher loop) and
 project-first navigation (PRD D-18; FR-129, FR-130, FR-135–FR-148), which shipped in commit
@@ -31,6 +34,7 @@ fixed by the same change: the tab bar now wraps (row 2).
 - **G-4** The owner sees at a glance when data is stale and everything that is waiting on them (PRD O-10, features 1–2).
 - **G-5** The owner sees each build's progress from its runs alone — findings, work-item state, test trend, cost, run detail, timeline and a usage-limit forecast — with no hand-kept build state (PRD O-11, features 3–9).
 - **G-6** The owner can answer plan-gate assumptions from the board, with provenance that keeps agents from ever writing an answer (PRD S-26, C-16, C-17) — only if the owner confirms the answer write path (row 5).
+- **G-7** The owner can see every agent in the agent catalogue and how much of it the projects use: runs per agent, when it last ran, which projects ran it, and which catalogue agents have never been used (owner request, 2026-09-11; built first).
 
 ---
 
@@ -44,6 +48,7 @@ fixed by the same change: the tab bar now wraps (row 2).
 - `projects/**`, `board.config.json` — retiring hand-kept `buildState` once feature 4 derives it, and any new config keys (local server port, database path).
 - `docs/adr/**` — one ADR for the answer write path (row 5), and one for the local-first architecture (row 8).
 - `CLAUDE.md`, `README.md` — procedures for the local app and the retired pieces.
+- The agent catalogue, read only (PBI-017): `~/.claude/plugins/marketplaces/agent-catalog/plugins/*/agents/*.md` for the agent definitions, and `~/.claude/plugins/installed_plugins.json` for which plugins are installed. The catalogue is never written.
 - One owner-approved store clean-up: delete `tabs/usage` and the five retired `tabs/*` documents (row 4).
 
 ### Out of scope
@@ -62,6 +67,7 @@ fixed by the same change: the tab bar now wraps (row 2).
 
 | Decision | Rationale | Made by | Date |
 |----------|-----------|---------|------|
+| Build the agent catalogue tab (PBI-017) first | Owner request: "Can we add a PBI for a new tab to show all the agents in the catalogue with coverage of what we are using? Make this the first thing we build." | Owner | 2026-09-11 |
 | Plan the next iteration on top of the delivered project-first board; do not re-plan v1 or D-18 | Both are built, reviewed to GO and live (`2742ca6`); the PRD marks D-18 "being built" only because it was written mid-build (PRD A-38) | Planner | 2026-09-11 |
 | Local first, hosting later: collector → SQLite → local server → page through one data adapter; record shapes defined once | Owner decision D-16: the board must not depend on a Claude session, and hosting later should only swap storage and transport | Owner (D-16) | 2026-09-11 |
 | Unraid is the optional first host; the collector stays on the PC and sends records over the LAN; SQLite never on a network share | Owner decision D-17: transcripts exist only on the PC; SQLite locking over SMB/NFS is unreliable | Owner (D-17) | 2026-09-11 |
@@ -77,6 +83,7 @@ fixed by the same change: the tab bar now wraps (row 2).
 The work splits into five tracks. Each PBI names the PRD requirements it delivers; its acceptance
 criteria are the PRD's ACs for those requirements, firmed into the PBI file at decomposition.
 
+0. **Agent catalogue tab (PBI-017)** is built first, at the owner's request. It has no dependencies. It joins the agent types the board already exports on each run with the catalogue's agent files.
 1. **Hardening (PBI-001, PBI-002)** closes the v1 defects first, because the collector (PBI-004) reuses the exporter logic and would otherwise inherit them (PRD A-12, FR-87).
 2. **Local-first foundation (PBI-003 to PBI-007)**: record shapes first (the contract every later piece shares), then the collector and the local server, then the page's data adapter, then the log-on start.
 3. **Features on the current board (PBI-008 to PBI-014)**: each works on the artifact today through the store adapter, and in the local app once PBI-006 lands, because both read the same record shapes. Most depend only on PBI-001 or PBI-003.
@@ -87,6 +94,8 @@ criteria are the PRD's ACs for those requirements, firmed into the PBI file at d
 
 | ID | Title | Depends on | Conflict group | Conflict risk | Requires spec | Requires ext. review |
 |----|-------|------------|----------------|---------------|---------------|----------------------|
+| PBI-017 | Agent catalogue tab: every catalogue agent, installed or not, with usage coverage across sessions and projects | [] | exporters | Low | false | false |
+| PBI-018 | Backlog shows future iterations: a "Later" group of idea cards read from the spec's Future iterations list | [PBI-017] | exporters | Low | false | false |
 | PBI-001 | Exporter hardening: FR-80–FR-82 and FR-84, carried-tab marker, config type checks, verifier outcome | [] | exporters | Medium | false | false |
 | PBI-002 | Page fixes: FR-83 live-state tile, stale-tab callout, design-rule deviations, blank-load investigation (FR-85) | [PBI-001] | page | Low | false | false |
 | PBI-003 | Record shapes: session, run, project, tab, status, answer and last-refresh records (FR-100–FR-102) | [] | local-app | Low | true | false |
@@ -104,8 +113,21 @@ criteria are the PRD's ACs for those requirements, firmed into the PBI file at d
 | PBI-015 | Answering assumptions from the board, with the ADR and provenance guards (FR-131–FR-134, NFR-23) | [PBI-005, PBI-006] | page | Medium | true | true |
 | PBI-016 | Unraid deployment: ingest endpoint with shared secret and container definition (FR-89, FR-134, AC-71, AC-72) | [PBI-005, PBI-007] | local-app | Low | false | true |
 
+### Future iterations (not planned)
+
+Ideas the owner has recorded for after this iteration. They are not PBIs and carry no metadata. PBI-018 shows them on the Backlog tab as a separate "Later" group.
+
+- **Phone notifications**: a review returns NO-GO, a run is cut off, the build goes idle, a session is waiting on the owner (brief "Future iteration"; PRD S-29).
+- **Hosting on Azure** (Static Web Apps, Functions, a database, Entra ID) and the **hosted API adapter** (PRD S-27, S-28, D-17).
+- **An archive** of sessions and runs older than 7 days (PRD S-30, D-15).
+- **Continuous integration** running both test suites (PRD S-16).
+- **Using answers for plan approval** and the acceptance of review conditions (PRD S-31).
+- **Skills and other marketplaces** in the agent catalogue tab (row 19).
+
 ### Allowed and blocked areas (per PBI)
 
+- **PBI-017**: allowed `exporters/**`, `tests/test_*.py`, `site/**`, `tests/page.test.mjs`, `board.config.json`, `CLAUDE.md`, `README.md` (declared cross-group touch; runs first and alone); blocked `local/**`. It reads the catalogue under `~/.claude/plugins` and never writes it.
+- **PBI-018**: allowed `exporters/export_board.py`, `tests/test_export_board.py`, `site/**`, `tests/page.test.mjs`, `CLAUDE.md` (declared cross-group touch; runs alone, straight after PBI-017); blocked `local/**`.
 - **PBI-001**: allowed `exporters/**`, `tests/test_*.py`, `CLAUDE.md`; blocked `site/**`, `local/**`.
 - **PBI-002**: allowed `site/**`, `tests/page.test.mjs`; blocked `exporters/**`, `local/**`.
 - **PBI-003**: allowed `local/records*`, `local/tests/**`, `docs/adr/**`; blocked `site/**`.
@@ -124,7 +146,9 @@ criteria are the PRD's ACs for those requirements, firmed into the PBI file at d
 
 ### Sequencing notes
 
-- **Start in parallel:** PBI-001 (exporters), PBI-003 (local-app) and PBI-013 (page) share no area.
+- **First, alone:** PBI-017, at the owner's request. It has no dependencies, and it touches both `exporters` and `page`, so nothing else runs beside it.
+- **Second, alone:** PBI-018, straight after PBI-017, which touches the same areas.
+- **Then in parallel:** PBI-001 (exporters), PBI-003 (local-app) and PBI-013 (page) share no area.
 - **After PBI-001:** PBI-002, PBI-010, PBI-011 and PBI-012 become eligible. PBI-010, PBI-011 and PBI-012 share the `exporters` group at Medium or Low risk, so they may run in parallel only if the worker keeps their areas apart; otherwise run them in that order.
 - **After PBI-003:** PBI-005, PBI-008 and PBI-009. PBI-004 also needs PBI-001, so the collector reuses the hardened logic.
 - **Critical path to "no Claude session needed":** PBI-003 → PBI-005 → PBI-006 → PBI-007, with PBI-004 joining before PBI-007.
@@ -136,7 +160,7 @@ criteria are the PRD's ACs for those requirements, firmed into the PBI file at d
 
 ## Assumptions & open questions
 
-**Rows the human must confirm or correct at the plan gate:** 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 (every ASSUMED row). Each row is also listed with its default in the Plan-gate record once confirmed.
+**Rows the human must confirm or correct at the plan gate:** 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 23 (every ASSUMED row). Each row is also listed with its default in the Plan-gate record once confirmed.
 
 | # | Question / ambiguity | Resolution | Status | Source / chosen default | Impact if wrong |
 |---|----------------------|-----------|--------|-------------------------|-----------------|
@@ -158,6 +182,11 @@ criteria are the PRD's ACs for those requirements, firmed into the PBI file at d
 | 16 | Acceptance criteria source | Each PBI's criteria are the PRD's ACs for its requirements (AC-57–AC-93, including those the PRD's author derived, A-18); the owner confirming this spec confirms them | ASSUMED | Planner default | Medium — an AC the owner reads differently gates the wrong behaviour |
 | 17 | Where does the planner put the backlog-delivery rails (PRD A-21)? | `backlog-delivery.config` in the repo root, written for this plan (hooks off); BOARD, PBI files and done-log under `docs/backlog/` at decomposition | RESOLVED | `backlog-delivery.config` (this planning pass) | Low |
 | 18 | Does only the owner view the board (PRD A-2)? | Yes; redaction beyond first prompts stays out of scope | RESOLVED | Brief decision 12; PRD D-12 | Low |
+| 19 | What counts as "the catalogue" for PBI-017 | Every agent defined in the agent-catalog marketplace: 30 agents in 7 plugins today. Each is marked installed or not; `workflow-agents`, with 12 agents, is not installed. Claude Code's built-in agent types (Plan, general-purpose, Explore) are listed separately as "built-in". Skills are out of scope for this tab | ASSUMED | Planner default | Low — skills or other marketplaces would be a later addition |
+| 20 | What "coverage" means | Per agent: run count, last run, and which projects' sessions ran it, over the sessions the board exports (last 7 days plus every linked session). A summary shows how many catalogue agents ran at least once. The tab follows the picker (a project, or "Other sessions") and also shows an all-sessions total | ASSUMED | Planner default | Low — longer history needs an archive, which D-15 rules out |
+| 21 | Where the tab sits | A new "Agent catalogue" tab, after Dispatch, shown in every view (projects and "Other sessions") | ASSUMED | Planner default | Low |
+| 22 | Where the catalogue's agents are defined, and how runs name them | Each agent is a markdown file with `name` and `description` frontmatter at `~/.claude/plugins/marketplaces/agent-catalog/plugins/<plugin>/agents/<name>.md`. Runs record the agent type as `<plugin>:<name>`, e.g. `review-agents:code-reviewer` | RESOLVED | `…/plugins/engineering-agents/agents/code-writer.md` frontmatter; `agentType` in each `subagents/*.meta.json`; `~/.claude/settings.json` enabled plugins | Low |
+| 23 | How future iterations appear on the Backlog (PBI-018) | The spec's "Future iterations (not planned)" bullets become a separate "Later" group of idea cards below the PBIs, with a neutral tone, no state and no dependencies. They never count as work items | ASSUMED | Planner default (owner asked, 2026-09-11: "In the backlog, do we show future iterations?") | Low |
 
 ---
 
