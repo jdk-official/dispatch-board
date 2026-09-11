@@ -3,7 +3,8 @@ synthetic repositories in a temporary directory.
 
 Every export test passes its own config, data folder and out dir, so none of them reads board.config.json
 or writes the repo's out/. Two tests read committed files on purpose: the repo's board.config.json and its
-projects/*.json data files, to check they have the shape the exporters expect.
+projects/*.json data files, to check they have the shape the exporters expect. The exporter's gh calls go to an
+injected runner: the default one fails the test, so no test can reach the real gh or the network.
 """
 import contextlib, glob, io, json, os, shutil, subprocess, sys, tempfile, unittest
 
@@ -108,6 +109,24 @@ def project(pid, root, **over):
     return p
 
 
+def refuse_gh(cmd, **kwargs):
+    raise AssertionError('the export ran %r without a fake gh' % (cmd,))
+
+
+class FakeGh:
+    """Stands in for subprocess.run when the exporter calls gh: records each call, then raises or answers."""
+
+    def __init__(self, stdout='', returncode=0, stderr='', raises=None):
+        self.stdout, self.returncode, self.stderr, self.raises = stdout, returncode, stderr, raises
+        self.calls = []
+
+    def __call__(self, cmd, **kwargs):
+        self.calls.append((cmd, kwargs))
+        if self.raises:
+            raise self.raises
+        return subprocess.CompletedProcess(cmd, self.returncode, self.stdout, self.stderr)
+
+
 class Repos:
     """Throwaway repositories, a data folder and an out dir."""
 
@@ -117,6 +136,7 @@ class Repos:
         self.data_dir = os.path.join(self.tmp, 'data')
         os.makedirs(self.data_dir)
         self.err = ''
+        self.gh = refuse_gh
 
     def repo(self, name, files, with_git=True):
         root = os.path.join(self.tmp, name)
@@ -140,7 +160,7 @@ class Repos:
     def run(self, projects):
         err = io.StringIO()
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
-            code = eb.main(config={'projects': projects}, out_dir=self.out, data_dir=self.data_dir, now=NOW)
+            code = eb.main(config={'projects': projects}, out_dir=self.out, data_dir=self.data_dir, now=NOW, run=self.gh)
         self.err = err.getvalue()
         return code
 
@@ -358,6 +378,110 @@ class MissingSources(ReposCase):
             f.write('{}')
         self.r.run([project('app', root)])
         self.assertFalse(os.path.exists(legacy))
+
+
+# ---------------------------------------------------------------- pull requests, from a fake gh
+
+GH_ARGS = ['gh', 'pr', 'list', '--state', 'all', '--search', 'sort:updated-desc', '--limit', '20',
+           '--json', 'number,title,state,url,headRefName,updatedAt']
+GH_PRS = [  # as gh prints them; gh's own order is not by update
+    {'number': 7, 'title': 'Older', 'state': 'MERGED', 'url': 'https://github.com/o/app/pull/7', 'headRefName': 'pbi/old',
+     'updatedAt': '2026-09-01T10:00:00Z'},
+    {'number': 9, 'title': 'Newest <b>“quoted”</b>', 'state': 'OPEN', 'url': 'https://github.com/o/app/pull/9',
+     'headRefName': 'pbi/new', 'updatedAt': '2026-09-10T10:00:00Z', 'isDraft': False},
+    {'number': 8, 'title': 'Dropped', 'state': 'CLOSED', 'url': 'https://github.com/o/app/pull/8', 'headRefName': 'pbi/gone',
+     'updatedAt': '2026-09-05T10:00:00Z'},
+]
+PULLS = [
+    {'number': 9, 'title': 'Newest <b>“quoted”</b>', 'state': 'OPEN', 'url': 'https://github.com/o/app/pull/9',
+     'branch': 'pbi/new', 'updatedAt': '2026-09-10T10:00:00Z'},
+    {'number': 8, 'title': 'Dropped', 'state': 'CLOSED', 'url': 'https://github.com/o/app/pull/8', 'branch': 'pbi/gone',
+     'updatedAt': '2026-09-05T10:00:00Z'},
+    {'number': 7, 'title': 'Older', 'state': 'MERGED', 'url': 'https://github.com/o/app/pull/7', 'branch': 'pbi/old',
+     'updatedAt': '2026-09-01T10:00:00Z'},
+]
+
+
+@unittest.skipUnless(HAS_GIT, 'git is not installed')
+class PullRequests(ReposCase):
+    def export(self, gh, name='app', remotes=(('origin', 'https://github.com/o/app.git'),)):
+        root = self.r.repo(name, FULL)
+        for remote, url in remotes:
+            git(root, 'remote', 'add', remote, url)
+        self.r.gh = gh
+        self.assertEqual(self.r.run([project(name, root)]), 0)
+        return root, self.r.tabs()[name + '.git']
+
+    def test_pulls_come_from_gh_in_the_repo_most_recently_updated_first(self):
+        gh = FakeGh(json.dumps(GH_PRS))
+        root, g = self.export(gh)
+        [(cmd, kw)] = gh.calls
+        self.assertEqual(cmd, GH_ARGS)
+        self.assertEqual(os.path.normcase(os.path.abspath(kw['cwd'])), os.path.normcase(os.path.abspath(root)))
+        self.assertLessEqual(kw['timeout'], 15)
+        self.assertEqual(g['pulls'], PULLS)
+        self.assertEqual(self.r.err, '')
+        self.assertEqual((g['branch'], len(g['commits'])), ('main', 1))
+
+    def test_no_pull_requests_is_an_empty_list(self):
+        _, g = self.export(FakeGh('[]\n'))
+        self.assertEqual(g['pulls'], [])
+        self.assertEqual(self.r.err, '')
+
+    def assert_left_out(self, gh, why, name='app'):
+        _, g = self.export(gh, name)
+        self.assertNotIn('pulls', g)
+        self.assertIn('project %s: cannot list pull requests' % name, self.r.err)
+        self.assertIn(why, self.r.err)
+        self.assertEqual((g['branch'], len(g['commits']), len(g['remotes'])), ('main', 1, 2))
+        self.assertNotIn('keeping the last export', self.r.err)
+
+    def test_gh_missing(self):
+        self.assert_left_out(FakeGh(raises=FileNotFoundError(2, 'No such file or directory', 'gh')), 'gh could not be run')
+
+    def test_gh_exits_non_zero(self):
+        self.assert_left_out(FakeGh(returncode=1, stderr='\nTo get started with GitHub CLI, please run:  gh auth login\n'),
+                             'gh exited 1: To get started with GitHub CLI')
+
+    def test_gh_times_out(self):
+        self.assert_left_out(FakeGh(raises=subprocess.TimeoutExpired(GH_ARGS, 15)), 'did not finish within 15 s')
+
+    def test_gh_prints_malformed_json(self):
+        for i, out in enumerate(('not json', '', '{"number": 1}', '[1, 2]', '[{"number": 1}, null]')):
+            with self.subTest(out=out):
+                self.assert_left_out(FakeGh(out), 'malformed JSON', name='app%d' % i)
+
+    def test_a_previous_export_does_not_keep_its_pulls_when_gh_fails(self):
+        root, g = self.export(FakeGh(json.dumps(GH_PRS)))
+        self.assertIn('pulls', g)
+        self.r.gh = FakeGh(returncode=4, stderr='HTTP 502')
+        self.assertEqual(self.r.run([project('app', root)]), 0)
+        self.assertNotIn('pulls', self.r.tabs()['app.git'])
+
+    def test_origin_not_on_github_gets_no_pulls_and_no_warning(self):
+        for i, remotes in enumerate((
+                (('origin', 'https://gitlab.com/o/app.git'),),
+                (('origin', 'https://github.com.evil.example/o/app.git'),),
+                (('origin', 'git@example.com:github.com/app.git'),),
+                (('upstream', 'https://github.com/o/app.git'),),
+                ())):
+            with self.subTest(remotes=remotes):
+                _, g = self.export(refuse_gh, name='app%d' % i, remotes=remotes)
+                self.assertNotIn('pulls', g)
+                self.assertEqual(self.r.err, '')
+
+
+class GithubOrigin(unittest.TestCase):
+    def test_origin_urls_on_github(self):
+        for url in ('https://github.com/o/r.git', 'https://GitHub.com/o/r', 'git@github.com:o/r.git',
+                    'ssh://git@github.com/o/r.git', 'https://x-access-token@github.com/o/r.git'):
+            self.assertTrue(eb.github_origin(['origin\t%s (fetch)' % url, 'origin\t%s (push)' % url]), url)
+
+    def test_other_remotes(self):
+        for lines in (['origin\thttps://gitlab.com/o/r.git (fetch)'], ['origin\thttps://github.com.evil.example/o/r (fetch)'],
+                      ['origin\thttps://evil.example/github.com/o/r (fetch)'], ['upstream\thttps://github.com/o/r (fetch)'],
+                      ['originals\thttps://github.com/o/r (fetch)'], [], ['origin']):
+            self.assertFalse(eb.github_origin(lines), lines)
 
 
 # ---------------------------------------------------------------- the project list
