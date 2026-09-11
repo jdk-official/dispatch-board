@@ -8,7 +8,9 @@ for tab in spec, assumptions, decisions, backlog and git, replacing that folder.
 its source exists: spec, assumptions, decisions and backlog all need the spec, git needs a git repository.
 A tab that was exported before but cannot be built now (the repoPath has moved, the spec was renamed, git
 is unavailable) keeps its last export, with a warning on stderr, so one broken project cannot blank its
-tabs on the board while the others refresh. A project dropped from the config loses its tabs.
+tabs on the board while the others refresh. The kept document gets carriedSince, the UTC time the carry
+began, which later runs leave as it is; a tab rebuilt once its source is back has no carriedSince. A
+project dropped from the config loses its tabs.
 
 A project whose origin remote is on github.com also gets its recent pull requests in the git tab (`pulls`),
 listed with the GitHub CLI. When gh cannot list them (not installed, not signed in, too slow, odd output) the
@@ -366,6 +368,34 @@ def pulls(pid, root, run, repo=None):
     return None
 
 
+def tab_bytes(doc):
+    """A tab document as the bytes written to out/projectTabs. Rebuilt and carried tabs both go through here, so a
+    first carry differs from the file it was read from by the carriedSince line alone."""
+    return json.dumps(doc, ensure_ascii=False, indent=1).encode('utf-8')
+
+
+def carried(raw, since, path):
+    """The bytes to write for a tab kept from its last export (raw, read from path), marked with carriedSince: since,
+    the time the carry began. A file that already carries the marker is returned as it is, so while the source stays
+    missing the file keeps its first carriedSince and refresh.py sees no change after the first carry. A file that is
+    not a readable JSON object is also kept as it is, with a warning naming it: failing to parse or re-serialise it
+    must not stop the export of every project."""
+    reason = 'not a JSON object'
+    try:
+        doc = json.loads(raw.decode('utf-8'))
+        if isinstance(doc, dict):
+            if 'carriedSince' in doc:
+                return raw
+            doc['carriedSince'] = since
+            return tab_bytes(doc)
+    # ValueError covers bytes that are not UTF-8, invalid JSON and a lone surrogate that cannot be encoded back to
+    # UTF-8; RecursionError, JSON nested deeper than the parser can follow.
+    except (ValueError, RecursionError) as e:
+        reason = type(e).__name__
+    warn('kept file %s is not a readable JSON object (%s); it is kept without carriedSince' % (path, reason))
+    return raw
+
+
 def main(config=None, out_dir=None, data_dir=None, now=None, run=None):
     """Export every project into out_dir (default out/); returns the process exit code.
     run stands in for subprocess.run when gh lists pull requests (tests pass a fake)."""
@@ -374,6 +404,7 @@ def main(config=None, out_dir=None, data_dir=None, now=None, run=None):
             config = json.load(f)
     out = out_dir or os.path.join(HERE, 'out')
     stamp = now or datetime.now(timezone.utc).isoformat(timespec='seconds')
+    since = datetime.fromisoformat(stamp).astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
     # Everything is read before out/ is touched, so a failure leaves the last export in place.
     folder = os.path.join(out, 'projectTabs')
@@ -391,13 +422,14 @@ def main(config=None, out_dir=None, data_dir=None, now=None, run=None):
                         prs = pulls(p['id'], p['repoPath'], run or subprocess.run, github_repo(docs['git']['remotes']))
                         if prs is not None:
                             docs['git']['pulls'] = prs
-            # Kept as the exact bytes, so refresh.py sees no change and pushes nothing for them.
+            # Kept as bytes: marked with carriedSince on the first carry, then exactly as they were, so refresh.py
+            # sees no change and pushes nothing for them until the source comes back.
             kept = {}
             for tab in TABS:
                 prev = os.path.join(folder, '%s.%s.json' % (p['id'], tab))
                 if tab not in docs and os.path.isfile(prev):
                     with io.open(prev, 'rb') as f:
-                        kept[tab] = f.read()
+                        kept[tab] = carried(f.read(), since, prev)
             if kept:
                 warn('project %s: cannot rebuild %s; keeping the last export' % (p['id'], ', '.join(kept)))
             exported.append((p['id'], docs, kept))
@@ -409,8 +441,8 @@ def main(config=None, out_dir=None, data_dir=None, now=None, run=None):
     os.makedirs(folder)
     for pid, docs, kept in exported:
         for key, body in docs.items():
-            with io.open(os.path.join(folder, '%s.%s.json' % (pid, key)), 'w', encoding='utf-8', newline='\n') as f:
-                json.dump(body, f, ensure_ascii=False, indent=1)
+            with io.open(os.path.join(folder, '%s.%s.json' % (pid, key)), 'wb') as f:
+                f.write(tab_bytes(body))
         for key, raw in kept.items():
             with io.open(os.path.join(folder, '%s.%s.json' % (pid, key)), 'wb') as f:
                 f.write(raw)
