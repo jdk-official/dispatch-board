@@ -13,7 +13,7 @@ import collector  # noqa: E402
 import test_conformance as tc  # noqa: E402
 
 S = ['%d%d%d%d%d%d%d%d-aaaa-bbbb-cccc-00000000000%d' % ((i,) * 8 + (i,)) for i in range(1, 8)]
-SECRET = 'C:\\work\\secret'
+PRIVATE_DIR = 'C:\\work\\private'
 
 
 def scenarios(t):
@@ -37,7 +37,7 @@ def scenarios(t):
                      'not json at all', '[1, 2]', '[' * 50000 + ']' * 50000, bad, tes.reply(10, 'm-ok', text='done')])
     t.session(S[5], [{'type': 'ai-title', 'aiTitle': 'A generated title'}] + [tes.user(0, 'hello'), tes.reply(1, 'm-q', text='hi')],
               folder='C--other')
-    t.session(S[6], [tes.user(0, 'secret work', SECRET), tes.reply(1, 'm-s', text='ok')], folder='C--work-secret')
+    t.session(S[6], [tes.user(0, 'private work', PRIVATE_DIR), tes.reply(1, 'm-s', text='ok')], folder='C--work-private')
 
 
 def transcript_files(root):
@@ -65,7 +65,7 @@ class Equivalence(unittest.TestCase):
         scenarios(self.e.t)
         return [('conformance fixture', fcfg, f.root),
                 ('tree scenarios', self.e.cfg(build=[S[0], S[3]]), self.e.root),
-                ('tree scenarios, excluded by cwd', self.e.cfg(build=[S[0]], exclude=[SECRET + '*']), self.e.root)]
+                ('tree scenarios, excluded by cwd', self.e.cfg(build=[S[0]], exclude=[PRIVATE_DIR + '*']), self.e.root)]
 
     def run_pass(self, cfg, root, conn=None):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
@@ -90,7 +90,7 @@ class Equivalence(unittest.TestCase):
                 self.assertTrue(want['session'] and want['run'])
                 self.assertEqual(self.e.stored(conn), want)
 
-    def test_the_exclusion_fixture_leaves_the_secret_session_out(self):
+    def test_the_exclusion_fixture_leaves_the_private_session_out(self):
         name, cfg, root = self.configs()[2]
         conn = self.fresh_db(name)
         self.run_pass(cfg, root, conn)
@@ -133,7 +133,7 @@ class Restart(unittest.TestCase):
         e = Env(self)
         now = time.time()
         scenarios(e.t)
-        cfg = e.cfg(build=[S[0]], exclude=[SECRET + '*'])
+        cfg = e.cfg(build=[S[0]], exclude=[PRIVATE_DIR + '*'])
         final = transcript_files(e.root)
         grown = os.path.join(e.tmp, 'grown')
         lines = {os.path.relpath(p, e.root): raw.splitlines(keepends=True) for p, raw in final.items()}

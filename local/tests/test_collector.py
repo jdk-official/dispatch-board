@@ -18,7 +18,7 @@ SID3 = '33333333-aaaa-bbbb-cccc-000000000003'
 SID4 = '44444444-aaaa-bbbb-cccc-000000000004'
 DAY = 86400
 CLOCK = datetime(2026, 9, 11, 12, 0, 0, tzinfo=timezone.utc)
-SECRET = 'C:\\work\\secret'
+PRIVATE_DIR = 'C:\\work\\private'
 
 
 def quiet(sid, m=0, cwd=tes.CWD):
@@ -616,16 +616,16 @@ class Pruning(Case):
 # ---------------------------------------------------------------- exclusion
 
 class Exclusion(Case):
-    def cfg(self, exclude=(SECRET + '*',)):
+    def cfg(self, exclude=(PRIVATE_DIR + '*',)):
         return self.e.cfg(exclude=list(exclude))
 
     def setup(self):
         self.e.t.basic()
         self.e.t.basic(sid=SID2)
-        self.e.t.session(SID3, quiet(SID3, cwd=SECRET))
+        self.e.t.session(SID3, quiet(SID3, cwd=PRIVATE_DIR))
         self.path = self.e.main_path(SID3)
 
-    def rule(self, exclude=(SECRET + '*',)):
+    def rule(self, exclude=(PRIVATE_DIR + '*',)):
         return hashlib.sha256(json.dumps(list(exclude)).encode('utf-8')).hexdigest()
 
     def counted(self):
@@ -665,7 +665,7 @@ class Exclusion(Case):
         self.assertNotIn(SID3, self.e.stored()['session'])
 
     def test_a_changed_exclude_list_decides_again(self):
-        other = [SECRET + '*', 'C:\\elsewhere*']
+        other = [PRIVATE_DIR + '*', 'C:\\elsewhere*']
         self.decides_again(lambda: None, self.cfg(other))
         self.assertEqual([m[3] for m in self.e.state()[2]], [self.rule(other)])
 
@@ -677,7 +677,7 @@ class Exclusion(Case):
         self.decides_again(replace)
 
     def test_a_truncated_file_decides_again(self):
-        self.decides_again(lambda: self.e.t.session(SID3, [tes.user(0, 'x', SECRET)]))
+        self.decides_again(lambda: self.e.t.session(SID3, [tes.user(0, 'x', PRIVATE_DIR)]))
 
     def test_a_file_with_no_cwd_gets_no_marker(self):
         self.e.t.session(SID3, [{'type': 'user', 'timestamp': tes.ts(0), 'message': {'role': 'user', 'content': 'hi'}},
@@ -702,7 +702,7 @@ class Exclusion(Case):
         self.e.t.session(SID3, [nocwd, tes.reply(1, 'm-nc', text='hi')])
         self.e.run(self.cfg(), now=self.now)
         self.assertIn(SID3, self.e.stored()['session'])
-        append(self.e.main_path(SID3), [tes.user(2, 'now with a folder', SECRET)])
+        append(self.e.main_path(SID3), [tes.user(2, 'now with a folder', PRIVATE_DIR)])
         self.e.run(self.cfg(), now=self.now)
         self.assertNotIn(SID3, self.e.stored()['session'])
         self.assertNotIn(SID3, self.e.state()[0])
