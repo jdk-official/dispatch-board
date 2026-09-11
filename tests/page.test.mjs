@@ -1,5 +1,5 @@
-// Checks the page's project picker and session filter, the project Overview, the Agent catalogue tab and the Backlog's
-// Later group: runs the inline script from
+// Checks the page's project picker and session filter, the project Overview, the Agent catalogue tab, the Backlog's
+// Later group and the pull requests (the GitHub tab's panel, the Overview's awaiting-merge items): runs the inline script from
 // site/index.html against a stub DOM and a fake store, fires store snapshots and picker changes, and asserts on
 // what the page renders.
 //
@@ -523,6 +523,123 @@ const groupOf = (html, plugin) => { const m = html.match(new RegExp(`data-plugin
     assert.match(H, /<h3>Work items<\/h3>/, JSON.stringify(bad));
   }
   ok('backlog: no Later group without later items (a spec without the heading, or an older export)');
+}
+
+// ---- 10. pull requests: the GitHub tab's panel and the Overview's awaiting-merge items
+{
+  const PT = '2026-09-10T09:30:00Z';
+  const HOSTILE_PR = 'Evil <img src=x onerror=alert(1)> **bold** `code`';
+  const GH = 'https://github.com/o/dispatch-board/pull/';
+  const LINK = u => `href="${u}" target="_blank" rel="noopener noreferrer"`;
+  const PULLS = [
+    { number: 12, title: 'Show PR links', state: 'OPEN', url: GH + '12', branch: 'pbi/pr-links', updatedAt: PT },
+    { number: 11, title: HOSTILE_PR, state: 'OPEN', url: 'javascript:alert(1)', branch: 'evil<b>x', updatedAt: PT },
+    { number: 10, title: 'Merged one', state: 'MERGED', url: GH + '10', branch: 'pbi/merged', updatedAt: old },
+    { number: 9, title: 'Closed one', state: 'CLOSED', url: GH + '9', branch: 'pbi/closed', updatedAt: old },
+    { number: 8, title: 'Quoted url', state: 'OPEN', url: GH + '8" onmouseover="alert(1)', branch: 'pbi/q', updatedAt: PT },
+  ];
+  const withGit = git => TABS.map(t => t.id === 'dispatch-board.git' ? { ...t, ...git } : t);
+  const load = async git => {
+    const e = env({ 'board-view': 'p:dispatch-board' });
+    await tick();
+    e.fire('c:projects', PROJECTS); e.fire('c:sessions', SESSIONS); e.fire('c:runs', RUNS); e.fire('c:projectTabs', withGit(git));
+    return e;
+  };
+  const prPanel = G => { const m = G.match(/<div class="panel" data-pulls[\s\S]*$/); assert.ok(m, 'the Pull requests panel is drawn'); return m[0]; };
+  const prRow = (P, n) => { const m = P.match(new RegExp(`<tr data-pr="${n}">([\\s\\S]*?)</tr>`)); assert.ok(m, 'row #' + n); return m[1]; };
+  const attItems = O => ((O.match(/<ul class="att">([\s\S]*?)<\/ul>/) || [])[1] || '').split('<li').slice(1);
+
+  const e = await load({ pulls: PULLS });
+  const G = e.el('panel-git').innerHTML, P = prPanel(G);
+  assert.match(P, /<h3>Pull requests<\/h3>/);
+  assert.equal((P.match(/<tr data-pr=/g) || []).length, 5);
+  const r12 = prRow(P, 12);
+  assert.ok(r12.includes(`<a class="id" ${LINK(GH + '12')}>#12</a>`), 'the number links to the PR, in the mono id style');
+  assert.ok(r12.includes(`<a ${LINK(GH + '12')}>Show PR links</a>`), 'the title links to the PR');
+  assert.ok(r12.includes('<span class="tag open">Open</span>'));
+  assert.ok(r12.includes('<span class="id">pbi/pr-links</span>'), 'the branch in the mono id style');
+  assert.ok(text(r12).includes(whenStr(PT)), 'the updated time');
+  assert.ok(prRow(P, 10).includes('<span class="tag merged">Merged</span>'));
+  assert.ok(prRow(P, 9).includes('<span class="tag closed">Closed</span>'));
+  assert.ok(!/--human|tag human/.test(P), 'the panel never uses the human colour');
+  ok('pulls: the GitHub tab lists each PR with a linked number and title, a state tag, the branch and the updated time');
+
+  assert.ok(P.includes('Evil &lt;img src=x onerror=alert(1)&gt; **bold** `code`'));
+  assert.ok(P.includes('evil&lt;b&gt;x'));
+  assert.ok(!P.includes('<img') && !P.includes('<b>bold</b>') && !P.includes('<code>code</code>') && !P.includes('<b>x'));
+  ok('pulls: titles and branches are escaped and never rendered as markdown');
+
+  const r11 = prRow(P, 11);
+  assert.ok(!r11.includes('<a') && !r11.includes('href'), 'a javascript: URL is not a link');
+  assert.ok(r11.includes('javascript:alert(1)') && r11.includes('<span class="id">#11</span>'), 'it is shown as text');
+  const r8 = prRow(P, 8);
+  assert.ok(r8.includes(`href="${GH}8&quot; onmouseover=&quot;alert(1)"`) && !G.includes('" onmouseover'), 'a quote in a URL cannot leave the attribute');
+  assert.ok(!/href="(?!https:\/\/github\.com\/)/.test(G), 'every link on the GitHub tab goes to github.com');
+  ok('pulls: only https://github.com/ URLs are links; anything else is escaped text');
+
+  const O = e.el('panel-overview').innerHTML, items = attItems(O), pr = items.filter(li => li.includes('awaiting your merge'));
+  assert.deepEqual(pr.map(li => text('<li' + li).match(/PR #\d+ awaiting your merge/)[0]),
+    ['PR #12 awaiting your merge', 'PR #11 awaiting your merge', 'PR #8 awaiting your merge']);
+  assert.ok(!/PR #(10|9)\b/.test(O), 'merged and closed PRs are not in Needs attention');
+  const a12 = pr[0];
+  assert.ok(a12.includes('style="--t:var(--human)"'), 'the awaiting-merge item uses the human tone');
+  assert.ok(a12.includes(`<a class="linkbtn" ${LINK(GH + '12')}>`), 'it links to the PR');
+  assert.ok(a12.includes('Show PR links'));
+  assert.ok(!pr[1].includes('<a') && !pr[1].includes('href'), 'a javascript: URL gets no link in Needs attention either');
+  assert.ok(pr[1].includes('Evil &lt;img src=x onerror=alert(1)&gt; **bold** `code`') && !O.includes('<img') && !O.includes('<b>bold</b>'));
+  assert.ok(!/href="(?!https:\/\/github\.com\/)/.test(O) && !O.includes('" onmouseover'));
+  assert.match(O, new RegExp(`<h3>Needs attention</h3><span class="count">${items.length}</span>`));
+  ok('pulls: each open PR is "PR #n awaiting your merge" in Needs attention, in the human tone, linked and escaped');
+
+  for (const [git, why] of [[{}, 'no pulls field'], [{ pulls: null }, 'pulls null']]) {
+    const q = await load(git), GP = prPanel(q.el('panel-git').innerHTML);
+    assert.match(GP, /Pull requests are not available/, why);
+    assert.ok(!GP.includes('<table'), why + ': no empty table');
+    assert.doesNotMatch(q.el('panel-overview').innerHTML, /awaiting your merge/, why);
+  }
+  ok('pulls: without pulls, the panel says pull requests are not available and Needs attention has no PR items');
+
+  const none = await load({ pulls: PULLS.filter(x => x.state !== 'OPEN') });
+  assert.doesNotMatch(none.el('panel-overview').innerHTML, /awaiting your merge/);
+  const empty = prPanel((await load({ pulls: [] })).el('panel-git').innerHTML);
+  assert.match(empty, /No pull requests yet/);
+  assert.ok(!empty.includes('<table'));
+  ok('pulls: no open PR means no awaiting-merge item; an empty list says there are none yet');
+
+  // Each of these only looks like GitHub: a host that merely begins with github.com, plain http, and
+  // userinfo that puts github.com before an @ so the real host is evil.example.
+  const LOOKALIKE = [
+    { number: 21, title: 'Lookalike host', state: 'OPEN', url: 'https://github.com.evil.example/o/r/pull/1', branch: 'pbi/a', updatedAt: PT },
+    { number: 22, title: 'Plain http', state: 'OPEN', url: 'http://github.com/o/r/pull/2', branch: 'pbi/b', updatedAt: PT },
+    { number: 23, title: 'Userinfo', state: 'OPEN', url: 'https://github.com@evil.example/x', branch: 'pbi/c', updatedAt: PT },
+  ];
+  const look = await load({ pulls: LOOKALIKE });
+  const LP = prPanel(look.el('panel-git').innerHTML);
+  const lookAtt = attItems(look.el('panel-overview').innerHTML).filter(li => li.includes('awaiting your merge'));
+  for (const x of LOOKALIKE) {
+    const row = prRow(LP, x.number);
+    assert.ok(!row.includes('<a') && !row.includes('href'), `${x.url} is not a link in the Pull requests panel`);
+    assert.ok(row.includes(`<span class="id">#${x.number}</span>`) && row.includes(`<div class="sub">${x.url}</div>`),
+      `${x.url} is shown as text in the Pull requests panel`);
+    const li = lookAtt.find(l => text('<li' + l).includes(`PR #${x.number} awaiting your merge`));
+    assert.ok(li, `PR #${x.number} is in Needs attention`);
+    assert.ok(!li.includes('<a') && !li.includes('href'), `${x.url} is not a link in Needs attention`);
+    assert.ok(li.includes('<button class="linkbtn" data-go="git">View</button>'), `PR #${x.number} points at the GitHub tab instead`);
+  }
+  assert.ok(!LP.includes('href'), 'no lookalike URL becomes a link anywhere in the panel');
+  ok('pulls: lookalike hosts, plain http and userinfo tricks are text, not links, in the panel and in Needs attention');
+
+  // State names that are members every object inherits must not be taken for a known state.
+  const INHERITED = ['constructor', '__proto__', 'toString', 'hasOwnProperty', '<b>DRAFT'];
+  const inh = await load({ pulls: INHERITED.map((state, i) =>
+    ({ number: 30 + i, title: 'State ' + i, state, url: GH + (30 + i), branch: 'pbi/s', updatedAt: PT })) });
+  noPageErrors('rendering pull requests whose state is an inherited object member');
+  const IP = prPanel(inh.el('panel-git').innerHTML);
+  assert.equal((IP.match(/<tr data-pr=/g) || []).length, INHERITED.length, 'every row is drawn');
+  INHERITED.forEach((state, i) => assert.ok(prRow(IP, 30 + i).includes(`<span class="tag muted">${state.replace('<', '&lt;').replace('>', '&gt;')}</span>`),
+    `state ${state} is the muted tag with the raw state, escaped`));
+  assert.doesNotMatch(inh.el('panel-overview').innerHTML, /awaiting your merge/, 'none of them is an open PR');
+  ok('pulls: an unknown state, even one named like an inherited object member, is a muted tag with the escaped raw state');
 }
 noPageErrors('after the last check');
 console.log(`all ${passed} page checks passed`);

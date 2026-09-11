@@ -28,6 +28,8 @@
   .wrap { max-width: 1400px; margin: 0 auto; padding: 0 28px; }
   code, .id { font: 500 12px/1.4 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
   code { background: var(--raised); padding: 1px 5px; border-radius: 4px; }
+  a { color: inherit; text-decoration-color: var(--ink-3); text-underline-offset: 2px; }
+  a:hover { text-decoration-color: currentColor; }
   h2 { font-size: 18px; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 4px; text-wrap: balance; }
   h3 { font-size: 14px; font-weight: 600; margin: 0; }
   p { margin: 0; }
@@ -61,7 +63,7 @@
   .tabs button { font: 500 13.5px/1 inherit; font-family: inherit; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--ink-2); padding: 11px 12px 12px; cursor: pointer; white-space: nowrap; display: inline-flex; gap: 7px; align-items: center; }
   .tabs button:hover { color: var(--ink); }
   .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
-  button:focus-visible, .chip:focus-visible { outline: 2px solid var(--live); outline-offset: -2px; border-radius: 4px; }
+  button:focus-visible, .chip:focus-visible, a:focus-visible { outline: 2px solid var(--live); outline-offset: -2px; border-radius: 4px; }
   .count { font-size: 11px; font-weight: 600; min-width: 18px; padding: 2px 6px; border-radius: 9px; background: var(--raised); color: var(--ink-2); text-align: center; }
   .count.human { background: color-mix(in srgb, var(--human) 18%, transparent); color: var(--human); }
   .count.warn { background: color-mix(in srgb, var(--changes) 18%, transparent); color: var(--changes); }
@@ -111,6 +113,8 @@
   .tag.go, .tag.done, .tag.resolved { --t: var(--go); } .tag.changes, .tag.conditions, .tag.medium { --t: var(--changes); } .tag.nogo, .tag.killed { --t: var(--nogo); }
   .tag.running, .tag.partial { --t: var(--live); } .tag.assumed, .tag.human, .tag.proposed, .tag.pending { --t: var(--human); }
   .tag.muted, .tag.low, .tag.todo { --t: var(--ink-3); }
+  /* Pull request states. Not GitHub's purple: that hue is --human here, kept for what awaits the owner. */
+  .tag.open { --t: var(--live); } .tag.merged { --t: var(--go); } .tag.closed { --t: var(--nogo); }
 
   /* attention list */
   .att { list-style: none; margin: 0; padding: 0; }
@@ -121,6 +125,7 @@
   .att span.m { color: var(--ink-2); font-size: 13px; }
   .linkbtn { font: 500 12.5px/1 inherit; font-family: inherit; color: var(--ink-2); background: var(--raised); border: 1px solid var(--rule-2); border-radius: 6px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
   .linkbtn:hover { color: var(--ink); background: var(--hover); }
+  a.linkbtn { display: inline-block; text-decoration: none; }
 
   /* tables */
   table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
@@ -268,6 +273,11 @@
   const toneOf = { done: 'var(--ink-3)', go: 'var(--go)', changes: 'var(--changes)', nogo: 'var(--nogo)', killed: 'var(--nogo)', running: 'var(--live)' };
   const stateLabel = { done: 'Built and reviewed', conditions: 'Conditions open', partial: 'Partly built', todo: 'Not started' };
   const kindLabel = { done: 'Done', go: 'Approved', changes: 'Changes required', nogo: 'Rejected', killed: 'Cut off', running: 'Running' };
+  // A link out of the page, drawn only for a GitHub URL (null otherwise): a URL read from the store could
+  // just as well be javascript: or lead anywhere, so the caller shows anything else as text.
+  const ghLink = (url, inner, cls) => typeof url === 'string' && url.startsWith('https://github.com/')
+    ? `<a${cls ? ` class="${cls}"` : ''} href="${esc(url)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : null;
+  const prState = { OPEN: ['open', 'Open'], MERGED: ['merged', 'Merged'], CLOSED: ['closed', 'Closed'] };
 
   // view is "p:<projectId>" or "other"; sel is the session filter ('' = all of the project's sessions).
   let allRuns = [], runs = [], sessions = [], projects = [], tabDocs = {}, statuses = {}, view = null, sel = '';
@@ -465,6 +475,9 @@
     // Needs attention, derived from the data rather than written by hand.
     const att = [];
     if (you) att.push(['var(--human)', 'Plan gate approval', `${you} assumptions need confirming before work can go on the board.`, 'assumptions']);
+    // Merging is the owner's decision, so an open pull request waits on them like the plan gate does.
+    (Array.isArray(g?.pulls) ? g.pulls : []).filter(x => x?.state === 'OPEN')
+      .forEach(x => att.push(['var(--human)', `PR #${x.number} awaiting your merge`, x.title, 'git', x.url]));
     pbis.filter(x => x.state === 'conditions').forEach(x => att.push(['var(--changes)', `${x.id} review conditions`, x.open, 'backlog']));
     pbis.filter(x => x.state === 'partial').forEach(x => att.push(['var(--live)', `${x.id} partly built`, x.open, 'backlog']));
     if (g && !pushed) att.push(['var(--ink-3)', 'Not on GitHub', 'No remote, pull request or Pages site yet.', 'git']);
@@ -488,7 +501,7 @@
       </div>
       <div class="grid g-3">
         <div class="panel"><div class="ph"><h3>Needs attention</h3><span class="count">${att.length}</span></div>
-          <ul class="att">${att.map(([t, h, m2, go]) => `<li style="--t:${t}"><span class="d"></span><div><b>${esc(h)}</b><span class="m">${esc(m2)}</span></div><button class="linkbtn" data-go="${go}">View</button></li>`).join('') || '<li><span></span><span class="m">Nothing needs attention.</span><span></span></li>'}</ul>
+          <ul class="att">${att.map(([t, h, m2, go, url]) => `<li style="--t:${t}"><span class="d"></span><div><b>${esc(h)}</b><span class="m">${esc(m2)}</span></div>${ghLink(url, 'Open', 'linkbtn') || `<button class="linkbtn" data-go="${go}">View</button>`}</li>`).join('') || '<li><span></span><span class="m">Nothing needs attention.</span><span></span></li>'}</ul>
         </div>
         ${usagePanel()}
         <div class="panel"><div class="ph"><h3>Review outcomes</h3><span class="faint">${vr.length} verdicts</span></div>
@@ -788,6 +801,21 @@
     if (!d) { p.innerHTML = '<div class="empty">Repository details have not been exported yet.</div>'; return; }
     const pushed = (d.remotes || []).length > 0;
     const dirs = Object.entries(d.byDir || {}).sort((a, b) => b[1] - a[1]), maxDir = Math.max(1, ...dirs.map(x => x[1]));
+    // pulls is left out of the export when gh could not list them, or the origin remote is not on GitHub.
+    const prs = Array.isArray(d.pulls) ? d.pulls.filter(x => x && typeof x === 'object') : null;
+    const prOpen = prs ? prs.filter(x => x.state === 'OPEN').length : 0;
+    const prRow = x => {
+      // Own keys only: a state such as "constructor" or "__proto__" would otherwise find an inherited member.
+      const [cls, label] = Object.hasOwn(prState, x.state) ? prState[x.state] : ['muted', x.state || '—'];
+      return `<tr data-pr="${esc(x.number)}"><td style="white-space:nowrap">${ghLink(x.url, `#${esc(x.number)}`, 'id') || `<span class="id">#${esc(x.number)}</span>`}</td>`
+        + `<td class="wide">${ghLink(x.url, esc(x.title)) || esc(x.title) + (x.url ? `<div class="sub">${esc(x.url)}</div>` : '')}</td>`
+        + `<td><span class="tag ${cls}">${esc(label)}</span></td>`
+        + `<td>${x.branch ? `<span class="id">${esc(x.branch)}</span>` : '<span class="faint">—</span>'}</td>`
+        + `<td class="muted" style="white-space:nowrap">${esc(when(x.updatedAt))}</td></tr>`;
+    };
+    const prBody = !prs ? '<div class="pb"><p class="muted">Pull requests are not available. The last export could not list them with the GitHub CLI, or the repository has no origin remote on GitHub.</p></div>'
+      : !prs.length ? '<div class="pb"><p class="muted">No pull requests yet.</p></div>'
+      : `<div class="pb flush scroll"><table><thead><tr><th>#</th><th>Title</th><th>State</th><th>Branch</th><th>Updated</th></tr></thead><tbody>${prs.map(prRow).join('')}</tbody></table></div>`;
     p.innerHTML = `
       <h2>Repository and GitHub</h2>${src(d)}
       <div class="tiles">
@@ -805,7 +833,7 @@
             <dt>Default branch</dt><dd><code>${esc(d.defaultBranch || '—')}</code></dd>
             <dt>Change</dt><dd>${esc(d.shortstat || '—')}</dd>
             <dt>Remote</dt><dd>${pushed ? d.remotes.map(r => `<code>${esc(r)}</code>`).join('<br>') : 'None'}</dd>
-            <dt>Pull request</dt><dd>None</dd>
+            <dt>Pull requests</dt><dd>${prs ? `${prOpen} open` : pushed ? 'Not available' : 'None'}</dd>
             <dt>Pages site</dt><dd>Not deployed · base path <code>/platform-catalogue/</code> configured</dd>
             <dt>Working tree</dt><dd>${(d.dirty || []).length ? d.dirty.map(x => `<code>${esc(x)}</code>`).join(' ') : 'Clean'}</dd>
           </dl>
@@ -816,7 +844,8 @@
           <div class="pb flush scroll"><table><thead><tr><th>Commit</th><th>Message</th><th>When</th></tr></thead><tbody>
           ${(d.commits || []).map(c => `<tr><td><span class="id">${esc(c.sha)}</span></td><td>${esc(c.subject)}</td><td class="muted" style="white-space:nowrap">${esc(when(c.date))}</td></tr>`).join('')}
           </tbody></table></div></div>
-      </div>`;
+      </div>
+      <div class="panel" data-pulls style="margin-top:16px"><div class="ph"><h3>Pull requests</h3><span class="faint">${prs && prs.length ? `${esc(prs.length)} most recently updated · ${esc(prOpen)} open` : ''}</span></div>${prBody}</div>`;
   }
 
   // ---------------- Claude usage ----------------

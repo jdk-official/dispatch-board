@@ -10,6 +10,10 @@ A tab that was exported before but cannot be built now (the repoPath has moved, 
 is unavailable) keeps its last export, with a warning on stderr, so one broken project cannot blank its
 tabs on the board while the others refresh. A project dropped from the config loses its tabs.
 
+A project whose origin remote is on github.com also gets its recent pull requests in the git tab (`pulls`),
+listed with the GitHub CLI. When gh cannot list them (not installed, not signed in, too slow, odd output) the
+git tab is written without `pulls`, with a warning on stderr; that never fails the export.
+
 Build state per PBI, the brief's open questions and the backlog's note about the BOARD are not recorded in
 the build repo, so they are kept by hand in projects/<projectId>.json in this repo. A missing file means no
 build state. A malformed one stops the export and leaves out/ as it was, so a typo cannot reset every PBI
@@ -277,8 +281,55 @@ def git_tab(root, now):
             'tracked': len(tracked), 'byDir': by_dir, 'commits': commits}
 
 
-def main(config=None, out_dir=None, data_dir=None, now=None):
-    """Export every project into out_dir (default out/); returns the process exit code."""
+# https://github.com/..., ssh://git@github.com/... and the scp form git@github.com:...; the host must end at
+# the ":" or "/", so github.com.evil.example is not taken for GitHub.
+GITHUB_URL = re.compile(r'^(?:[a-z][a-z0-9+.-]*://)?(?:[^@/\s]+@)?github\.com[:/]', re.I)
+# Without the sort qualifier gh lists by creation, so an older PR that is still active would fall outside
+# the 20 and out of the board.
+PR_LIST = ['gh', 'pr', 'list', '--state', 'all', '--search', 'sort:updated-desc', '--limit', '20',
+           '--json', 'number,title,state,url,headRefName,updatedAt']
+PR_TIMEOUT = 15  # seconds; the refresher runs on a loop, so a hung gh must not stall it
+
+
+def github_origin(remotes):
+    """True when the `git remote -v` lines give an origin remote on github.com."""
+    for line in remotes:
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] == 'origin' and GITHUB_URL.match(parts[1]):
+            return True
+    return False
+
+
+def pulls(pid, root, run):
+    """The repo's pull requests from gh, most recently updated first, or None (with a warning) when gh cannot
+    list them. run stands in for subprocess.run."""
+    try:
+        r = run(PR_LIST, cwd=root, capture_output=True, text=True, encoding='utf-8', timeout=PR_TIMEOUT)
+        if r.returncode != 0:
+            detail = next((l.strip() for l in (r.stderr or '').splitlines() if l.strip()), '')
+            reason = 'gh exited %d' % r.returncode + (': ' + detail if detail else '')
+        else:
+            found = json.loads(r.stdout)
+            if isinstance(found, list) and all(isinstance(e, dict) for e in found):
+                prs = [{'number': e.get('number'), 'title': e.get('title'), 'state': e.get('state'), 'url': e.get('url'),
+                        'branch': e.get('headRefName'), 'updatedAt': e.get('updatedAt')} for e in found]
+                # gh already sorts by update; sorting again keeps that order if the qualifier is ever ignored.
+                # ISO times in one zone sort as text.
+                return sorted(prs, key=lambda e: str(e['updatedAt'] or ''), reverse=True)
+            reason = 'gh printed malformed JSON (not a list of objects)'
+    except subprocess.TimeoutExpired:
+        reason = 'gh did not finish within %d s' % PR_TIMEOUT
+    except (OSError, subprocess.SubprocessError) as e:  # OSError: gh is not installed
+        reason = 'gh could not be run (%s)' % e
+    except (TypeError, ValueError) as e:  # ValueError covers invalid JSON and output that is not UTF-8
+        reason = 'gh printed malformed JSON (%s)' % e
+    warn('project %s: cannot list pull requests, %s; the git tab has none this time' % (pid, reason))
+    return None
+
+
+def main(config=None, out_dir=None, data_dir=None, now=None, run=None):
+    """Export every project into out_dir (default out/); returns the process exit code.
+    run stands in for subprocess.run when gh lists pull requests (tests pass a fake)."""
     if config is None:
         with io.open(CONFIG, encoding='utf-8') as f:
             config = json.load(f)
@@ -297,6 +348,10 @@ def main(config=None, out_dir=None, data_dir=None, now=None):
                 docs = spec_tabs(p, load_data(data_dir or DATA_DIR, p['id']), stamp)
                 if is_repo(p['repoPath']):
                     docs['git'] = git_tab(p['repoPath'], stamp)
+                    if github_origin(docs['git']['remotes']):
+                        prs = pulls(p['id'], p['repoPath'], run or subprocess.run)
+                        if prs is not None:
+                            docs['git']['pulls'] = prs
             # Kept as the exact bytes, so refresh.py sees no change and pushes nothing for them.
             kept = {}
             for tab in TABS:
