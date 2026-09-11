@@ -1,7 +1,8 @@
 """Tests for exporters/refresh.py's plan and commit steps, run against a synthetic out/ in a temporary
 directory. The exporters are never run: main() is given a stub in their place.
 """
-import contextlib, io, json, os, shutil, sys, tempfile, unittest
+import contextlib, io, json, os, shutil, subprocess, sys, tempfile, unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'exporters'))
 import refresh as rf  # noqa: E402
@@ -337,6 +338,65 @@ class MassDelete(unittest.TestCase):
         k = keys(rf.plan(self.o.out, allow_mass_delete=True))
         self.assertIn(('delete', 'runs/ro2'), k)
         self.assertTrue(os.path.exists(self.o.pending))
+
+
+class Catalogue(unittest.TestCase):
+    """catalogue/index, from export_catalogue.py: managed like the other collections, never deleted by accident."""
+
+    def setUp(self):
+        self.o = Out()
+        self.addCleanup(self.o.cleanup)
+        self.o.doc('catalogue', 'index', {'generatedAt': '2026-09-11T00:00:00+00:00', 'entries': [{'id': 'p:a'}], 'plugins': []})
+
+    def test_catalogue_is_a_managed_collection(self):
+        self.assertIn('catalogue', rf.MANAGED)
+        self.assertIn(('set', 'catalogue/index'), keys(rf.plan(self.o.out)))
+
+    def test_a_catalogue_change_is_one_write_and_moves_no_status(self):
+        self.o.pushed()
+        self.o.edit('catalogue', 'index', entries=[{'id': 'p:a'}, {'id': 'p:b'}])
+        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'catalogue/index')})
+
+    def test_a_new_generated_at_alone_is_not_a_change(self):
+        self.o.pushed()
+        self.o.edit('catalogue', 'index', generatedAt='2026-09-12T00:00:00+00:00')
+        self.assertIsNone(rf.plan(self.o.out))
+
+    def test_deleting_the_catalogue_is_refused(self):
+        self.o.pushed()
+        self.o.remove('catalogue', 'index')
+        with self.assertRaises(rf.MassDelete) as cm:
+            rf.plan(self.o.out)
+        self.assertIn('catalogue/index', str(cm.exception))
+        self.assertFalse(os.path.exists(self.o.pending))
+        self.assertEqual(keys(rf.plan(self.o.out, allow_mass_delete=True)), {('delete', 'catalogue/index')})
+
+
+class Export(unittest.TestCase):
+    """export() runs each exporter as a subprocess; the real exporters are never run here."""
+
+    def calls(self, results):
+        seen = []
+
+        def run(cmd, **kw):
+            seen.append(cmd)
+            code = results.get(os.path.basename(cmd[1]), 0)
+            return subprocess.CompletedProcess(cmd, code, stdout='', stderr='boom' if code else '')
+        with mock.patch.object(rf.subprocess, 'run', run), contextlib.redirect_stderr(io.StringIO()):
+            err = rf.export('OUTDIR')
+        return err, seen
+
+    def test_the_three_exporters_run_in_order(self):
+        self.assertEqual(rf.EXPORTERS, ('export_board.py', 'export_sessions.py', 'export_catalogue.py'))
+        err, seen = self.calls({})
+        self.assertIsNone(err)
+        self.assertEqual([os.path.basename(c[1]) for c in seen], list(rf.EXPORTERS))
+        self.assertTrue(all(c[0] == sys.executable and c[2] == 'OUTDIR' for c in seen))
+
+    def test_a_failing_exporter_stops_the_rest(self):
+        err, seen = self.calls({'export_sessions.py': 2})
+        self.assertIn('export_sessions.py failed', err)
+        self.assertEqual([os.path.basename(c[1]) for c in seen], ['export_board.py', 'export_sessions.py'])
 
 
 class Cli(unittest.TestCase):

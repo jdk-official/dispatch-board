@@ -5,6 +5,9 @@ session ids that build it, statusDoc is the store document its live flag and upd
 are paths relative to repoPath. A config without a "projects" list (the shape used before projects
 existed) is read as one project made from build.* and usage.sessions, with the document paths
 export_board.py always read for it.
+
+catalogue() reads the "catalogue" block: where export_catalogue.py finds the agent-catalog marketplace clone
+and the installed-plugins file.
 """
 import os, re
 
@@ -24,6 +27,25 @@ LEGACY_DOCS = {
         {'gate': 'PBI-008 spec gate', 'path': 'docs/backlog/reviews/PBI-008/spec-review-r{round}.md'},
     ],
 }
+CATALOGUE = {
+    'marketplacePath': '~/.claude/plugins/marketplaces/agent-catalog',
+    'installedPath': '~/.claude/plugins/installed_plugins.json',
+}
+
+
+def catalogue(cfg):
+    """The catalogue block's two paths, with defaults filled in and a leading ~ expanded. Raises ValueError for
+    a block that is not an object or a value that is not a string, so a typo cannot silently point elsewhere."""
+    block = cfg.get('catalogue', {})
+    if not isinstance(block, dict):
+        raise ValueError('"catalogue" must be an object, not %s' % type(block).__name__)
+    out = {}
+    for key, default in CATALOGUE.items():
+        value = block.get(key, default)
+        if not isinstance(value, str):
+            raise ValueError('catalogue.%s must be a string, not %s' % (key, type(value).__name__))
+        out[key] = os.path.expanduser(value)
+    return out
 
 
 def legacy(cfg):

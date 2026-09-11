@@ -38,7 +38,6 @@
 
 | ID | Title | Depends on | Conflict group | Conflict risk |
 |----|-------|------------|----------------|---------------|
-| PBI-017 | Agent catalogue tab: every catalogue agent and skill, grouped by purpose, with usage coverage across sessions and projects | [] | page | High |
 
 ---
 
@@ -53,6 +52,7 @@
 
 | ID | Title | PR | Review verdict | Review note path |
 |----|-------|----|----------------|-----------------|
+| PBI-017 | Agent catalogue tab: every catalogue agent and skill, grouped by purpose, with usage coverage across sessions and projects | none yet: committed locally on `main`; the push and PR wait for the owner (`pr_required`, no agent merge) | GO-WITH-CONDITIONS, round 3; notes logged in PBI-002 | docs/backlog/reviews/PBI-017/code-review-r3.md |
 
 ---
 

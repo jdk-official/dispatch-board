@@ -4,10 +4,11 @@
     python exporters/refresh.py --allow-mass-delete   # the same, accepting a large delete (see below)
     python exporters/refresh.py --commit              # after the writes succeeded: record them as pushed
 
+The exporters, run in this order, are export_board.py, export_sessions.py and export_catalogue.py (EXPORTERS).
 The printed "writes" array is exactly what Artifact write_db (db_op "batch") takes; each entry
 points at a file under out/. A document counts as changed when its content differs from the last
-push, ignoring the generatedAt stamp. refresh.py manages four collections: runs, sessions, projects and
-projectTabs. Their documents recorded in out/.pushed.json that are no longer exported are deleted.
+push, ignoring the generatedAt stamp. refresh.py manages five collections: runs, sessions, projects,
+projectTabs and catalogue. Their documents recorded in out/.pushed.json that are no longer exported are deleted.
 Documents never recorded there, and every other collection (such as the retired tabs/* and the
 hand-written runs/r01-r36), are never touched: deleting those needs the owner's go-ahead.
 
@@ -19,9 +20,9 @@ own. meta/status also holds hand-written title, message and metrics, so it is on
 (op "update"). Any other status document is created with "set" on its first write and merged into after.
 
 An export with no sessions, one that would delete more than half of the pushed runs and sessions, one
-that would delete any projects/ document, or one that would delete every pushed projectTabs document of a
-project, is taken to be a broken export rather than real change: refresh.py prints why, exits non-zero
-and leaves nothing pending, unless --allow-mass-delete is given.
+that would delete any projects/ document, one that would delete every pushed projectTabs document of a
+project, or one that would delete catalogue/index, is taken to be a broken export rather than real change:
+refresh.py prints why, exits non-zero and leaves nothing pending, unless --allow-mass-delete is given.
 
 State: out/.pushed.json (what the store holds), out/.pending.json (the last printed plan).
 """
@@ -31,7 +32,8 @@ from datetime import datetime, timezone
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(HERE, 'out')
 BATCH = 50  # write_db batch limit
-MANAGED = ('runs', 'sessions', 'projects', 'projectTabs')  # the collections refresh.py sets and deletes
+EXPORTERS = ('export_board.py', 'export_sessions.py', 'export_catalogue.py')
+MANAGED = ('runs', 'sessions', 'projects', 'projectTabs', 'catalogue')  # the collections refresh.py sets and deletes
 TABS = ('spec', 'assumptions', 'decisions', 'backlog', 'git')  # projectTabs/<projectId>.<tab>, from export_board.py
 META_STATUS = 'meta/status'
 
@@ -74,8 +76,8 @@ def discard(path):
 
 
 def export(out):
-    """Run both exporters into out; returns an error message, or None. Their warnings go to stderr."""
-    for script in ('export_board.py', 'export_sessions.py'):
+    """Run every exporter into out, in EXPORTERS order; returns an error message, or None. Their warnings go to stderr."""
+    for script in EXPORTERS:
         r = subprocess.run([sys.executable, os.path.join(HERE, 'exporters', script), out], capture_output=True, text=True, encoding='utf-8')
         if r.returncode:
             return '%s failed:\n%s' % (script, r.stderr or r.stdout)
@@ -125,6 +127,9 @@ def plan(out, allow_mass_delete=False):
     emptied = sorted(pid for pid, ks in tabs_of.items() if all(k in gone_set for k in ks))
     if emptied:
         refused.append('every tab of project %s (check its repoPath and docs in board.config.json)' % ', '.join(emptied))
+    # export_catalogue.py keeps its last export when the marketplace cannot be read, so losing it means a broken export.
+    if 'catalogue/index' in gone_set:
+        refused.append('catalogue/index. The agent catalogue is no longer exported (check "catalogue" in board.config.json)')
     if refused and not allow_mass_delete:
         discard(pending_path)
         raise MassDelete('refusing to delete %s. Nothing is pending. If the deletes are intended, re-run with '

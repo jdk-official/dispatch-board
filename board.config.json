@@ -44,6 +44,10 @@
       }
     }
   ],
+  "catalogue": {
+    "marketplacePath": "~/.claude/plugins/marketplaces/agent-catalog",
+    "installedPath": "~/.claude/plugins/installed_plugins.json"
+  },
   "sessions": {
     "days": 7,
     "projectsRoot": "C:/Users/jdk/.claude/projects",

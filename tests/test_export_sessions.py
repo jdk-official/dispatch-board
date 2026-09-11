@@ -540,6 +540,133 @@ class Privacy(TreeCase):
         self.assertNotIn('firstPrompt', self.t.docs('sessions')[SID])
 
 
+def skill_call(m, tool_id, skill, args=None):
+    inp = {'skill': skill} if args is None else {'skill': skill, 'args': args}
+    return reply(m, 'msg-skill-' + tool_id, tools=[(tool_id, 'Skill', inp)])
+
+
+def typed(m, name, meta=None, order='message-first'):
+    """A slash command the owner typed, recorded as Claude Code writes it."""
+    msg, nm = '<command-message>%s</command-message>' % name.lstrip('/'), '<command-name>%s</command-name>' % name
+    rec = user(m, msg + '\n' + nm if order == 'message-first' else nm + '\n' + msg + '\n<command-args></command-args>')
+    if meta is not None:
+        rec['isMeta'] = meta
+    return rec
+
+
+class CatalogueUsage(TreeCase):
+    """What the agent catalogue tab counts: agentType and start on runs, skillUses on sessions."""
+
+    def test_subagent_runs_carry_agent_type_and_start(self):
+        self.t.basic()
+        self.assertEqual(self.t.run(), 0)
+        run = self.t.docs('runs')['acw11']
+        self.assertEqual((run['agentType'], run['start']), ('engineering-agents:code-writer', ts(1)))
+
+    def test_no_agent_type_when_the_meta_is_missing_or_empty(self):
+        self.t.basic()
+        self.t.agent(SID, 'anometa', [reply(3, 'x', text='hi')])
+        self.t.agent(SID, 'aempty', [reply(4, 'y', text='hi')], {'agentType': '', 'description': 'blank'})
+        self.assertEqual(self.t.run(), 0)
+        runs = self.t.docs('runs')
+        self.assertNotIn('agentType', runs['anometa'])
+        self.assertNotIn('agentType', runs['aempty'])
+        self.assertEqual(runs['anometa']['start'], ts(3))  # falls back to the agent's first timestamp
+
+    def test_no_start_when_the_launch_time_is_unknown(self):
+        self.t.basic()
+        undated = reply(3, 'z', text='hi')
+        del undated['timestamp']
+        self.t.agent(SID, 'aundated', [undated], {'agentType': 'Plan', 'description': 'gate'})
+        self.assertEqual(self.t.run(), 0)
+        run = self.t.docs('runs')['aundated']
+        self.assertNotIn('start', run)
+        self.assertEqual(run['agentType'], 'Plan')
+
+    def test_manual_rows_carry_neither(self):
+        self.t.basic()
+        cfg = config()
+        cfg['runs']['manual'] = [{'id': 'orch-x', 'after': 'acw11', 'label': 'in-line work'}]
+        self.assertEqual(self.t.run(cfg), 0)
+        run = self.t.docs('runs')['orch-x']
+        self.assertNotIn('agentType', run)
+        self.assertNotIn('start', run)
+
+    def test_sessions_without_skill_use_carry_an_empty_map(self):
+        self.t.basic()
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(self.t.docs('sessions')[SID]['skillUses'], {})
+
+    def test_skill_calls_and_typed_plugin_commands_are_counted(self):
+        undated = skill_call(0, 'toolu_sk_undated', 'backlog-delivery:pbi-review')
+        del undated['timestamp']
+        self.t.session(SID, [
+            user(0, 'go'),
+            skill_call(1, 'toolu_sk1', 'backlog-delivery:pbi-plan', args='SECRET-ARGUMENT docs/prd.md'),
+            skill_call(5, 'toolu_sk2', 'backlog-delivery:pbi-plan'),
+            skill_call(3, 'toolu_sk3', 'loop'),  # a bare Skill id is still a use; the page decides what it matches
+            typed(4, '/anthropic-skills:i-have-adhd'),
+            typed(6, '/review-agents:triage', order='name-first'),
+            undated,
+        ])
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(self.t.docs('sessions')[SID]['skillUses'], {
+            'backlog-delivery:pbi-plan': {'count': 2, 'last': ts(5)},
+            'loop': {'count': 1, 'last': ts(3)},
+            'anthropic-skills:i-have-adhd': {'count': 1, 'last': ts(4)},
+            'review-agents:triage': {'count': 1, 'last': ts(6)},
+            'backlog-delivery:pbi-review': {'count': 1},
+        })
+        for coll in ('sessions', 'runs'):
+            for d in self.t.docs(coll).values():
+                self.assertNotIn('SECRET-ARGUMENT', json.dumps(d))
+        with io.open(os.path.join(self.t.out, '.cache', 'sessions.json'), encoding='utf-8') as f:
+            self.assertNotIn('SECRET-ARGUMENT', f.read())
+
+    def test_a_use_without_a_timestamp_leaves_last_unchanged(self):
+        undated = skill_call(0, 'toolu_u', 'backlog-delivery:pbi-plan')
+        del undated['timestamp']
+        self.t.session(SID, [user(0, 'go'), skill_call(2, 'toolu_a', 'backlog-delivery:pbi-plan'), undated])
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(self.t.docs('sessions')[SID]['skillUses'], {'backlog-delivery:pbi-plan': {'count': 2, 'last': ts(2)}})
+
+    def test_a_streamed_skill_call_seen_twice_counts_once(self):
+        call = skill_call(2, 'toolu_same', 'backlog-delivery:pbi-plan')
+        self.t.session(SID, [user(0, 'go'), call, call])
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(self.t.docs('sessions')[SID]['skillUses']['backlog-delivery:pbi-plan']['count'], 1)
+
+    def test_command_text_anywhere_else_is_not_counted(self):
+        cmd = '<command-name>/%s</command-name>'
+        tool_result = {'type': 'user', 'timestamp': ts(2), 'message': {'role': 'user', 'content': [
+            {'type': 'tool_result', 'tool_use_id': 'toolu_b', 'content': cmd % 'in-result:x'}]}}
+        attachment = {'type': 'attachment', 'timestamp': ts(3), 'attachment': {'type': 'text', 'content': cmd % 'in-attachment:x'}}
+        system = {'type': 'system', 'timestamp': ts(3), 'content': cmd % 'in-system:x'}
+        self.t.session(SID, [
+            user(0, 'go'),
+            reply(1, 'm-bash', tools=[('toolu_b', 'Bash', {'command': 'echo "%s"' % (cmd % 'in-tool-use:x')})]),
+            tool_result, attachment, system,
+            typed(4, '/review-agents:dup', meta=True),  # the isMeta copy Claude Code writes after some commands
+            typed(5, '/loop'),  # a bare slash command
+            user(6, 'Please run <command-name>/mid:sentence</command-name> for me'),  # does not start with the tags
+            skill_call(7, 'toolu_bad', 'bad id <img src=x>'),
+            typed(8, '/bad:id with spaces'),
+        ])
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(self.t.docs('sessions')[SID]['skillUses'], {})
+        self.assertIn('bad id', self.t.err)
+
+    def test_skill_calls_inside_agent_transcripts_are_not_counted(self):
+        self.t.basic()
+        self.t.agent(SID, 'askill', [skill_call(3, 'toolu_inner', 'backlog-delivery:pbi-plan')], {'agentType': 'Plan'})
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(self.t.docs('sessions')[SID]['skillUses'], {})
+
+    def test_parser_version_was_bumped(self):
+        # Results cached by parser 3 carry neither skillUses nor agentType, so they must be re-read once.
+        self.assertGreater(es.PARSER_VERSION, 3)
+
+
 def pconfig(*projects, **sessions):
     s = {'days': 7}
     s.update(sessions)

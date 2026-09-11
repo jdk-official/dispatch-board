@@ -1,20 +1,35 @@
-// Checks the page's project picker and session filter: runs the inline script from site/index.html against a
-// stub DOM and a fake store, fires store snapshots and picker changes, and asserts on what the page renders.
+// Checks the page's project picker and session filter, the project Overview and the Agent catalogue tab: runs the inline script from
+// site/index.html against a stub DOM and a fake store, fires store snapshots and picker changes, and asserts on
+// what the page renders.
 //
 //     node tests/page.test.mjs
+//
+// PAGE_HTML=<path> runs the checks against another copy of the page (for example a deliberately broken one);
+// without it they read site/index.html.
 //
 // Node built-ins only (no npm install). Any failed check throws, so the process exits non-zero.
 import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
 
-const html = fs.readFileSync(new URL('../site/index.html', import.meta.url), 'utf8');
+const html = fs.readFileSync(process.env.PAGE_HTML || new URL('../site/index.html', import.meta.url), 'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const tabNames = [...html.matchAll(/role="tab" id="tab-(\w+)"/g)].map(m => m[1]);
 assert.ok(tabNames.includes('spec') && tabNames.includes('overview'), 'tab buttons found in site/index.html');
 
+// The page catches a tab renderer that throws, draws that tab's error state and only logs the error with
+// console.error, so a crashing tab would otherwise pass every check. Every console.error the page makes is
+// recorded, and each check fails if one was logged that the test did not ask for with expectErrors.
+let pageErrors = [];
+console.error = (...args) => pageErrors.push(args);
+const noPageErrors = where => assert.equal(pageErrors.length, 0, `unexpected console.error ${where}:\n` +
+  pageErrors.map(a => a.map(x => x instanceof Error ? x.stack : String(x)).join(' ')).join('\n'));
+// Runs fn and returns the console.error calls it made, instead of counting them as unexpected.
+const expectErrors = fn => { const outer = pageErrors; pageErrors = []; try { fn(); return pageErrors; } finally { pageErrors = outer; } };
+
 // A fresh page: each call re-runs the script against new stubs, with localStorage preset to `storage`.
-function env(storage = {}) {
+// With offline, the page gets no store, as when the artifact runs without its db capability.
+function env(storage = {}, { offline = false } = {}) {
   const els = {}, doc = { activeElement: null };
   const el = id => els[id] || (els[id] = {
     id, innerHTML: '', textContent: '', className: '', hidden: false, disabled: false, value: '', tabIndex: 0, dataset: {}, attrs: {}, listeners: {},
@@ -35,7 +50,7 @@ function env(storage = {}) {
   globalThis.document = doc;
   globalThis.window = globalThis;
   globalThis.localStorage = { getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, String(v)) };
-  globalThis.claude = { use: async () => db };
+  globalThis.claude = { use: async () => offline ? null : db };
   globalThis.scrollTo = () => {};
   globalThis.setInterval = () => 0;
   vm.runInThisContext(script, { filename: 'site/index.html <script>' });
@@ -72,7 +87,7 @@ const TABS = [
   { id: 'dispatch-board.git', generatedAt: now, source: 'git', branch: 'main', commits: [{ sha: 'abc', subject: 'x', date: now }], remotes: ['origin x'], repoPath: 'C:/Users/jdk/dispatch-board' },
 ];
 let passed = 0;
-const ok = m => { passed++; console.log('ok  ' + m); };
+const ok = m => { noPageErrors(`before "${m}"`); passed++; console.log('ok  ' + m); };
 
 // ---- 1. a fresh load: guards, default choice, pickers, scoping
 {
@@ -220,4 +235,233 @@ const ok = m => { passed++; console.log('ok  ' + m); };
   assert.match(e.el('project').innerHTML, /value="other" selected/);
   ok('first project push: Other sessions picked in the picker is kept');
 }
+// ---- 4. the Agent catalogue tab
+const whenStr = iso => new Date(iso).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' });
+const text = h => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const rowOf = (html, key) => { const m = html.match(new RegExp(`<tr data-entry="${reEsc(key)}">([\\s\\S]*?)</tr>`)); assert.ok(m, 'row ' + key); return m[1]; };
+// cells: entry, description, uses in the view, last use in the view, projects, all-sessions uses
+const cells = row => row.split('<td').slice(1).map(c => text(c.replace(/^[^>]*>/, '')));
+const tileOf = (html, label) => { const m = html.match(new RegExp(`<div class="tl">${reEsc(label)}</div><div class="tv">([\\s\\S]*?)</div><div class="ts">([\\s\\S]*?)</div>`)); assert.ok(m, 'tile ' + label); return [text(m[1]), text(m[2])]; };
+const groupOf = (html, plugin) => { const m = html.match(new RegExp(`data-plugin="${reEsc(plugin)}"([\\s\\S]*?)</table>`)); assert.ok(m, 'group ' + plugin); return m[1]; };
+{
+  const T0 = '2026-09-05T08:00:00Z', T1 = '2026-09-06T09:00:00Z', T2 = '2026-09-07T10:00:00Z', T3 = '2026-09-08T11:00:00Z';
+  const HOSTILE = 'Hostile <img src=x onerror=alert(1)> **bold** `code`';
+  const CATALOGUE = {
+    generatedAt: now, source: { marketplacePath: 'M', installedPath: 'I' },
+    plugins: [
+      { plugin: 'engineering-agents', purpose: 'Engineering doers.', purposeFull: 'Engineering doers. ENG-FULL-TEXT', installed: true, agents: 2, skills: 0 },
+      { plugin: 'backlog-delivery', purpose: 'Delivery skills.', purposeFull: 'Delivery skills.', installed: true, agents: 0, skills: 3 },
+      { plugin: 'workflow-agents', purpose: 'workflow-agents', purposeFull: '', installed: false, agents: 1, skills: 1 },
+    ],
+    entries: [
+      { id: 'engineering-agents:code-writer', kind: 'agent', plugin: 'engineering-agents', name: 'code-writer', description: 'Writes the smallest change. CW-DESC', installed: true },
+      { id: 'engineering-agents:test-writer', kind: 'agent', plugin: 'engineering-agents', name: 'test-writer', description: HOSTILE, installed: true },
+      { id: 'backlog-delivery:dup', kind: 'skill', plugin: 'backlog-delivery', name: 'dup', description: 'One of two skills named dup.', installed: true },
+      { id: 'backlog-delivery:pbi-plan', kind: 'skill', plugin: 'backlog-delivery', name: 'pbi-plan', description: 'Plans.', installed: true },
+      { id: 'backlog-delivery:pbi-review', kind: 'skill', plugin: 'backlog-delivery', name: 'pbi-review', description: 'Reviews.', installed: true },
+      { id: 'workflow-agents:orchestrator', kind: 'agent', plugin: 'workflow-agents', name: 'orchestrator', description: 'Coordinates.', installed: false },
+      { id: 'workflow-agents:dup', kind: 'skill', plugin: 'workflow-agents', name: 'dup', description: 'The other dup.', installed: false },
+    ],
+  };
+  const CS = [  // newest last, as the store's orderBy('last') returns them
+    { id: 'c1', title: 'PC one', project: 'platform-catalogue', last: old, start: old, running: 0, skillUses: { 'backlog-delivery:pbi-plan': { count: 2, last: T1 } } },
+    { id: 'c4', title: 'Old parser', project: null, last: old, start: old, running: 0 },  // cached before skillUses existed
+    { id: 'c3', title: 'Loose', project: null, last: old, start: old, running: 0, skillUses: { 'backlog-delivery:pbi-review': { count: 1, last: T1 } } },
+    { id: 'c2b', title: 'DB two', project: 'dispatch-board', last: old, start: old, running: 0, skillUses: { 'backlog-delivery:pbi-plan': { count: 1, last: T2 } } },
+    { id: 'c2', title: 'DB one', project: 'dispatch-board', last: now, start: now, running: 0, skillUses: { 'pbi-review': { count: 1, last: T3 }, dup: { count: 1, last: T3 }, 'artifact-design': { count: 1 } } },
+  ];
+  const CR = [
+    { id: 'k1', session: 'c1', project: 'platform-catalogue', seq: 1, lane: 'cw', kind: 'done', label: 'x', agentType: 'engineering-agents:code-writer', start: T1 },
+    { id: 'k0', session: 'c1', project: 'platform-catalogue', seq: 2, lane: 'orch', kind: 'done', label: 'in-line work' },
+    { id: 'k2', session: 'c2', project: 'dispatch-board', seq: 1, lane: 'cw', kind: 'done', label: 'x', agentType: 'engineering-agents:code-writer', start: T3 },
+    { id: 'k3', session: 'c2b', project: 'dispatch-board', seq: 1, lane: 'cw', kind: 'done', label: 'x', agentType: 'engineering-agents:code-writer', start: T2 },
+    { id: 'k4', session: 'c3', project: null, seq: 1, lane: 'plan', kind: 'go', label: 'x', agentType: 'Plan', start: T1 },
+    { id: 'k5', session: 'c3', project: null, seq: 2, lane: 'tw', kind: 'done', label: 'x', agentType: 'engineering-agents:test-writer', start: T0 },
+  ];
+
+  const i = tabNames.indexOf('catalogue');
+  assert.ok(i > 0 && tabNames[i - 1] === 'dispatch' && tabNames[i + 1] === 'usage');
+  assert.match(html, /<button role="tab" id="tab-catalogue" aria-controls="panel-catalogue" data-tab="catalogue">Agent catalogue<\/button>/);
+  ok('catalogue: the Agent catalogue tab sits straight after Dispatch, before Claude usage');
+
+  const e = env({ 'board-view': 'p:dispatch-board', 'board-tab': 'catalogue' });
+  await tick();
+  assert.ok(e.subs['d:catalogue/index'], 'catalogue/index is watched');
+  e.fire('c:projects', PROJECTS); e.fire('c:sessions', CS); e.fire('c:runs', CR);
+  assert.equal(e.selected(), 'catalogue');
+  assert.equal(e.el('tab-catalogue').hidden, false);
+  assert.match(e.el('panel-catalogue').innerHTML, /<div class="empty">Connecting to the live store…<\/div>/);
+  ok('catalogue: until catalogue/index has answered, the tab says it is connecting, not that nothing was exported');
+  e.fire('d:catalogue/index', null);
+  assert.match(e.el('panel-catalogue').innerHTML, /<div class="empty">The agent catalogue has not been exported yet\.<\/div>/);
+  ok('catalogue: before catalogue/index exists, the tab shows the empty state');
+
+  e.fire('d:catalogue/index', CATALOGUE);
+  let H = e.el('panel-catalogue').innerHTML;
+  assert.deepEqual(tileOf(H, 'Agents used'), ['1 of 3 · 2 in all sessions', '2 installed']);
+  assert.deepEqual(tileOf(H, 'Skills used'), ['2 of 4 · 2 in all sessions', '3 installed']);
+  assert.equal(tileOf(H, 'Outside the catalogue')[0], '2 · 3 in all sessions');
+  ok('catalogue, project view: tiles give the view figure, the all-sessions figure beside it, and K installed');
+  assert.ok(H.includes('Usage covers the sessions the board exports: the last 7 days plus every linked session.'));
+  ok('catalogue: the coverage caption is shown');
+
+  const order = ['engineering-agents', 'backlog-delivery', 'workflow-agents'].map(p => H.indexOf(`data-plugin="${p}"`));
+  assert.ok(order.every(x => x >= 0) && order[0] < order[1] && order[1] < order[2], 'groups in plugins order');
+  const eng = groupOf(H, 'engineering-agents'), wf = groupOf(H, 'workflow-agents');
+  assert.ok(eng.includes('Engineering doers.') && /<details[^>]*>[\s\S]*ENG-FULL-TEXT[\s\S]*<\/details>/.test(eng));
+  assert.ok(wf.includes('not installed') && !eng.includes('not installed'));
+  const cw = rowOf(H, 'agent:engineering-agents:code-writer');
+  assert.ok(/<details[^>]*>[\s\S]*CW-DESC[\s\S]*<\/details>/.test(cw), 'description expandable');
+  assert.ok(cw.includes('<span class="id') && cw.includes('engineering-agents:code-writer'), 'id in the mono face');
+  ok('catalogue: one group per plugin in order, purpose with purposeFull expandable, not-installed tag, descriptions expandable');
+
+  assert.deepEqual(cells(cw).slice(2), ['2', whenStr(T3), 'platform-catalogue, dispatch-board', '3']);
+  ok('catalogue: uses and last use (latest run start) in the view; projects and uses over all sessions');
+  const tw = cells(rowOf(H, 'agent:engineering-agents:test-writer'));
+  assert.deepEqual(tw.slice(2), ['never used', '—', 'Other sessions', '1']);
+  assert.deepEqual(cells(rowOf(H, 'agent:workflow-agents:orchestrator')).slice(2), ['never used', '—', '—', '0']);
+  ok('catalogue: never used in the view; projects include Other sessions for unlinked sessions');
+
+  assert.deepEqual(cells(rowOf(H, 'skill:backlog-delivery:pbi-plan')).slice(2), ['1', whenStr(T2), 'platform-catalogue, dispatch-board', '3']);
+  assert.deepEqual(cells(rowOf(H, 'skill:backlog-delivery:pbi-review')).slice(2), ['1', whenStr(T3), 'dispatch-board, Other sessions', '2']);
+  assert.equal(cells(rowOf(H, 'skill:backlog-delivery:dup'))[2], 'never used');
+  assert.equal(cells(rowOf(H, 'skill:workflow-agents:dup'))[2], 'never used');
+  ok('catalogue: a bare Skill id counts toward the one skill of that name, and an ambiguous one toward neither');
+  const bd = groupOf(H, 'backlog-delivery');
+  assert.ok(bd.indexOf('backlog-delivery:pbi-plan') < bd.indexOf('backlog-delivery:pbi-review') && bd.indexOf('backlog-delivery:pbi-review') < bd.indexOf('backlog-delivery:dup'));
+  ok('catalogue: rows sort by uses in the view, then name');
+
+  assert.deepEqual(cells(rowOf(H, 'skill:dup')).slice(2), ['1', whenStr(T3), 'dispatch-board', '1']);
+  assert.deepEqual(cells(rowOf(H, 'skill:artifact-design')).slice(2), ['1', '—', 'dispatch-board', '1']);
+  assert.deepEqual(cells(rowOf(H, 'agent:Plan')).slice(2), ['never used', '—', 'Other sessions', '1']);
+  assert.ok(H.indexOf('data-entry="skill:dup"') > H.indexOf('data-plugin="workflow-agents"'), 'outside panel comes last');
+  ok('catalogue: ids outside the catalogue get their own final panel with the same columns');
+
+  assert.ok(H.includes('Hostile &lt;img src=x onerror=alert(1)&gt; **bold** `code`'));
+  assert.ok(!H.includes('<img') && !H.includes('<b>bold</b>') && !H.includes('<code>code</code>'));
+  ok('catalogue: descriptions are escaped and never rendered as markdown');
+
+  e.change('session', 'c2b');
+  H = e.el('panel-catalogue').innerHTML;
+  assert.deepEqual(cells(rowOf(H, 'agent:engineering-agents:code-writer')).slice(2), ['1', whenStr(T2), 'platform-catalogue, dispatch-board', '3']);
+  assert.equal(cells(rowOf(H, 'skill:backlog-delivery:pbi-review'))[2], 'never used');
+  assert.deepEqual(tileOf(H, 'Agents used'), ['1 of 3 · 2 in all sessions', '2 installed']);
+  assert.deepEqual(tileOf(H, 'Skills used'), ['1 of 4 · 2 in all sessions', '3 installed']);
+  assert.equal(tileOf(H, 'Outside the catalogue')[0], '0 · 3 in all sessions');
+  ok('catalogue: the session filter narrows both runs and sessions');
+
+  e.change('project', 'other');
+  e.change('session', 'c3');
+  assert.equal(e.el('tab-catalogue').hidden, false);
+  assert.equal(e.selected(), 'catalogue');
+  H = e.el('panel-catalogue').innerHTML;
+  assert.deepEqual(cells(rowOf(H, 'agent:engineering-agents:test-writer')).slice(2), ['1', whenStr(T0), 'Other sessions', '1']);
+  assert.deepEqual(cells(rowOf(H, 'skill:backlog-delivery:pbi-review')).slice(2), ['1', whenStr(T1), 'dispatch-board, Other sessions', '2']);
+  assert.equal(cells(rowOf(H, 'agent:engineering-agents:code-writer'))[2], 'never used');
+  assert.deepEqual(tileOf(H, 'Agents used'), ['1 of 3 · 2 in all sessions', '2 installed']);
+  assert.deepEqual(tileOf(H, 'Skills used'), ['1 of 4 · 2 in all sessions', '3 installed']);
+  assert.deepEqual(cells(rowOf(H, 'agent:Plan')).slice(2), ['1', whenStr(T1), 'Other sessions', '1']);
+  ok('catalogue, Other sessions: the tab stays, and follows the chosen session');
+
+  e.change('session', 'c4');
+  H = e.el('panel-catalogue').innerHTML;
+  assert.equal(tileOf(H, 'Agents used')[0], '0 of 3 · 2 in all sessions');
+  assert.equal(tileOf(H, 'Skills used')[0], '0 of 4 · 2 in all sessions');
+  assert.equal(tileOf(H, 'Outside the catalogue')[0], '0 · 3 in all sessions');
+  CATALOGUE.entries.forEach(x => assert.equal(cells(rowOf(H, x.kind + ':' + x.id))[2], 'never used', x.id));
+  ok('catalogue: a session with no uses (and no skillUses field) reads 0, and every entry never used');
+
+  e.fire('d:catalogue/index', null);
+  assert.match(e.el('panel-catalogue').innerHTML, /The agent catalogue has not been exported yet\./);
+  ok('catalogue: a deleted catalogue/index returns to the empty state');
+}
+
+// ---- 5. the catalogue tab while the store is connecting or out of reach
+{
+  const e = env({ 'board-tab': 'catalogue' });
+  await tick();
+  const P = () => e.el('panel-catalogue').innerHTML;
+  assert.match(P(), /<div class="empty">Connecting to the live store…<\/div>/);
+  e.fire('d:catalogue/index', null);
+  assert.match(P(), /<div class="empty">Connecting to the live store…<\/div>/);
+  ok('catalogue: an absent catalogue/index still reads Connecting while sessions and projects load');
+  e.fire('c:projects', PROJECTS); e.fire('c:sessions', SESSIONS);
+  assert.match(P(), /<div class="empty">The agent catalogue has not been exported yet\.<\/div>/);
+  ok('catalogue: "not exported yet" only once the store has loaded without catalogue/index');
+}
+{
+  const e = env({ 'board-tab': 'catalogue' }, { offline: true });
+  await tick();
+  assert.match(e.el('panel-catalogue').innerHTML, /<div class="empty">This view cannot reach the live store\.<\/div>/);
+  assert.doesNotMatch(e.el('panel-catalogue').innerHTML, /not been exported/);
+  ok('catalogue, offline: the tab says the store is out of reach');
+}
+
+// ---- 6. store text that names an Object.prototype member
+{
+  const T = '2026-09-09T12:00:00Z';
+  const CAT = {
+    generatedAt: now, source: { marketplacePath: 'M', installedPath: 'I' },
+    plugins: [{ plugin: 'proto', purpose: 'Proto.', purposeFull: 'Proto.', installed: true, agents: 0, skills: 2 }],
+    entries: [
+      { id: 'proto:constructor', kind: 'skill', plugin: 'proto', name: 'constructor', description: 'A skill named constructor.', installed: true },
+      { id: 'proto:plain', kind: 'skill', plugin: 'proto', name: 'plain', description: 'Plain.', installed: true },
+    ],
+  };
+  // JSON.parse makes "__proto__" an own key, as a store snapshot would; an object literal would set the prototype.
+  const uses = JSON.parse(`{"constructor":{"count":2,"last":"${T}"},"hasOwnProperty":{"count":1,"last":"${T}"},"isPrototypeOf":{"count":1},"__proto__":{"count":3}}`);
+  const PS = [{ id: 'q1', title: 'Proto', project: 'dispatch-board', last: now, start: now, running: 0, skillUses: uses }];
+  const PR = [{ id: 'q9', session: 'q1', project: 'dispatch-board', seq: 1, lane: 'other', kind: 'done', label: 'PROTO RUN', agentType: 'constructor', start: T }];
+  const e = env({ 'board-view': 'p:dispatch-board', 'board-tab': 'catalogue' });
+  await tick();
+  e.fire('c:projects', PROJECTS); e.fire('c:sessions', PS); e.fire('c:runs', PR); e.fire('c:projectTabs', TABS);
+  e.fire('d:catalogue/index', CAT);
+  const H = e.el('panel-catalogue').innerHTML;
+  assert.deepEqual(cells(rowOf(H, 'skill:proto:constructor')).slice(2), ['2', whenStr(T), 'dispatch-board', '2']);
+  assert.equal(cells(rowOf(H, 'skill:proto:plain'))[2], 'never used');
+  ok('catalogue: a catalogue skill named "constructor" takes the bare "constructor" uses');
+  const outAt = H.indexOf('data-outside');
+  for (const [k, n] of [['skill:hasOwnProperty', '1'], ['skill:isPrototypeOf', '1'], ['skill:__proto__', '3'], ['agent:constructor', '1']]) {
+    assert.ok(outAt > 0 && H.indexOf(`data-entry="${k}"`) > outAt, k + ' is under Outside the catalogue');
+    assert.equal(cells(rowOf(H, k))[2], n, k);
+  }
+  assert.equal(tileOf(H, 'Outside the catalogue')[0], '4 · 4 in all sessions');
+  ok('catalogue: uses named after Object.prototype members with no matching entry go under Outside the catalogue');
+  assert.match(e.el('panel-dispatch').innerHTML, /PROTO RUN/);
+  assert.match(e.el('panel-spec').innerHTML, /has not been exported/);
+  assert.match(e.el('panel-git').innerHTML, /dispatch-board/);
+  assert.match(e.el('panel-usage').innerHTML, /DB-ALL/);
+  ok('catalogue: the tabs drawn after it still render');
+}
+
+// ---- 7. one tab failing leaves the others drawn
+{
+  const e = env({ 'board-view': 'p:dispatch-board', 'board-tab': 'catalogue' });
+  await tick();
+  const logged = expectErrors(() => {
+    e.fire('c:projects', PROJECTS); e.fire('c:sessions', SESSIONS); e.fire('c:runs', RUNS); e.fire('c:projectTabs', TABS);
+    e.fire('d:catalogue/index', { generatedAt: now, plugins: [], entries: [null] });  // an entry the tab cannot read
+  });
+  assert.match(e.el('panel-catalogue').innerHTML, /^<div class="empty">This tab could not be shown from the current data\.<\/div>$/);
+  assert.ok(logged.some(a => a.some(x => x instanceof Error)), 'the error is logged with console.error');
+  assert.match(e.el('panel-dispatch').innerHTML, /DB write/);
+  assert.match(e.el('panel-spec').innerHTML, /has not been exported/);
+  assert.match(e.el('panel-git').innerHTML, /dispatch-board/);
+  assert.match(e.el('panel-usage').innerHTML, /DB-ALL/);
+  ok('a tab that throws shows its own empty state and is logged; the other tabs still render');
+}
+
+// ---- 8. the project Overview
+{
+  const e = env({ 'board-view': 'p:platform-catalogue' });
+  await tick();
+  e.fire('c:projects', PROJECTS); e.fire('c:sessions', SESSIONS); e.fire('c:runs', RUNS); e.fire('c:projectTabs', TABS);
+  const H = e.el('panel-overview').innerHTML;
+  assert.deepEqual(tileOf(H, 'Work items built'), ['1 / 1', '0 with open conditions · 0 partly built']);
+  assert.deepEqual(tileOf(H, 'Agent runs'), ['2', '1 review verdicts · 0.00M tokens']);
+  assert.match(H, /<span class="id">PBI-001<\/span>/);
+  ok('project Overview: the summary tiles and backlog cells come from the project\'s backlog and runs');
+}
+noPageErrors('after the last check');
 console.log(`all ${passed} page checks passed`);

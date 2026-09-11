@@ -167,6 +167,15 @@
   .mapping td:first-child { font-style: italic; }
   .adrs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 0 0 16px; }
 
+  /* agent catalogue: a description stays two lines long until its <details> is opened */
+  details.more > summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; list-style: none; }
+  details.more > summary::-webkit-details-marker { display: none; }
+  details.more > summary:hover { color: var(--ink); }
+  details.more[open] > summary { display: block; overflow: visible; }
+  details.about { margin-top: 6px; font-size: 13px; color: var(--ink-2); max-width: 78ch; }
+  details.about > summary { cursor: pointer; color: var(--ink-3); font-size: 12px; }
+  summary:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; border-radius: 4px; }
+
   /* git */
   .facts { display: grid; grid-template-columns: max-content 1fr; gap: 10px 20px; margin: 0; }
   .facts dt { color: var(--ink-3); font-size: 13px; }
@@ -214,6 +223,7 @@
       <button role="tab" id="tab-backlog" aria-controls="panel-backlog" data-tab="backlog">Backlog &amp; status <span class="count warn" id="c-backlog" hidden></span></button>
       <button role="tab" id="tab-git" aria-controls="panel-git" data-tab="git">GitHub details</button>
       <button role="tab" id="tab-dispatch" aria-controls="panel-dispatch" data-tab="dispatch" class="grp">Dispatch</button>
+      <button role="tab" id="tab-catalogue" aria-controls="panel-catalogue" data-tab="catalogue">Agent catalogue</button>
       <button role="tab" id="tab-usage" aria-controls="panel-usage" data-tab="usage">Claude usage</button>
     </nav>
   </div>
@@ -222,6 +232,7 @@
 <main class="wrap">
   <section role="tabpanel" id="panel-overview" aria-labelledby="tab-overview"></section>
   <section role="tabpanel" id="panel-dispatch" aria-labelledby="tab-dispatch" hidden></section>
+  <section role="tabpanel" id="panel-catalogue" aria-labelledby="tab-catalogue" hidden></section>
   <section role="tabpanel" id="panel-spec" aria-labelledby="tab-spec" hidden></section>
   <section role="tabpanel" id="panel-assumptions" aria-labelledby="tab-assumptions" hidden></section>
   <section role="tabpanel" id="panel-decisions" aria-labelledby="tab-decisions" hidden></section>
@@ -256,7 +267,7 @@
 
   // view is "p:<projectId>" or "other"; sel is the session filter ('' = all of the project's sessions).
   let allRuns = [], runs = [], sessions = [], projects = [], tabDocs = {}, statuses = {}, view = null, sel = '';
-  let gotSessions = false, gotProjects = false, loaded = false, offline = false, status = null;
+  let gotSessions = false, gotProjects = false, gotCatalogue = false, loaded = false, offline = false, status = null, catalogue = null;
   const docs = { spec: null, assumptions: null, decisions: null, backlog: null, git: null, usage: null };
   const lanes = [
     ['orch', 'Orchestrator', 'this session'], ['req', 'requirements-author', 'engineering-agents'],
@@ -547,6 +558,93 @@
         </tbody></table></div></div>`;
   }
 
+  // ---------------- agent catalogue ----------------
+  const later = (a, b) => !a ? b : !b ? a : (new Date(b) > new Date(a) ? b : a);
+  // Uses keyed "<kind>:<id>". An agent use is its run's agentType; a skill use is a session's skillUses entry.
+  // A namespaced id counts toward the entry of that kind and id, and a bare skill id toward the one catalogue
+  // skill with that name. Every other id keeps its own key, which is how "outside the catalogue" is found.
+  function catalogueUses(entries, runList, sessList) {
+    // A Map, not a plain object: a name or id such as "constructor" would otherwise find an Object.prototype member.
+    const known = new Set(entries.map(x => x.kind + ':' + x.id)), named = new Map();
+    entries.filter(x => x.kind === 'skill').forEach(x => { if (!named.has(x.name)) named.set(x.name, []); named.get(x.name).push(x); });
+    const skillKey = id => !known.has('skill:' + id) && !id.includes(':') && named.get(id)?.length === 1 ? 'skill:' + named.get(id)[0].id : 'skill:' + id;
+    const out = new Map();
+    const add = (key, n, at, project) => {
+      const u = out.get(key) || { uses: 0, last: null, projects: new Set() };
+      u.uses += n; u.last = later(u.last, at || null); u.projects.add(project ?? null); out.set(key, u);
+    };
+    runList.forEach(r => { if (typeof r.agentType === 'string' && r.agentType) add('agent:' + r.agentType, 1, r.start, r.project); });
+    sessList.forEach(s => Object.entries(s?.skillUses && typeof s.skillUses === 'object' ? s.skillUses : {}).forEach(([id, v]) => {
+      const n = Number(v?.count) || 0;
+      if (n > 0) add(skillKey(id), n, v.last, s.project);
+    }));
+    return out;
+  }
+  // Projects in picker order; a session linked to no project on the board counts as "Other sessions".
+  const projectNames = ids => {
+    const names = projects.filter(p => ids.has(p.id)).map(p => p.name);
+    if ([...ids].some(id => !projects.some(p => p.id === id))) names.push('Other sessions');
+    return names.join(', ') || '—';
+  };
+
+  function renderCatalogue() {
+    const c = catalogue, p = $('panel-catalogue');
+    // "Not exported" only once the store has answered; before that, an absent document says nothing.
+    if (!c) { p.innerHTML = `<div class="empty">${loaded && gotCatalogue ? 'The agent catalogue has not been exported yet.' : offline ? 'This view cannot reach the live store.' : 'Connecting to the live store…'}</div>`; return; }
+    const entries = Array.isArray(c.entries) ? c.entries : [], groups = Array.isArray(c.plugins) ? c.plugins : [];
+    const pr = proj();
+    // The same scope as runs: the project narrowed by the session filter, or the chosen "Other sessions" session.
+    const scoped = pr ? sessions.filter(s => s.project === pr.id && (!sel || s.id === sel)) : [cur()].filter(Boolean);
+    const here = catalogueUses(entries, runs, scoped), every = catalogueUses(entries, allRuns, sessions);
+    const none = { uses: 0, last: null, projects: new Set() };
+    const keyOf = x => x.kind + ':' + x.id, known = new Set(entries.map(keyOf));
+    const usesIn = (m, key) => m.get(key)?.uses || 0;
+    const used = (m, kind) => entries.filter(x => x.kind === kind && usesIn(m, keyOf(x)) > 0).length;
+    const outside = m => [...m.keys()].filter(k => !known.has(k));
+    const of = kind => entries.filter(x => x.kind === kind);
+    const n = (k, word) => `${k} ${word}${k === 1 ? '' : 's'}`;
+    const kindTile = (label, kind) => tile(label, `${esc(used(here, kind))}<small> of ${esc(of(kind).length)} · ${esc(used(every, kind))} in all sessions</small>`,
+      `${esc(of(kind).filter(x => x.installed).length)} installed`, 'var(--live)');
+    const row = (key, kind, nameHtml, descHtml) => {
+      const h = here.get(key) || none, a = every.get(key) || none;
+      return `<tr data-entry="${esc(key)}"><td style="white-space:nowrap"><span class="tag muted">${esc(kind)}</span> ${nameHtml}</td>`
+        + `<td class="wide">${descHtml}</td>`
+        + `<td class="num">${h.uses ? esc(h.uses) : '<span class="tag muted">never used</span>'}</td>`
+        + `<td class="muted" style="white-space:nowrap">${(h.last && esc(when(h.last))) || '—'}</td>`
+        + `<td class="muted">${esc(projectNames(a.projects))}</td>`
+        + `<td class="num muted">${esc(a.uses)}</td></tr>`;
+    };
+    const table = rows => `<div class="pb flush scroll"><table><thead><tr><th>Entry</th><th>What it is for</th><th class="num">Uses</th><th>Last use</th><th>Projects</th><th class="num">All sessions</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    const byUse = (key, name) => (x, y) => (usesIn(here, key(y)) - usesIn(here, key(x))) || String(name(x)).localeCompare(String(name(y)));
+    // Descriptions are plain text from the catalogue: escaped, never rendered as markdown.
+    const desc = d => d ? `<details class="more"><summary title="Show the full description">${esc(d)}</summary></details>` : '<span class="faint">No description</span>';
+
+    const panels = groups.map(g => {
+      const mine = entries.filter(x => x.plugin === g.plugin).sort(byUse(keyOf, x => x.name));
+      if (!mine.length) return '';
+      const full = g.purposeFull && g.purposeFull !== g.purpose ? `<details class="about"><summary>Full description</summary><p>${esc(g.purposeFull)}</p></details>` : '';
+      return `<div class="panel" data-plugin="${esc(g.plugin)}" style="margin-bottom:16px"><div class="ph"><div><h3>${esc(g.plugin)}${g.installed === false ? ' <span class="tag muted">not installed</span>' : ''}</h3><p class="muted" style="font-size:13px;margin-top:2px">${esc(g.purpose || g.plugin)}</p>${full}</div>`
+        + `<span class="faint">${esc(n(mine.filter(x => x.kind === 'agent').length, 'agent'))} · ${esc(n(mine.filter(x => x.kind === 'skill').length, 'skill'))}</span></div>`
+        + table(mine.map(x => row(keyOf(x), x.kind, `<b style="font-weight:600">${esc(x.name)}</b><div class="sub"><span class="id">${esc(x.id)}</span></div>`, desc(x.description))).join('')) + '</div>';
+    }).join('');
+    const idOf = k => k.slice(k.indexOf(':') + 1);
+    const out = [...new Set([...outside(every), ...outside(here)])].sort(byUse(k => k, idOf));
+    const outRows = out.map(k => row(k, k.slice(0, k.indexOf(':')), `<span class="id">${esc(idOf(k))}</span>`, '<span class="faint">Not in the agent-catalog marketplace</span>')).join('')
+      || '<tr><td colspan="6" class="muted">Nothing outside the catalogue has been used.</td></tr>';
+
+    p.innerHTML = `
+      <h2>Agent catalogue</h2>
+      <div class="tiles">
+        ${kindTile('Agents used', 'agent')}
+        ${kindTile('Skills used', 'skill')}
+        ${tile('Outside the catalogue', `${esc(outside(here).length)}<small> · ${esc(outside(every).length)} in all sessions</small>`, 'agent types and skills not in agent-catalog', 'var(--rule-2)')}
+      </div>
+      <p class="faint" style="margin:0 0 16px">Usage covers the sessions the board exports: the last ${esc(windowDays())} days plus every linked session.</p>
+      ${panels}
+      <div class="panel" data-outside><div class="ph"><div><h3>Outside the catalogue</h3><p class="muted" style="font-size:13px;margin-top:2px">Agent types and skills seen in use that the agent-catalog marketplace does not list, such as built-in agents.</p></div><span class="faint">${esc(out.length)}</span></div>
+        ${table(outRows)}</div>`;
+  }
+
   // ---------------- spec ----------------
   function renderSpec() {
     const d = docs.spec, p = $('panel-spec');
@@ -799,7 +897,17 @@
       </tbody></table></div></div>`;
   }
 
-  function renderAll() { renderHeader(); renderOverview(); renderDispatch(); renderSpec(); renderAssumptions(); renderDecisions(); renderBacklog(); renderGit(); renderUsage(); }
+  // Each tab is drawn on its own, so a tab that cannot read the data it was given leaves the others drawn.
+  const RENDERERS = [[renderHeader, null], [renderOverview, 'overview'], [renderDispatch, 'dispatch'], [renderCatalogue, 'catalogue'], [renderSpec, 'spec'],
+    [renderAssumptions, 'assumptions'], [renderDecisions, 'decisions'], [renderBacklog, 'backlog'], [renderGit, 'git'], [renderUsage, 'usage']];
+  function renderAll() {
+    RENDERERS.forEach(([draw, tab]) => {
+      try { draw(); } catch (e) {
+        console.error(`Board: the ${tab || 'header'} could not be drawn`, e);
+        if (tab) $('panel-' + tab).innerHTML = '<div class="empty">This tab could not be shown from the current data.</div>';
+      }
+    });
+  }
 
   // ---------------- project picker and session filter ----------------
   const PROJECT_TABS = ['spec', 'assumptions', 'decisions', 'backlog', 'git'];
@@ -884,7 +992,7 @@
 
   (async () => {
     const db = await window.claude?.use?.('db');
-    if (!db) { offline = true; renderHeader(); renderOverview(); $('foot').textContent = 'This view cannot reach the live store, so it shows no data.'; return; }
+    if (!db) { offline = true; renderAll(); $('foot').textContent = 'This view cannot reach the live store, so it shows no data.'; return; }
     const fail = e => { $('foot').textContent = 'A live subscription ended (' + e.code + '). Reload the page to reconnect.'; };
     const all = snap => snap.docs.filter(x => x.exists).map(x => ({ id: x.id, ...x.data() }));
     const refresh = () => { sync(); fillPickers(); apply(); };
@@ -903,6 +1011,7 @@
     }, fail);
     db.collection('runs').orderBy('seq').onSnapshot(snap => { allRuns = all(snap); apply(); }, fail);
     db.collection('projectTabs').orderBy('generatedAt').onSnapshot(snap => { tabDocs = Object.fromEntries(all(snap).map(d => [d.id, d])); apply(); }, fail);
+    db.doc('catalogue/index').onSnapshot(snap => { catalogue = snap.exists ? snap.data() : null; gotCatalogue = true; apply(); }, fail);
   })();
 })();
 </script>

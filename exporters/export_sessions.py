@@ -18,6 +18,15 @@ whose transcript was written to recently is "running". Rows no transcript can pr
 orchestrator did in-line) come from runs.manual, each placed straight after its "after" run.
 Transcript text is treated purely as data.
 
+For the Agent catalogue tab, a subagent's run document also records its agentType (from its meta, omitted
+when the meta has none) and start (its launch time, omitted when unknown); runs.manual rows carry neither.
+Each session document records skillUses, {"<skill id>": {count, last}} ({} when unused), from its main
+transcript only. It counts Skill tool calls (their input.skill; their args are never read) and plugin
+commands the owner typed (a user record, not isMeta, whose text starts with <command-message> or
+<command-name> and names "/<plugin>:<skill>"). Bare slash commands such as /loop are not counted, and
+nothing inside tool calls, tool results, attachments or system records is scanned. A skill id outside
+SKILL_ID is dropped with a warning.
+
 Effective usage weights token types by relative cost: input 1, cache read 0.1, cache write 2, output 5.
 
 Parsed sessions are cached in out/.cache/sessions.json and re-read only when a transcript or the
@@ -39,7 +48,9 @@ import board_config
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(HERE, 'board.config.json')
 HOURS = 168  # hourly usage series covers the last week of a session's activity
-PARSER_VERSION = 3  # bump when parsing changes, to drop cached results
+PARSER_VERSION = 4  # bump when parsing changes, to drop cached results
+# Skill ids become keys in session documents and are matched against catalogue ids, so they are kept to a safe set.
+SKILL_ID = re.compile(r'^[A-Za-z0-9_.:-]{1,100}$')
 
 LANE = {'requirements-author': 'req', 'Plan': 'plan', 'code-writer': 'cw', 'test-writer': 'tw',
         'code-reviewer': 'cr', 'verifier': 'ver'}
@@ -383,6 +394,18 @@ def usage_doc(main, subs, span):
     }
 
 
+def use_skill(uses, sid, skill, ts):
+    """Count one use of skill in uses ({id: {count, last}}). An id outside SKILL_ID is dropped with a warning;
+    a use without a readable time is counted but leaves last as it was."""
+    if not isinstance(skill, str) or not SKILL_ID.match(skill):
+        warn('session %s: skill id %r dropped' % (sid, str(skill)[:80]))
+        return
+    u = uses.setdefault(skill, {'count': 0})
+    u['count'] += 1
+    if ts and (not u.get('last') or epoch(ts) > epoch(u['last'])):
+        u['last'] = ts
+
+
 def parse_session(base, sid, main_path, st, now):
     """The session's document and agent rows as read from its transcripts. Nothing taken from the config
     except the running window is applied here, so the result can be cached against the transcripts alone.
@@ -390,6 +413,7 @@ def parse_session(base, sid, main_path, st, now):
     title = ai_title = cwd = first = start = last = None
     by, rejects = {}, []
     launched, stopped, notes, sync = {}, {}, {}, {}
+    uses, skill_calls = {}, set()
     for raw, o in records(main_path):
         ts, t = stamp(o), o.get('type')
         if ts:
@@ -403,6 +427,12 @@ def parse_session(base, sid, main_path, st, now):
         m = o.get('message') if isinstance(o.get('message'), dict) else {}
         if t == 'user' and first is None and isinstance(m.get('content'), str) and not m['content'].lstrip().startswith('<'):
             first = ' '.join(m['content'].split())
+        # A typed command; Claude Code writes an isMeta copy of some commands, which would count them twice.
+        if t == 'user' and o.get('isMeta') is not True and isinstance(m.get('content'), str) \
+                and m['content'].startswith(('<command-message>', '<command-name>')):
+            name = tag(m['content'], 'command-name').strip()
+            if ':' in name:  # only plugin commands; a bare one such as /loop is not a catalogue skill
+                use_skill(uses, sid, name[1:] if name.startswith('/') else name, ts)
         reject(rejects, o)
         response(by, o)
         if t == 'assistant':
@@ -413,6 +443,9 @@ def parse_session(base, sid, main_path, st, now):
                     launched[c.get('id')] = ts
                 elif c.get('name') == 'TaskStop':
                     stopped[(c.get('input') if isinstance(c.get('input'), dict) else {}).get('task_id')] = ts
+                elif c.get('name') == 'Skill' and (c.get('id') is None or c.get('id') not in skill_calls):
+                    skill_calls.add(c.get('id'))  # a streamed response can repeat its blocks
+                    use_skill(uses, sid, (c.get('input') if isinstance(c.get('input'), dict) else {}).get('skill'), ts)
         if t == 'user' and isinstance(m.get('content'), list):
             tur = o.get('toolUseResult')
             for c in m['content']:
@@ -450,7 +483,7 @@ def parse_session(base, sid, main_path, st, now):
             label = re.sub(r'\s+under TDD$', '', s['description'])
             row = {'id': aid, 'start': begin, 'end': end, 'lane': lane, 'label': label, 'kind': kind, 'verdict': verdict,
                    'tok': num((fin or {}).get('tokens')) or s['ctx'], 'min': minutes, 'pbis': pbis(label),
-                   'fix': lane in BUILD_LANES and bool(FIX.search(label))}
+                   'fix': lane in BUILD_LANES and bool(FIX.search(label)), 'agentType': s['agentType']}
             if lane == 'other':
                 row['agent'] = short or 'agent'
         except Exception as e:  # one unreadable agent file must not hide the rest of the session
@@ -464,7 +497,8 @@ def parse_session(base, sid, main_path, st, now):
 
     first = redact(first)[:200] if first else ''
     doc = {'title': title or ai_title, 'cwd': cwd or '', 'folder': os.path.basename((cwd or '').rstrip('\\/')),
-           'firstPrompt': first, 'start': start, 'last': last, 'usage': usage_doc(main, subs, (start, last))}
+           'firstPrompt': first, 'start': start, 'last': last, 'usage': usage_doc(main, subs, (start, last)),
+           'skillUses': uses}
     return {'doc': doc, 'rows': rows, 'skipped': skipped}
 
 
@@ -711,6 +745,10 @@ def main(config=None, out_dir=None, projects_root=None, now=None):
             for k in ('from', 'feeds', 'group', 'agent'):
                 if r.get(k):
                     doc[k] = r[k]
+            if 'agentType' in r:  # a subagent's row: runs.manual rows record neither an agent type nor a launch
+                for k in ('agentType', 'start'):
+                    if r.get(k):
+                        doc[k] = r[k]
             write_json(os.path.join(out, 'runs', r['id'] + '.json'), doc)
         running[sid], counts[sid] = sum(r['kind'] == 'running' for r in mine), len(mine)
         write_json(os.path.join(out, 'sessions', sid + '.json'), session_doc(results[sid], sid, st, len(mine), running[sid]))
