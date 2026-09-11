@@ -1,6 +1,5 @@
 <title>Live Dispatch Board</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400..700;1,400..500&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
   /* Dark-first: the bare root carries the dark palette; light is the override. */
   :root {
@@ -43,7 +42,7 @@
   .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
   .brand svg { flex: none; }
   .brand .t { font-size: 15px; font-weight: 650; white-space: nowrap; }
-  .crumb { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--rule-2); border-radius: 6px; color: var(--ink-2); font: 500 12px/1.4 "IBM Plex Mono", ui-monospace, monospace; white-space: nowrap; }
+  .crumb { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--rule-2); border-radius: 6px; color: var(--ink-2); font-size: 12px; font-weight: 500; line-height: 1.4; white-space: nowrap; }
   .picker { position: relative; display: inline-flex; min-width: 0; }
   .picker select { appearance: none; -webkit-appearance: none; font: 600 13px/1.3 inherit; font-family: inherit; color: var(--ink); background: var(--raised); border: 1px solid var(--rule-2); border-radius: 6px; padding: 5px 30px 5px 10px; max-width: 360px; text-overflow: ellipsis; cursor: pointer; }
   .picker select:hover { background: var(--hover); }
@@ -196,7 +195,8 @@
   @media (prefers-reduced-motion: no-preference) {
     .flow { stroke-dasharray: 5 7; animation: flow 1.1s linear infinite; }
     @keyframes flow { to { stroke-dashoffset: -24; } }
-    .status.on i, .runglow { animation: ping 1.6s ease-in-out infinite; }
+    /* .on only colours the header dot while the view is live; it pulses (.run) only while an agent is running. */
+    .status.run i, .runglow { animation: ping 1.6s ease-in-out infinite; }
     @keyframes ping { 50% { opacity: 0.35; } }
   }
   footer { padding: 18px 0 32px; border-top: 1px solid var(--rule); color: var(--ink-3); font-size: 12px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
@@ -213,7 +213,7 @@
   <div class="wrap">
     <div class="row1">
       <div class="brand">
-        <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 8.5h11M6.5 12h7M6.5 15.5h4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="17.5" cy="15.5" r="2" fill="var(--human)"/></svg>
+        <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 8.5h11M6.5 12h7M6.5 15.5h4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="17.5" cy="15.5" r="2" fill="currentColor"/></svg>
         <span class="t">Dispatch board</span>
         <label class="picker"><span class="sr">Project</span><select id="project" disabled><option>Loading projects…</option></select></label>
         <label class="picker"><span class="sr">Session</span><select id="session" disabled><option>All sessions</option></select></label>
@@ -253,6 +253,15 @@
 
 <script>
 (function () {
+  // The fonts are loaded from here rather than by a <link> in the markup. A stylesheet the parser meets holds back
+  // the first paint of everything after it, and this script, until it arrives, so a stalled font request left the
+  // whole page blank. One a script adds blocks neither; the text shows in the fallback sans until the fonts come.
+  try {
+    const fonts = document.createElement('link');
+    fonts.rel = 'stylesheet';
+    fonts.href = 'https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400..700;1,400..500&family=IBM+Plex+Mono:wght@400;500&display=swap';
+    document.head.appendChild(fonts);
+  } catch (e) {}  // without the fonts the page still reads, in the fallback faces
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   // Text lifted from the repo's docs carries code spans and bold; nothing else is rendered.
@@ -265,6 +274,8 @@
     return when(iso);
   };
   const src = d => d ? `<p class="faint" style="margin:0 0 16px">Source: ${esc(d.source)}${d.generatedAt && when(d.generatedAt) ? ` · exported ${esc(when(d.generatedAt))}` : ''}</p>` : '';
+  // A project tab whose source the exporter could not read keeps its last export, marked with the time that began.
+  const carried = d => d?.carriedSince ? `<div class="callout warn" data-carried>${icon('warn')}<p><b>Kept from an earlier export since ${esc(when(d.carriedSince) || d.carriedSince)}.</b> The export could not read this tab's source then or since, so it may be out of date.</p></div>` : '';
   const vKind = v => { v = String(v || '').toUpperCase(); if (v.startsWith('NO-GO')) return 'nogo'; if (v.includes('CHANGES')) return 'changes'; if (v.startsWith('GO') || v.startsWith('APPROVE')) return 'go'; return 'muted'; };
   const icon = (kind) => kind === 'lock'
     ? `<svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 9V6.5a4 4 0 0 1 8 0V9" fill="none" stroke="var(--human)" stroke-width="1.7"/><rect x="4" y="9" width="12" height="9" rx="2" fill="none" stroke="var(--human)" stroke-width="1.7"/></svg>`
@@ -273,6 +284,9 @@
   const toneOf = { done: 'var(--ink-3)', go: 'var(--go)', changes: 'var(--changes)', nogo: 'var(--nogo)', killed: 'var(--nogo)', running: 'var(--live)' };
   const stateLabel = { done: 'Built and reviewed', conditions: 'Conditions open', partial: 'Partly built', todo: 'Not started' };
   const kindLabel = { done: 'Done', go: 'Approved', changes: 'Changes required', nogo: 'Rejected', killed: 'Cut off', running: 'Running' };
+  // Reads a lookup table by a key taken from the store. Own keys only: a state, kind or lane such as "constructor"
+  // or "__proto__" would otherwise find an inherited member and show its text.
+  const own = (table, key) => Object.hasOwn(table, key) ? table[key] : undefined;
   // A link out of the page, drawn only for a GitHub URL (null otherwise): a URL read from the store could
   // just as well be javascript: or lead anywhere, so the caller shows anything else as text.
   const ghLink = (url, inner, cls) => typeof url === 'string' && url.startsWith('https://github.com/')
@@ -281,7 +295,7 @@
 
   // view is "p:<projectId>" or "other"; sel is the session filter ('' = all of the project's sessions).
   let allRuns = [], runs = [], sessions = [], projects = [], tabDocs = {}, statuses = {}, view = null, sel = '';
-  let gotSessions = false, gotProjects = false, gotCatalogue = false, loaded = false, offline = false, status = null, catalogue = null;
+  let gotSessions = false, gotProjects = false, gotRuns = false, gotCatalogue = false, loaded = false, offline = false, status = null, catalogue = null;
   const docs = { spec: null, assumptions: null, decisions: null, backlog: null, git: null, usage: null };
   const lanes = [
     ['orch', 'Orchestrator', 'this session'], ['req', 'requirements-author', 'engineering-agents'],
@@ -291,13 +305,13 @@
   ];
   const OTHER = ['other', 'Other agents', 'general-purpose, Explore, …'];
   const laneName = Object.fromEntries([...lanes, OTHER].map(l => [l[0], l[1]]));
-  const agentName = r => r.lane === 'other' ? (r.agent || 'agent') : (laneName[r.lane] || r.lane);
+  const agentName = r => r.lane === 'other' ? (r.agent || 'agent') : (own(laneName, r.lane) || r.lane);
   const OTHER_VIEW = 'other';
   const proj = () => view && view.startsWith('p:') ? projects.find(p => 'p:' + p.id === view) || null : null;
   const inProject = () => !!proj();
   const cur = () => sessions.find(s => s.id === sel);
   const windowDays = () => sessions.find(s => s.windowDays)?.windowDays || 7;
-  const sessionLive = s => !!s && (s.running > 0 || Date.now() - new Date(s.last) < (Number(s.windowMinutes) || 10) * 60000);
+  const sessionLive = (s, now = Date.now()) => !!s && (s.running > 0 || now - new Date(s.last) < (Number(s.windowMinutes) || 10) * 60000);
   // A session whose project is not on the board, or that has none, belongs under "Other sessions".
   const unlinked = () => sessions.filter(s => !projects.some(p => p.id === s.project));
   const filterSessions = () => { const p = proj(); return p ? sessions.filter(s => s.project === p.id) : unlinked(); };
@@ -310,8 +324,9 @@
     : String(sessionStart(a.session)).localeCompare(String(sessionStart(b.session))) || String(a.session).localeCompare(String(b.session)));
   const agentRuns = () => runs.filter(r => r.lane !== 'orch');
   // A project is live while any of its runs is running, whichever session the filter shows.
-  const isLive = () => { const p = proj(); return p ? (allRuns.some(r => r.project === p.id && r.kind === 'running') || status?.live === true) : sessionLive(cur()); };
-  const scopeLive = () => sel ? sessionLive(cur()) : isLive();
+  const agentRunning = () => { const p = proj(); return p ? allRuns.some(r => r.project === p.id && r.kind === 'running') : runs.some(r => r.kind === 'running'); };
+  const isLive = now => proj() ? (agentRunning() || status?.live === true) : sessionLive(cur(), now);
+  const scopeLive = now => sel ? sessionLive(cur(), now) : isLive(now);
   // Review verdicts come from reviewing lanes only; a builder's NOT-DONE is also kind 'changes'.
   const verdictRuns = () => runs.filter(r => ['plan', 'cr', 'ver'].includes(r.lane) && ['go', 'changes', 'nogo'].includes(r.kind));
 
@@ -341,9 +356,10 @@
   select(tabs.some(t => t.dataset.tab === saved) ? saved : 'overview');
 
   // ---------------- header ----------------
-  function renderHeader() {
-    const live = isLive(), p = proj();
-    $('status').className = 'status' + (live ? ' on' : '');
+  // now: the clock reading the running window is judged by, the render's own or the minute timer's.
+  function renderHeader(now = renderNow) {
+    const live = isLive(now), p = proj();
+    $('status').className = 'status' + (live ? ' on' : '') + (agentRunning() ? ' run' : '');
     const upd = p ? status?.updatedAt : cur()?.last, branch = docs.git?.branch || p?.branch;
     $('statusText').textContent = !loaded ? (offline ? 'Offline' : 'Connecting') : p ? (live ? 'Building' : (status?.title || 'Idle')) : (live ? 'Active' : 'Idle');
     $('updated').textContent = upd ? (p ? 'Updated ' : 'Last activity ') + ago(upd) : '';
@@ -359,7 +375,8 @@
   function pipeline() {
     const count = l => runs.filter(r => r.lane === l).length;
     const running = l => runs.some(r => r.lane === l && r.kind === 'running');
-    const live = isLive(), spec = docs.spec, you = docs.assumptions?.humanList?.length ?? '—';
+    // The arrows move only while an agent runs; a view that is live by its status document alone keeps them still.
+    const moving = agentRunning(), spec = docs.spec, you = docs.assumptions?.humanList?.length ?? '—';
     const lastPlan = (spec?.rounds || []).filter(r => r.gate === 'Plan gate').slice(-1)[0];
     const verdicts = runs.filter(r => r.lane === 'cr' && ['go', 'changes', 'nogo'].includes(r.kind)).length;
     const commits = docs.git?.commits?.length ?? '—';
@@ -375,7 +392,7 @@
     };
     const edge = (d, label, lx, ly, o = {}) => {
       const c = o.human ? 'var(--human)' : o.warn ? 'var(--changes)' : o.dim ? 'var(--rule-2)' : 'var(--ink-3)';
-      let s = `<path d="${d}" fill="none" stroke="${c}" stroke-width="1.3" ${o.flow && live ? 'class="flow"' : o.dash ? 'stroke-dasharray="4 4"' : ''} marker-end="url(#${o.human ? 'ph' : o.warn ? 'pw' : 'pa'})"/>`;
+      let s = `<path d="${d}" fill="none" stroke="${c}" stroke-width="1.3" ${o.flow && moving ? 'class="flow"' : o.dash ? 'stroke-dasharray="4 4"' : ''} marker-end="url(#${o.human ? 'ph' : o.warn ? 'pw' : 'pa'})"/>`;
       if (label) s += `<text x="${lx}" y="${ly}" text-anchor="${o.anchor || 'middle'}" font-size="11" fill="${o.human ? 'var(--human)' : o.warn ? 'var(--changes)' : 'var(--ink-3)'}">${esc(label)}</text>`;
       return s;
     };
@@ -418,8 +435,8 @@
   function recentPanel() {
     const R = sorted(), recent = R.slice().reverse().slice(0, 7);
     return `<div class="panel"><div class="ph"><h3>Recent agent activity</h3><button class="linkbtn" data-go="dispatch">All runs</button></div>
-        <div class="pb flush scroll"><table><thead><tr><th>#</th><th>Agent</th><th>Run</th><th>Outcome</th><th>Detail</th><th class="num">Tokens</th></tr></thead><tbody>
-        ${recent.map(r => `<tr><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(agentName(r))}</td><td>${esc(r.label)}</td><td><span class="tag ${esc(r.kind)}">${esc(kindLabel[r.kind] || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td class="num muted">${r.tok ? esc(Number(r.tok).toLocaleString()) : '—'}</td></tr>`).join('') || `<tr><td colspan="6" class="muted">No agents dispatched in ${esc(scopeName())}.</td></tr>`}
+        <div class="pb flush scroll"><table><thead><tr><th>#</th><th>Agent</th><th>Run</th><th>Outcome</th><th>Detail</th><th class="num">Reported tokens</th></tr></thead><tbody>
+        ${recent.map(r => `<tr><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(agentName(r))}</td><td>${esc(r.label)}</td><td><span class="tag ${esc(r.kind)}">${esc(own(kindLabel, r.kind) || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td class="num muted">${r.tok ? esc(Number(r.tok).toLocaleString()) : '—'}</td></tr>`).join('') || `<tr><td colspan="6" class="muted">No agents dispatched in ${esc(scopeName())}.</td></tr>`}
         </tbody></table></div></div>`;
   }
 
@@ -431,7 +448,7 @@
     p.innerHTML = `
       <div class="tiles">
         ${tile('Agent runs', ar.length, ar.length ? `${verdictRuns().length} review verdicts` : 'no agents dispatched', 'var(--live)')}
-        ${tile('Running now', now, sessionLive(s) ? 'session active' : 'session idle', 'var(--live)', now > 0)}
+        ${tile('Running now', now, sessionLive(s, renderNow) ? 'session active' : 'session idle', 'var(--live)', now > 0)}
         ${tile('Claude usage', fmtTok(t.effective) + '<small> effective</small>', `${esc((t.requests || 0).toLocaleString())} requests`, 'var(--live)')}
         ${tile('Limit hits', limitsOf(s.usage).length, 'usage limit', 'var(--nogo)')}
         ${forecastTile(docs.usage)}
@@ -440,7 +457,7 @@
         <div class="panel"><div class="ph"><h3>Session</h3><span class="faint">Not linked to a project</span></div><div class="pb">
           <dl class="facts">
             <dt>Title</dt><dd>${esc(s.title)}</dd>
-            <dt>Folder</dt><dd><code>${esc(s.cwd || '—')}</code></dd>
+            <dt>Folder</dt><dd>${esc(s.cwd || '—')}</dd>
             <dt>Started</dt><dd>${esc(when(s.start))}</dd>
             <dt>Last activity</dt><dd>${esc(ago(s.last))}</dd>
             <dt>First request</dt><dd class="muted">${esc(s.firstPrompt || '—')}</dd>
@@ -465,13 +482,13 @@
       tile('Awaiting your decision', esc(you ?? '—'), 'assumptions at the plan gate', 'var(--human)', true),
       tile('Tests passing', esc(m.tests ?? '—'), m.testFiles ? `${m.testFiles} files · commit ${esc(m.measuredOn || '')}` : '', 'var(--go)'),
       tile('Library coverage', esc(covMain), esc(covRest), 'var(--go)'),
-      tile('Agent runs', esc(agentRuns().length || '—'), agentRuns().length ? `${verdictRuns().length} review verdicts · ${(tokens / 1e6).toFixed(2)}M tokens` : '', 'var(--live)'),
+      tile('Agent runs', esc(agentRuns().length || '—'), agentRuns().length ? `${verdictRuns().length} review verdicts · ${(tokens / 1e6).toFixed(2)}M reported tokens` : '', 'var(--live)'),
       (() => { const u = docs.usage; if (!u) return tile('Claude usage', '—', 'not exported yet', 'var(--live)'); const byAgents = (u.subagents || []).reduce((a, x) => a + x.effective, 0); return tile('Claude usage', fmtTok(u.totals?.effective) + '<small> effective</small>', `limit hit ${limitsOf(u).length}× · ${u.totals?.effective ? Math.round(byAgents / u.totals.effective * 100) : 0}% by agents`, 'var(--live)'); })(),
       forecastTile(docs.usage),
     ].join('');
 
     const cells = pbis.length
-      ? pbis.map(x => `<div class="cell ${esc(x.state)}" title="${esc(x.id)}: ${esc(String(x.title).replace(/[`*]/g, ''))}"><span class="id">${esc(x.id)}</span><span class="nm">${esc(String(x.title).replace(/[`*]/g, ''))}</span><span class="st"><i></i>${esc(stateLabel[x.state] || x.state)}</span></div>`).join('')
+      ? pbis.map(x => `<div class="cell ${esc(x.state)}" title="${esc(x.id)}: ${esc(String(x.title).replace(/[`*]/g, ''))}"><span class="id">${esc(x.id)}</span><span class="nm">${esc(String(x.title).replace(/[`*]/g, ''))}</span><span class="st"><i></i>${esc(own(stateLabel, x.state) || x.state)}</span></div>`).join('')
       : '<div class="empty" style="grid-column:1/-1">The backlog has not been exported yet.</div>';
 
     // Needs attention, derived from the data rather than written by hand.
@@ -498,7 +515,7 @@
         <div class="pb scroll"><div class="cells">${cells}</div></div>
       </div>
       <div class="panel" style="margin-bottom:16px">
-        <div class="ph"><h3>Pipeline</h3><div class="legend"><span><i style="background:var(--human)"></i>Human decision</span><span><i style="background:var(--changes)"></i>Feedback loop</span><span><i style="background:var(--live)"></i>Running agent</span><span class="faint">${isLive() ? 'Live' : 'Paused'}</span></div></div>
+        <div class="ph"><h3>Pipeline</h3><div class="legend"><span><i style="background:var(--human)"></i>Human decision</span><span><i style="background:var(--changes)"></i>Feedback loop</span><span><i style="background:var(--live)"></i>Running agent</span><span class="faint">${isLive(renderNow) ? 'Live' : 'Paused'}</span></div></div>
         <div class="pb scroll">${pipeline()}</div>
       </div>
       <div class="grid g-3">
@@ -537,20 +554,20 @@
     R.forEach((r, i) => { if (r.group) (groups[r.group] = groups[r.group] || []).push(i); });
     Object.values(groups).forEach(g => {
       if (g.length < 2) return;
-      const x = (laneX[R[g[0]].lane] ?? LW) + 6, ya = y0(g[0]) - 3, yb = y0(g[g.length - 1]) + 25;
+      const x = (own(laneX, R[g[0]].lane) ?? LW) + 6, ya = y0(g[0]) - 3, yb = y0(g[g.length - 1]) + 25;
       s += `<path d="M${x + 5} ${ya}H${x}V${yb}H${x + 5}" fill="none" stroke="var(--live)" stroke-width="1.4"/>`;
     });
     R.forEach((r, i) => {
       const link = (jid, c, dash) => {
-        const j = idx[jid]; if (j === undefined || j >= i) return;
-        const x1 = (laneX[R[j].lane] ?? LW) + lw / 2, y1 = y0(j) + 22, x2 = (laneX[r.lane] ?? LW) + lw / 2, y2 = y0(i), my = (y1 + y2) / 2;
+        const j = own(idx, jid); if (j === undefined || j >= i) return;
+        const x1 = (own(laneX, R[j].lane) ?? LW) + lw / 2, y1 = y0(j) + 22, x2 = (own(laneX, r.lane) ?? LW) + lw / 2, y2 = y0(i), my = (y1 + y2) / 2;
         s += `<path d="M${x1} ${y1}V${my}H${x2}V${y2 - 2}" fill="none" stroke="${c}" stroke-width="1.3" ${dash ? 'stroke-dasharray="3 4"' : ''} marker-end="url(#m)"/>`;
       };
-      if (r.feeds) { const k = R[idx[r.feeds]]?.kind; link(r.feeds, (!k || k === 'done') ? 'var(--ink-3)' : toneOf[k], false); }
+      if (r.feeds) { const k = R[own(idx, r.feeds)]?.kind; link(r.feeds, (!k || k === 'done') ? 'var(--ink-3)' : own(toneOf, k) || 'var(--ink-3)', false); }
       if (r.from) link(r.from, 'var(--ink-3)', true);
     });
     R.forEach((r, i) => {
-      const y = y0(i), x = laneX[r.lane] ?? LW, tok = Number(r.tok) || 0, c = toneOf[r.kind] || 'var(--ink-3)';
+      const y = y0(i), x = own(laneX, r.lane) ?? LW, tok = Number(r.tok) || 0, c = own(toneOf, r.kind) || 'var(--ink-3)';
       const w = r.kind === 'running' ? lw - 18 : Math.max(22, Math.min(lw - 18, 22 + (tok / maxTok) * (lw - 42)));
       const label = String(r.label || r.id);
       s += `<text x="${LW - 12}" y="${y + 15}" text-anchor="end" font-size="11" fill="var(--ink-3)">${i + 1}</text>`;
@@ -563,17 +580,17 @@
     p.innerHTML = `
       <div class="tiles">
         ${tile('Agent runs', agentRuns().length, `dispatched in ${esc(scopeName())}`, 'var(--live)')}
-        ${tile('Running now', runs.filter(r => r.kind === 'running').length, scopeLive() ? 'live' : 'paused', 'var(--live)')}
+        ${tile('Running now', runs.filter(r => r.kind === 'running').length, scopeLive(renderNow) ? 'live' : 'paused', 'var(--live)')}
         ${tile('Review verdicts', verdictRuns().length, `${verdictRuns().filter(r => r.kind === 'go').length} approved`, 'var(--go)')}
         ${tile('Cut off', runs.filter(r => r.kind === 'killed').length, 'stopped or cut off before finishing', 'var(--nogo)')}
-        ${tile('Agent tokens', (tokens / 1e6).toFixed(2) + '<small> M</small>', 'across all runs', 'var(--rule-2)')}
+        ${tile('Reported tokens', (tokens / 1e6).toFixed(2) + '<small> M</small>', 'across all runs', 'var(--rule-2)')}
       </div>
       <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Swimlane</h3><div class="legend"><span><i style="background:var(--live)"></i>Running</span><span><i style="background:var(--ink-3)"></i>Done</span><span><i style="background:var(--go)"></i>Approved</span><span><i style="background:var(--changes)"></i>Changes required</span><span><i style="background:var(--nogo)"></i>Rejected or cut off</span></div></div>
         <div class="pb scroll">${s}</div>
-        <div class="pb faint" style="border-top:1px solid var(--rule)">Box width is proportional to tokens used. Arrows show hand-offs and the verdicts that sent work back; a bracket marks runs dispatched in parallel. Gate-review rounds ran on the harness's built-in Plan agent following the catalogue's pbi-review runbook.</div></div>
+        <div class="pb faint" style="border-top:1px solid var(--rule)">Box width is proportional to reported tokens. Arrows show hand-offs and the verdicts that sent work back; a bracket marks runs dispatched in parallel. Gate-review rounds ran on the harness's built-in Plan agent following the catalogue's pbi-review runbook.</div></div>
       <div class="panel"><div class="ph"><h3>Run log</h3><span class="faint">newest first</span></div>
-        <div class="pb flush scroll"><table><thead><tr><th>#</th><th>Agent</th><th>Run</th><th>Outcome</th><th>Detail</th><th style="min-width:120px">Tokens</th><th class="num">Minutes</th></tr></thead><tbody>
-        ${R.slice().reverse().map(r => `<tr><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(agentName(r))}</td><td class="wide">${esc(r.label)}</td><td><span class="tag ${esc(r.kind)}">${esc(kindLabel[r.kind] || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td>${r.tok ? `<div class="bar"><i style="width:${Math.max(2, (Number(r.tok) || 0) / maxTok * 100)}%"></i></div><div class="sub">${esc(Number(r.tok).toLocaleString())}</div>` : '<span class="faint">—</span>'}</td><td class="num muted">${esc(r.min || '—')}</td></tr>`).join('')}
+        <div class="pb flush scroll"><table><thead><tr><th>#</th><th>Agent</th><th>Run</th><th>Outcome</th><th>Detail</th><th style="min-width:120px">Reported tokens</th><th class="num">Minutes</th></tr></thead><tbody>
+        ${R.slice().reverse().map(r => `<tr><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(agentName(r))}</td><td class="wide">${esc(r.label)}</td><td><span class="tag ${esc(r.kind)}">${esc(own(kindLabel, r.kind) || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td>${r.tok ? `<div class="bar"><i style="width:${Math.max(2, (Number(r.tok) || 0) / maxTok * 100)}%"></i></div><div class="sub">${esc(Number(r.tok).toLocaleString())}</div>` : '<span class="faint">—</span>'}</td><td class="num muted">${esc(r.min || '—')}</td></tr>`).join('')}
         </tbody></table></div></div>`;
   }
 
@@ -622,16 +639,19 @@
     const outside = m => [...m.keys()].filter(k => !known.has(k));
     const of = kind => entries.filter(x => x.kind === kind);
     const n = (k, word) => `${k} ${word}${k === 1 ? '' : 's'}`;
-    const kindTile = (label, kind) => tile(label, `${esc(used(here, kind))}<small> of ${esc(of(kind).length)} · ${esc(used(every, kind))} in all sessions</small>`,
+    // Usage is derived from sessions and runs; before both have loaded, a count of 0 would read as "never used".
+    const pending = !(gotSessions && gotRuns), wait = '<span class="faint">pending</span>';
+    const kindTile = (label, kind) => tile(label, pending ? '—' : `${esc(used(here, kind))}<small> of ${esc(of(kind).length)} · ${esc(used(every, kind))} in all sessions</small>`,
       `${esc(of(kind).filter(x => x.installed).length)} installed`, 'var(--live)');
     const row = (key, kind, nameHtml, descHtml) => {
       const h = here.get(key) || none, a = every.get(key) || none;
       return `<tr data-entry="${esc(key)}"><td style="white-space:nowrap"><span class="tag muted">${esc(kind)}</span> ${nameHtml}</td>`
         + `<td class="wide">${descHtml}</td>`
-        + `<td class="num">${h.uses ? esc(h.uses) : '<span class="tag muted">never used</span>'}</td>`
-        + `<td class="muted" style="white-space:nowrap">${(h.last && esc(when(h.last))) || '—'}</td>`
-        + `<td class="muted">${esc(projectNames(a.projects))}</td>`
-        + `<td class="num muted">${esc(a.uses)}</td></tr>`;
+        + (pending ? `<td class="num">${wait}</td><td class="muted">${wait}</td><td class="muted">${wait}</td><td class="num muted">${wait}</td></tr>`
+          : `<td class="num">${h.uses ? esc(h.uses) : '<span class="tag muted">never used</span>'}</td>`
+          + `<td class="muted" style="white-space:nowrap">${(h.last && esc(when(h.last))) || '—'}</td>`
+          + `<td class="muted">${esc(projectNames(a.projects))}</td>`
+          + `<td class="num muted">${esc(a.uses)}</td></tr>`);
     };
     const table = rows => `<div class="pb flush scroll"><table><thead><tr><th>Entry</th><th>What it is for</th><th class="num">Uses</th><th>Last use</th><th>Projects</th><th class="num">All sessions</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     const byUse = (key, name) => (x, y) => (usesIn(here, key(y)) - usesIn(here, key(x))) || String(name(x)).localeCompare(String(name(y)));
@@ -648,7 +668,8 @@
     }).join('');
     const idOf = k => k.slice(k.indexOf(':') + 1);
     const out = [...new Set([...outside(every), ...outside(here)])].sort(byUse(k => k, idOf));
-    const outRows = out.map(k => row(k, k.slice(0, k.indexOf(':')), `<span class="id">${esc(idOf(k))}</span>`, '<span class="faint">Not in the agent-catalog marketplace</span>')).join('')
+    const outRows = pending ? '<tr><td colspan="6" class="muted">Shown once sessions and runs have loaded.</td></tr>'
+      : out.map(k => row(k, k.slice(0, k.indexOf(':')), `<span class="id">${esc(idOf(k))}</span>`, '<span class="faint">Not in the agent-catalog marketplace</span>')).join('')
       || '<tr><td colspan="6" class="muted">Nothing outside the catalogue has been used.</td></tr>';
 
     p.innerHTML = `
@@ -656,11 +677,11 @@
       <div class="tiles">
         ${kindTile('Agents used', 'agent')}
         ${kindTile('Skills used', 'skill')}
-        ${tile('Outside the catalogue', `${esc(outside(here).length)}<small> · ${esc(outside(every).length)} in all sessions</small>`, 'agent types and skills not in agent-catalog', 'var(--rule-2)')}
+        ${tile('Outside the catalogue', pending ? '—' : `${esc(outside(here).length)}<small> · ${esc(outside(every).length)} in all sessions</small>`, 'agent types and skills not in agent-catalog', 'var(--rule-2)')}
       </div>
       <p class="faint" style="margin:0 0 16px">Usage covers the sessions the board exports: the last ${esc(windowDays())} days plus every linked session.</p>
       ${panels}
-      <div class="panel" data-outside><div class="ph"><div><h3>Outside the catalogue</h3><p class="muted" style="font-size:13px;margin-top:2px">Agent types and skills seen in use that the agent-catalog marketplace does not list, such as built-in agents.</p></div><span class="faint">${esc(out.length)}</span></div>
+      <div class="panel" data-outside><div class="ph"><div><h3>Outside the catalogue</h3><p class="muted" style="font-size:13px;margin-top:2px">Agent types and skills seen in use that the agent-catalog marketplace does not list, such as built-in agents.</p></div><span class="faint">${pending ? '—' : esc(out.length)}</span></div>
         ${table(outRows)}</div>`;
   }
 
@@ -672,7 +693,7 @@
     const gates = {};
     (d.rounds || []).forEach(r => (gates[r.gate] = gates[r.gate] || []).push(r));
     p.innerHTML = `
-      <h2>Solution spec</h2>${src(d)}
+      <h2>Solution spec</h2>${src(d)}${carried(d)}
       <div class="tiles">
         ${tile('Functional requirements', esc(n.frs), 'EARS-shaped', 'var(--rule-2)')}
         ${tile('Non-functional', esc(n.nfrs), 'measurable targets', 'var(--rule-2)')}
@@ -704,7 +725,7 @@
     const shown = { you, assumed, resolved: rows.filter(r => r.status !== 'ASSUMED'), all: rows }[aFilter] || you;
     const chip = (k, label, n) => `<button class="chip" data-f="${k}" aria-pressed="${aFilter === k}">${label} (${n})</button>`;
     p.innerHTML = `
-      <h2>Assumptions and open questions</h2>${src(d)}
+      <h2>Assumptions and open questions</h2>${src(d)}${carried(d)}
       <div class="tiles">
         ${tile('Awaiting your decision', you.length, 'required for the plan gate', 'var(--human)', true)}
         ${tile('Ledger rows', rows.length, 'every gap the inputs left', 'var(--rule-2)')}
@@ -725,7 +746,7 @@
     if (!d) { p.innerHTML = '<div class="empty">Decisions have not been exported yet.</div>'; return; }
     const nwo = d.notWorkedOut || [];
     p.innerHTML = `
-      <h2>Decisions and things not worked out</h2>${src(d)}
+      <h2>Decisions and things not worked out</h2>${src(d)}${carried(d)}
       <div class="tiles">
         ${tile('Open points in the brief', nwo.length, 'none decided silently', 'var(--rule-2)')}
         ${tile('Still need you', nwo.filter(r => r.needsYou).length, 'confirm at the plan gate', 'var(--human)', true)}
@@ -736,7 +757,7 @@
         <div class="pb flush scroll"><table><thead><tr><th>From the brief</th><th>Where it landed</th><th>Status</th><th>Ledger</th></tr></thead><tbody>
         ${nwo.map(r => `<tr class="${r.needsYou ? 'you' : ''}"><td class="wide">“${esc(r.item)}”</td><td class="wide">${md(r.landed)}${r.adr ? `<div class="sub">${esc(r.adr)} · proposed</div>` : ''}</td><td><span class="tag ${r.needsYou ? 'human' : 'resolved'}">${r.needsYou ? 'Needs you' : 'Settled by PRD default'}</span></td><td class="muted">Row ${esc(r.row)}</td></tr>`).join('')}
         </tbody></table></div></div>
-      <div class="adrs">${(d.adrs || []).map(a => `<div class="tile" style="--tone:var(--human)"><div class="tl"><span class="id">${esc(a.id)}</span> · resolves ${esc(a.resolves)}</div><div class="tv" style="font-size:16px;line-height:1.35;margin:8px 0 10px">${esc(a.title)}</div><div class="ts"><span class="tag proposed">${esc(a.status)}</span> <span class="id" style="margin-left:6px">${esc(a.path)}</span></div></div>`).join('')}</div>
+      <div class="adrs">${(d.adrs || []).map(a => `<div class="tile" style="--tone:var(--human)"><div class="tl"><span class="id">${esc(a.id)}</span> · resolves ${esc(a.resolves)}</div><div class="tv" style="font-size:16px;line-height:1.35;margin:8px 0 10px">${esc(a.title)}</div><div class="ts"><span class="tag proposed">${esc(a.status)}</span> <span style="margin-left:6px">${esc(a.path)}</span></div></div>`).join('')}</div>
       <div class="panel"><div class="ph"><h3>Key decisions in the solution spec</h3></div>
         <div class="pb flush scroll"><table><thead><tr><th>Decision</th><th>Rationale</th><th>Made by</th></tr></thead><tbody>
         ${(d.decisions || []).map(k => `<tr><td class="wide">${md(k.decision)}</td><td class="wide muted">${md(k.rationale)}</td><td>${md(k.madeBy)}<div class="sub">${md(k.date)}</div></td></tr>`).join('')}
@@ -771,8 +792,8 @@
       g += `<path d="M${x1} ${y1}C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}" fill="none" stroke="var(--rule-2)" stroke-width="1.2" marker-end="url(#da)"/>`;
     }));
     pbis.forEach(x => {
-      const q = pos[x.id], t = tone[x.state] || 'var(--rule-2)', title = String(x.title).replace(/[`*]/g, '');
-      g += `<g><title>${esc(x.id)}: ${esc(title)} (${esc(stateLabel[x.state] || x.state)})</title>`;
+      const q = pos[x.id], t = own(tone, x.state) || 'var(--rule-2)', title = String(x.title).replace(/[`*]/g, '');
+      g += `<g><title>${esc(x.id)}: ${esc(title)} (${esc(own(stateLabel, x.state) || x.state)})</title>`;
       g += `<rect x="${q.x}" y="${q.y}" width="${NW}" height="${NH}" rx="6" fill="var(--surface)" stroke="var(--rule-2)" ${x.state === 'partial' ? 'stroke-dasharray="4 3"' : ''}/>`;
       g += `<rect x="${q.x}" y="${q.y}" width="${NW}" height="3" rx="1.5" fill="${x.state === 'todo' ? 'transparent' : t}"/>`;
       g += `<text x="${q.x + 11}" y="${q.y + 22}" font-size="12" font-weight="600" font-family="IBM Plex Mono, ui-monospace, monospace" fill="var(--ink)">${esc(x.id)}</text>`;
@@ -780,7 +801,7 @@
     });
     g += '</g></svg>';
     p.innerHTML = `
-      <h2>Backlog and status</h2>${src(d)}
+      <h2>Backlog and status</h2>${src(d)}${carried(d)}
       <div class="tiles">
         ${tile('Built and reviewed', cnt('done'), `of ${pbis.length} work items`, 'var(--go)')}
         ${tile('Conditions open', cnt('conditions'), 'review findings to fix', 'var(--changes)')}
@@ -791,7 +812,7 @@
       <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Dependencies</h3><span class="faint">arrows run from a prerequisite to what depends on it</span></div><div class="pb scroll">${g}</div></div>
       <div class="panel"><div class="ph"><h3>Work items</h3><span class="faint">${pbis.length}</span></div>
         <div class="pb flush scroll"><table><thead><tr><th>Item</th><th>Delivers</th><th>Depends on</th><th>State</th><th>Review</th><th>Still open</th></tr></thead><tbody>
-        ${pbis.map(x => `<tr><td style="white-space:nowrap"><span class="id">${esc(x.id)}</span>${x.commit ? `<div class="sub id">${esc(x.commit)}</div>` : ''}</td><td class="wide">${md(x.title)}<div class="sub">${esc(x.group)} · ${esc(x.risk)} risk</div></td><td class="muted" style="white-space:nowrap">${esc(String(x.dependsOn).replace(/[\[\]]/g, '') || '—')}</td><td><span class="tag ${esc(x.state)}">${esc(stateLabel[x.state] || x.state)}</span></td><td class="muted">${esc(x.review)}</td><td class="wide muted">${esc(x.open) || '—'}</td></tr>`).join('')}
+        ${pbis.map(x => `<tr><td style="white-space:nowrap"><span class="id">${esc(x.id)}</span>${x.commit ? `<div class="sub id">${esc(x.commit)}</div>` : ''}</td><td class="wide">${md(x.title)}<div class="sub">${esc(x.group)} · ${esc(x.risk)} risk</div></td><td class="muted" style="white-space:nowrap">${esc(String(x.dependsOn).replace(/[\[\]]/g, '') || '—')}</td><td><span class="tag ${esc(x.state)}">${esc(own(stateLabel, x.state) || x.state)}</span></td><td class="muted">${esc(x.review)}</td><td class="wide muted">${esc(x.open) || '—'}</td></tr>`).join('')}
         </tbody></table></div></div>
       ${ideas.length ? `<div class="panel" data-later style="margin-top:16px"><div class="ph"><div><h3>Later</h3><p class="muted" style="font-size:13px;margin-top:2px">Ideas the spec records for a future iteration. They are not work items and are not counted.</p></div><span class="faint">${ideas.length}</span></div>
         <div class="pb"><div class="ideas">${ideas.map(x => `<div class="tile idea"><div class="tl">Not planned</div><div class="tv">${md(x.title)}</div>${x.description ? `<div class="ts">${md(x.description)}</div>` : ''}</div>`).join('')}</div></div></div>` : ''}`;
@@ -812,35 +833,35 @@
       return `<tr data-pr="${esc(x.number)}"><td style="white-space:nowrap">${ghLink(x.url, `#${esc(x.number)}`, 'id') || `<span class="id">#${esc(x.number)}</span>`}</td>`
         + `<td class="wide">${ghLink(x.url, esc(x.title)) || esc(x.title) + (x.url ? `<div class="sub">${esc(x.url)}</div>` : '')}</td>`
         + `<td><span class="tag ${cls}">${esc(label)}</span></td>`
-        + `<td>${x.branch ? `<span class="id">${esc(x.branch)}</span>` : '<span class="faint">—</span>'}</td>`
+        + `<td>${x.branch ? esc(x.branch) : '<span class="faint">—</span>'}</td>`
         + `<td class="muted" style="white-space:nowrap">${esc(when(x.updatedAt))}</td></tr>`;
     };
     const prBody = !prs ? '<div class="pb"><p class="muted">Pull requests are not available. The last export could not list them with the GitHub CLI, or the repository has no origin remote on GitHub.</p></div>'
       : !prs.length ? '<div class="pb"><p class="muted">No pull requests yet.</p></div>'
       : `<div class="pb flush scroll"><table><thead><tr><th>#</th><th>Title</th><th>State</th><th>Branch</th><th>Updated</th></tr></thead><tbody>${prs.map(prRow).join('')}</tbody></table></div>`;
     p.innerHTML = `
-      <h2>Repository and GitHub</h2>${src(d)}
+      <h2>Repository and GitHub</h2>${src(d)}${carried(d)}
       <div class="tiles">
         ${tile('GitHub', pushed ? 'Connected' : 'Not connected', pushed ? '' : 'no remote configured', 'var(--rule-2)')}
         ${tile('Commits', esc(d.commits?.length), `on ${esc(d.branch)}`, 'var(--live)')}
         ${tile('Ahead of ' + esc(d.defaultBranch || 'default'), esc(d.ahead || '0'), 'not merged', 'var(--changes)')}
         ${tile('Tracked files', esc(d.tracked), `${(d.dirty || []).length} uncommitted`, 'var(--rule-2)')}
       </div>
-      ${pushed ? '' : `<div class="callout warn">${icon('warn')}<div><p><b>Not on GitHub yet.</b> There is no remote, so no repository, pull request or Pages site exists. The overnight run was deliberately told never to push. Each step below happens once you approve it.</p><ol class="steps"><li>Create the GitHub repository</li><li>Push <code>${esc(d.branch)}</code></li><li>Open a pull request into <code>${esc(d.defaultBranch || 'master')}</code></li></ol></div></div>`}
+      ${pushed ? '' : `<div class="callout warn">${icon('warn')}<div><p><b>Not on GitHub yet.</b> There is no remote, so no repository, pull request or Pages site exists. The overnight run was deliberately told never to push. Each step below happens once you approve it.</p><ol class="steps"><li>Create the GitHub repository</li><li>Push ${esc(d.branch)}</li><li>Open a pull request into ${esc(d.defaultBranch || 'master')}</li></ol></div></div>`}
       <div class="grid g-1-1">
         <div class="panel"><div class="ph"><h3>Repository</h3></div><div class="pb">
           <dl class="facts">
-            <dt>Local path</dt><dd><code>${esc(d.repoPath)}</code></dd>
-            <dt>Working branch</dt><dd><code>${esc(d.branch)}</code> at <code>${esc(d.head)}</code></dd>
-            <dt>Default branch</dt><dd><code>${esc(d.defaultBranch || '—')}</code></dd>
+            <dt>Local path</dt><dd>${esc(d.repoPath)}</dd>
+            <dt>Working branch</dt><dd>${esc(d.branch)} at <code>${esc(d.head)}</code></dd>
+            <dt>Default branch</dt><dd>${esc(d.defaultBranch || '—')}</dd>
             <dt>Change</dt><dd>${esc(d.shortstat || '—')}</dd>
-            <dt>Remote</dt><dd>${pushed ? d.remotes.map(r => `<code>${esc(r)}</code>`).join('<br>') : 'None'}</dd>
+            <dt>Remote</dt><dd>${pushed ? d.remotes.map(r => esc(r)).join('<br>') : 'None'}</dd>
             <dt>Pull requests</dt><dd>${prs ? `${prOpen} open` : pushed ? 'Not available' : 'None'}</dd>
-            <dt>Pages site</dt><dd>Not deployed · base path <code>/platform-catalogue/</code> configured</dd>
-            <dt>Working tree</dt><dd>${(d.dirty || []).length ? d.dirty.map(x => `<code>${esc(x)}</code>`).join(' ') : 'Clean'}</dd>
+            <dt>Pages site</dt><dd>Not deployed · base path /platform-catalogue/ configured</dd>
+            <dt>Working tree</dt><dd>${(d.dirty || []).length ? d.dirty.map(x => esc(x)).join('<br>') : 'Clean'}</dd>
           </dl>
           <p class="faint" style="margin:22px 0 10px;font-weight:600">Files by folder</p>
-          <div class="hbars">${dirs.map(([k, v]) => `<div class="r"><span class="id">${esc(k)}</span><span class="bar"><i style="width:${v / maxDir * 100}%;background:var(--ink-3)"></i></span><span class="v">${v}</span></div>`).join('')}</div>
+          <div class="hbars">${dirs.map(([k, v]) => `<div class="r"><span>${esc(k)}</span><span class="bar"><i style="width:${v / maxDir * 100}%;background:var(--ink-3)"></i></span><span class="v">${v}</span></div>`).join('')}</div>
         </div></div>
         <div class="panel"><div class="ph"><h3>Commits</h3><span class="faint">newest first</span></div>
           <div class="pb flush scroll"><table><thead><tr><th>Commit</th><th>Message</th><th>When</th></tr></thead><tbody>
@@ -894,7 +915,7 @@
   // A neutral tone: the forecast is neither a review verdict nor something waiting on the owner.
   function forecastTile(u) {
     const f = forecastOf(u), tone = 'var(--rule-2)';
-    if (f.state === 'ok') return tile('Next limit hit', esc(when(f.at)), `estimate from ${hitsFrom(f)}${f.at < Date.now() ? ' · passed with no hit since' : ''}`, tone);
+    if (f.state === 'ok') return tile('Next limit hit', esc(when(f.at)), `estimate from ${hitsFrom(f)}${f.at < renderNow ? ' · passed with no hit since' : ''}`, tone);
     if (f.state === 'reset-unknown') return tile('Next limit hit', esc(dur(f.gap)) + ' after reset', `estimate from ${hitsFrom(f)} · reset time of the latest hit not recorded`, tone);
     return tile('Next limit hit', '—', NO_FORECAST[f.state], tone);
   }
@@ -907,7 +928,10 @@
 
   // Stacked hourly bars (agents under main session), one scale for bars, gridlines and labels.
   function usageChart(u, W, H, compact) {
-    const hours = u.hourly || [];
+    // Hours as the exporter writes them: a list of objects with an hour key. Anything else draws no bar, and a main or
+    // sub that is not a number counts as no usage in that hour, since one NaN would make every coordinate NaN.
+    const hours = (Array.isArray(u.hourly) ? u.hourly : []).filter(h => h && typeof h.hour === 'string')
+      .map(h => ({ hour: h.hour, main: Number(h.main) || 0, sub: Number(h.sub) || 0 }));
     if (!hours.length) return '<p class="faint">No hourly data.</p>';
     const L = compact ? 36 : 50, R = compact ? 6 : 64, T = 16, B = compact ? 22 : 28, iw = W - L - R, ih = H - T - B;
     const max = niceCeil(Math.max(...hours.map(h => h.main + h.sub)));
@@ -990,18 +1014,25 @@
   // Each tab is drawn on its own, so a tab that cannot read the data it was given leaves the others drawn.
   const RENDERERS = [[renderHeader, null], [renderOverview, 'overview'], [renderDispatch, 'dispatch'], [renderCatalogue, 'catalogue'], [renderSpec, 'spec'],
     [renderAssumptions, 'assumptions'], [renderDecisions, 'decisions'], [renderBacklog, 'backlog'], [renderGit, 'git'], [renderUsage, 'usage']];
-  // The forecast tiles mark a forecast time that has gone by, but the store may not change for hours while the board
-  // sits idle, so the minute timer compares against what was last drawn and redraws once when the forecast passes.
-  let forecastPassed = false;
-  const forecastIsPast = () => { const f = forecastOf(docs.usage); return f.state === 'ok' && f.at < Date.now(); };
+  // The store may not change for hours while the board sits idle, yet the clock alone changes two things drawn: whether
+  // the forecast shown has gone by, and whether the session shown is past its running window (the header and the
+  // "Running now" tiles). The minute timer compares this against what was last drawn and redraws once when it differs.
+  // A forecast that cannot be computed counts as not passed, so it can never stop a redraw or the timer.
+  const forecastIsPast = now => { try { const f = forecastOf(docs.usage); return f.state === 'ok' && f.at < now; } catch (e) { return false; } };
+  const clockState = now => `${forecastIsPast(now)} ${isLive(now)} ${scopeLive(now)}`;
+  // A render reads the clock once (renderNow) for the forecast tiles, the running window and the drawn state alike. A
+  // second reading could fall past the forecast or the window's end, recording a state as drawn that no tile shows,
+  // and the minute timer would then never redraw that tile.
+  let renderNow = Date.now(), drawnClock = '';
   function renderAll() {
+    const now = renderNow = Date.now();
     RENDERERS.forEach(([draw, tab]) => {
       try { draw(); } catch (e) {
         console.error(`Board: the ${tab || 'header'} could not be drawn`, e);
         if (tab) $('panel-' + tab).innerHTML = '<div class="empty">This tab could not be shown from the current data.</div>';
       }
     });
-    forecastPassed = forecastIsPast();
+    drawnClock = clockState(now);
   }
 
   // ---------------- project picker and session filter ----------------
@@ -1083,10 +1114,12 @@
   $('project').addEventListener('blur', fillPickers);
   $('session').addEventListener('blur', fillPickers);
   apply();
-  setInterval(() => { renderHeader(); fillPickers(); if (forecastIsPast() !== forecastPassed) renderAll(); }, 60000);
+  setInterval(() => { const now = Date.now(); renderHeader(now); fillPickers(); if (clockState(now) !== drawnClock) renderAll(); }, 60000);
 
   (async () => {
-    const db = await window.claude?.use?.('db');
+    // A store that refuses to open is shown as out of reach, like an absent one, rather than left reading Connecting.
+    let db = null;
+    try { db = await window.claude?.use?.('db'); } catch (e) { console.warn('Board: the live store could not be opened', e); }
     if (!db) { offline = true; renderAll(); $('foot').textContent = 'This view cannot reach the live store, so it shows no data.'; return; }
     const fail = e => { $('foot').textContent = 'A live subscription ended (' + e.code + '). Reload the page to reconnect.'; };
     const all = snap => snap.docs.filter(x => x.exists).map(x => ({ id: x.id, ...x.data() }));
@@ -1104,7 +1137,7 @@
       projects.forEach(p => watchStatus(p.statusDoc));
       refresh();
     }, fail);
-    db.collection('runs').orderBy('seq').onSnapshot(snap => { allRuns = all(snap); apply(); }, fail);
+    db.collection('runs').orderBy('seq').onSnapshot(snap => { allRuns = all(snap); gotRuns = true; apply(); }, fail);
     db.collection('projectTabs').orderBy('generatedAt').onSnapshot(snap => { tabDocs = Object.fromEntries(all(snap).map(d => [d.id, d])); apply(); }, fail);
     db.doc('catalogue/index').onSnapshot(snap => { catalogue = snap.exists ? snap.data() : null; gotCatalogue = true; apply(); }, fail);
   })();
