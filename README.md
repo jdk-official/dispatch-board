@@ -11,6 +11,7 @@ awaiting a human, decisions, backlog, repository status and Claude usage, per pr
 - `exporters/board_config.py` — the project list and the catalogue paths, read the same way by every exporter
 - `projects/<projectId>.json` — hand-kept build state per project (work-item states, the brief's open questions)
 - `tests/` — `python -m unittest discover -s tests` and `node tests/page.test.mjs`
+- `local/tests/` — `python -m unittest discover -s local/tests` (the local-first app's record shapes and SQLite schema; Python 3.11 or later)
 - `board.config.json` — artifact URL, the projects (repo, branch, build sessions, doc paths), session discovery and privacy settings
 - `snapshot/` — copy of the board's store at the time this project was created
 

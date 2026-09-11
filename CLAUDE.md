@@ -86,10 +86,11 @@ The Agent catalogue, in `catalogue` in `board.config.json`:
 - Usage comes from the transcripts. An agent use is a run's `agentType`. A skill use is a `Skill` tool call (`input.skill`) or a plugin command the owner typed (`/<plugin>:<skill>`) in a session's main transcript. On the page, a namespaced id counts toward the entry with that id, and a bare `Skill` id toward the one catalogue skill with that name. Anything else, such as `Plan`, `general-purpose` or `artifact-design`, is listed under "Outside the catalogue".
 - **Known limitation:** bare slash commands the owner types, such as `/loop`, are not counted (a bare `Skill` call is). Skill use inside agent transcripts is not counted either. A forked session that repeats an earlier session's history counts those uses twice in the all-sessions figures.
 
-Tests, run both:
+Tests, run all three (they are the `[test_commands]` in `backlog-delivery.config`):
 
 - `python -m unittest discover -s tests` (stdlib only). They build synthetic transcripts, marketplaces and `out/` folders in temporary directories, pass their own config (including a `catalogue` block), and never touch the real `out/`, `~/.claude` or the live board.
 - `node tests/page.test.mjs` (node built-ins only, no `npm install`). It runs the inline script of `site/index.html` against a stub DOM and a fake store, and checks the project picker, the session filter, the project Overview, the Agent catalogue tab, the Backlog's Later group and the pull requests (the GitHub tab's panel and the Overview's awaiting-merge items); it exits non-zero on the first failed check. Because each tab renders in its own try/catch, any `console.error` the page logs that a check does not expect also fails the suite. `PAGE_HTML=<path>` points it at another copy of the page (default `site/index.html`).
+- `python -m unittest discover -s local/tests` (stdlib only; needs Python 3.11 or later). It tests the local-first app's record shapes and SQLite schema (`local/records.py`, `local/schema.py`), including a conformance check that every document the v1 exporters write fits the shapes.
 
 ## Projects
 
