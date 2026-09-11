@@ -8,6 +8,7 @@ export_board.py always read for it.
 
 catalogue() reads the "catalogue" block: where export_catalogue.py finds the agent-catalog marketplace clone
 and the installed-plugins file. manual() reads runs.manual: the rows for work the orchestrator did in-line.
+local() reads the "local" block: where the local-first app's SQLite database lives.
 """
 import os, re
 
@@ -62,6 +63,21 @@ def catalogue(cfg):
             raise ValueError('catalogue.%s must be a string, not %s' % (key, type(value).__name__))
         out[key] = os.path.expanduser(value)
     return out
+
+
+LOCAL_DATABASE = 'out/local/board.db'  # relative paths are resolved against the repository root by their reader
+
+
+def local(cfg):
+    """{"databasePath": <str>} from the local block, with the default filled in and a leading ~ expanded. Raises
+    ValueError for a block that is not an object, or a path that is not a string or is blank."""
+    block = cfg.get('local', {})
+    if not isinstance(block, dict):
+        raise ValueError('"local" must be an object, not %s' % type(block).__name__)
+    value = block.get('databasePath', LOCAL_DATABASE)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError('local.databasePath must be a non-empty string, not %r' % (value,))
+    return {'databasePath': os.path.expanduser(value)}
 
 
 def legacy(cfg):
