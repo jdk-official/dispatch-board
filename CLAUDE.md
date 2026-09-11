@@ -39,8 +39,9 @@ tracked project.
 2. `Artifact` `action: "write_db"`, `db_op: "batch"`, `url` = the live page, `writes` = the printed array (it splits into several batches past 50).
 3. Only after the write succeeds: `python exporters/refresh.py --commit`. If a write fails, skip this; the next run re-offers the same changes.
 
-To keep the board live, run the refresher on a loop from a session opened in this folder:
-`/loop 2m Refresh the dispatch board: follow the Refresh procedure in CLAUDE.md; if refresh.py prints "nothing to push", end the tick without writing.`
+To keep the board live, run the refresher on a loop from a session opened in this folder. The
+owner's freshness target is 10 minutes (2026-09-11); only the owner views the board:
+`/loop 10m Refresh the dispatch board: follow the Refresh procedure in CLAUDE.md; if refresh.py prints "nothing to push", end the tick without writing.`
 
 `title`, `message` and `metrics` in `meta/status` are still written by hand when the stage changes.
 Rows derive from transcripts, so labels are the agents' task descriptions and `tok` is the agent's
