@@ -13,7 +13,7 @@ assumptions awaiting a human, decisions, backlog and repository state.
 
 Audience: the owner (one person). The page is a claude.ai artifact, private until shared.
 
-## What exists today (repo C:\Users\jdk\dispatch-board, public on GitHub jdk-official/dispatch-board)
+## What exists today (repo C:\Users\jdk\dispatch-board, private on GitHub jdk-official/dispatch-board since 2026-09-11; see the Plan-gate record in `docs/backlog/specs/dispatch-board.md`)
 
 - `site/index.html`: the whole page (HTML, CSS, JS in one file). It reads the artifact's document
   store via `window.claude.use('db')` and re-renders on every change. It never writes.
@@ -53,7 +53,8 @@ while it stays an artifact.
 ## Decisions the owner made (with reasons given)
 
 1. **Public GitHub repo** jdk-official/dispatch-board (2026-09-10). The owner chose public over
-   private when asked.
+   private when asked. **Superseded 2026-09-11:** at the plan gate the owner answered "Make the repo
+   private", and the repo is now private (Plan-gate record in `docs/backlog/specs/dispatch-board.md`).
 2. **Repos stay on the Windows filesystem.** The owner dropped the "repos live in WSL" rule; no WSL
    distro is installed.
 3. **Live updates by a refresher loop** (option 1 of 3), chosen as the lowest-cost option that
@@ -129,6 +130,10 @@ GO-WITH-CONDITIONS (1 MEDIUM regression, 4 LOW), then GO with 4 LOW notes, still
 14. **Freshness: 10 minutes is enough.** The refresher loop moved from every 2 minutes to every 10
     (at minute 3, 13, 23 and so on).
 15. **Show sessions from the last 7 days, for now.** No archive of older sessions or runs.
+
+- **"Is the snapshot of build data in a public repo acceptable long term?"** Answered at the plan
+  gate (2026-09-11): "Make the repo private". The repo is now private and `snapshot/` stays (row 3 of
+  the Assumptions ledger in `docs/backlog/specs/dispatch-board.md`, CONFIRMED; supersedes decision 1).
 
 ## Direction for the next iteration (owner, 2026-09-11)
 
@@ -228,4 +233,3 @@ The owner asked for all of these to go into the plan. None has been built.
 ## Open questions still unanswered
 
 - Should the refresher survive the session closing (a local scheduled task)?
-- Is the snapshot of build data in a public repo acceptable long term?
