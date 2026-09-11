@@ -1,0 +1,158 @@
+{
+  "catalogue": {
+    "optional": {
+      "source": "object"
+    },
+    "required": {
+      "entries": {
+        "list_of": {
+          "enums": {
+            "kind": [
+              "agent",
+              "skill"
+            ]
+          },
+          "required": {
+            "description": "str",
+            "id": "str",
+            "installed": "bool",
+            "kind": "str",
+            "name": "str",
+            "plugin": "str"
+          }
+        }
+      },
+      "generatedAt": "str",
+      "plugins": {
+        "list_of": {
+          "required": {
+            "agents": "int",
+            "installed": "bool",
+            "plugin": "str",
+            "purpose": "str",
+            "purposeFull": "str",
+            "skills": "int"
+          }
+        }
+      }
+    }
+  },
+  "lastRefresh": {
+    "enums": {
+      "writer": [
+        "collector",
+        "refresher"
+      ]
+    },
+    "optional": {},
+    "required": {
+      "at": "datetime",
+      "writer": "str"
+    }
+  },
+  "project": {
+    "optional": {},
+    "required": {
+      "branch": "str",
+      "last": "str|null",
+      "name": "str",
+      "order": "int",
+      "repoPath": "str",
+      "running": "int",
+      "runs": "int",
+      "sessions": "list",
+      "statusDoc": "str",
+      "usage": "object|null"
+    }
+  },
+  "run": {
+    "enums": {
+      "kind": [
+        "running",
+        "done",
+        "go",
+        "changes",
+        "nogo",
+        "killed"
+      ],
+      "lane": [
+        "orch",
+        "req",
+        "plan",
+        "cw",
+        "tw",
+        "cr",
+        "ver",
+        "other",
+        "human"
+      ]
+    },
+    "optional": {
+      "agent": "str",
+      "agentType": "str",
+      "end": "str",
+      "feeds": "str",
+      "from": "str",
+      "group": "str",
+      "start": "str"
+    },
+    "required": {
+      "kind": "str",
+      "label": "str",
+      "lane": "str",
+      "min": "int",
+      "project": "str|null",
+      "seq": "int",
+      "session": "str",
+      "tok": "int",
+      "verdict": "str"
+    }
+  },
+  "session": {
+    "optional": {
+      "firstPrompt": "str"
+    },
+    "required": {
+      "build": "bool",
+      "cwd": "str",
+      "folder": "str",
+      "last": "str|null",
+      "project": "str|null",
+      "running": "int",
+      "runs": "int",
+      "skillUses": {
+        "map_of": {
+          "optional": {
+            "last": "str"
+          },
+          "required": {
+            "count": "int"
+          }
+        }
+      },
+      "start": "str|null",
+      "title": "str",
+      "usage": "object",
+      "windowDays": "int",
+      "windowMinutes": "int"
+    }
+  },
+  "status": {
+    "optional": {
+      "live": "bool",
+      "message": "str",
+      "metrics": "object",
+      "title": "str",
+      "updatedAt": "str"
+    },
+    "required": {}
+  },
+  "tab": {
+    "optional": {
+      "source": "str"
+    },
+    "required": {
+      "generatedAt": "str"
+    }
+  }
+}
