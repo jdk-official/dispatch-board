@@ -2,6 +2,7 @@
 directory. The exporters are never run: main() is given a stub in their place.
 """
 import contextlib, io, json, os, shutil, subprocess, sys, tempfile, unittest
+from datetime import datetime, timezone
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'exporters'))
@@ -73,6 +74,7 @@ def keys(plan):
 
 
 STATUS = ('update', 'meta/status')
+LAST = ('set', 'meta/lastRefresh')
 
 
 class Plan(unittest.TestCase):
@@ -83,65 +85,70 @@ class Plan(unittest.TestCase):
     def test_first_plan_sets_everything_and_the_status(self):
         p = rf.plan(self.o.out)
         k = keys(p)
-        self.assertEqual(len(k), 1 + 5 + 2 + 4 + 1)
+        self.assertEqual(len(k), 1 + 5 + 2 + 4 + 1 + 1)
+        self.assertEqual([w['op'] for w in writes(p)].count('set'), 13)
+        self.assertEqual([w['op'] for w in writes(p)].count('update'), 1)
         self.assertIn(('set', 'projects/p'), k)
         self.assertIn(('set', 'projectTabs/p.spec'), k)
         self.assertIn(('set', 'runs/ro1'), k)
         self.assertIn(STATUS, k)
+        self.assertIn(LAST, k)
         self.assertTrue(os.path.exists(self.o.pending))
 
     def test_dotted_doc_ids_keep_their_file(self):
         w = [x for x in writes(rf.plan(self.o.out)) if x['doc_id'] == 'p.spec'][0]
         self.assertEqual((w['collection'], w['file_path']), ('projectTabs', self.o.path('projectTabs', 'p.spec').replace('\\', '/')))
 
-    def test_commit_then_nothing_to_push(self):
+    def test_commit_then_a_quiet_tick_prints_only_the_last_refresh_write(self):
         rf.plan(self.o.out)
-        self.assertEqual(rf.commit(self.o.out), 14)  # 12 documents plus p's live flag and document list
+        self.assertEqual(rf.commit(self.o.out), 15)  # 12 documents, p's live flag and document list, plus meta/lastRefresh
         self.assertFalse(os.path.exists(self.o.pending))
-        self.assertIsNone(rf.plan(self.o.out))
+        self.assertEqual(keys(rf.plan(self.o.out)), {LAST})
 
-    def test_nothing_to_push_removes_a_stale_pending_file(self):
+    def test_nothing_to_push_replaces_a_stale_pending_file(self):
+        # A leftover .pending.json from an earlier, interrupted run must not leak into the fresh plan: with
+        # nothing else changed, the only write is meta/lastRefresh and the stale entry is gone.
         self.o.pushed()
         with io.open(self.o.pending, 'w', encoding='utf-8') as f:
             json.dump({'state': {'runs/zz': 'stale'}}, f)
-        self.assertIsNone(rf.plan(self.o.out))
-        self.assertFalse(os.path.exists(self.o.pending))
+        self.assertEqual(keys(rf.plan(self.o.out)), {LAST})
+        self.assertNotIn('runs/zz', rf.load(self.o.pending, {}).get('state', {}))
 
     def test_generated_at_alone_is_not_a_change(self):
         self.o.pushed()
         self.o.edit('projectTabs', 'p.spec', generatedAt='2026-09-11T00:00:00+00:00')
-        self.assertIsNone(rf.plan(self.o.out))
+        self.assertEqual(keys(rf.plan(self.o.out)), {LAST})
 
     def test_vanished_run_is_deleted(self):
         self.o.pushed()
         self.o.remove('runs', 'ro1')
-        self.assertEqual(keys(rf.plan(self.o.out)), {('delete', 'runs/ro1')})
+        self.assertEqual(keys(rf.plan(self.o.out)), {('delete', 'runs/ro1'), LAST})
 
     def test_vanished_project_tab_is_deleted(self):
         self.o.pushed()
         self.o.remove('projectTabs', 'p.git')
-        self.assertEqual(keys(rf.plan(self.o.out)), {('delete', 'projectTabs/p.git'), STATUS})
+        self.assertEqual(keys(rf.plan(self.o.out)), {('delete', 'projectTabs/p.git'), STATUS, LAST})
 
     def test_vanished_project_is_deleted_with_the_flag(self):
         self.o.add_project_q()
         self.o.pushed()
         self.o.remove('projects', 'q')
         self.o.remove('projectTabs', 'q.git')
-        self.assertEqual(keys(rf.plan(self.o.out, allow_mass_delete=True)), {('delete', 'projects/q'), ('delete', 'projectTabs/q.git')})
+        self.assertEqual(keys(rf.plan(self.o.out, allow_mass_delete=True)), {('delete', 'projects/q'), ('delete', 'projectTabs/q.git'), LAST})
 
     def test_retired_tabs_are_never_deleted(self):
         self.o.pushed()
         pushed = rf.load(os.path.join(self.o.out, '.pushed.json'), {})
         pushed.update({'tabs/spec': 'x', 'tabs/usage': 'y'})  # recorded by the page's earlier layout
         rf.save(os.path.join(self.o.out, '.pushed.json'), pushed)
-        self.assertIsNone(rf.plan(self.o.out))
+        self.assertEqual(keys(rf.plan(self.o.out)), {LAST})
 
     def test_unmanaged_collections_are_never_deleted(self):
         self.o.pushed()
         pushed = rf.load(os.path.join(self.o.out, '.pushed.json'), {})
         pushed.update({'answers/1': 'x', 'meta/other': 'y'})
         rf.save(os.path.join(self.o.out, '.pushed.json'), pushed)
-        self.assertIsNone(rf.plan(self.o.out))
+        self.assertEqual(keys(rf.plan(self.o.out)), {LAST})
 
     def test_batches_past_the_limit(self):
         for i in range(60):
@@ -161,37 +168,37 @@ class UpdatedAt(unittest.TestCase):
 
     def test_unlinked_session_change_does_not_bump(self):
         self.o.edit('sessions', 'o', title='renamed')
-        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'sessions/o')})
+        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'sessions/o'), LAST})
 
     def test_unlinked_run_change_does_not_bump(self):
         self.o.edit('runs', 'ro1', kind='go')
-        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'runs/ro1')})
+        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'runs/ro1'), LAST})
 
     def test_running_unlinked_run_does_not_bump(self):
         self.o.edit('runs', 'ro1', kind='running')
         p = rf.plan(self.o.out)
-        self.assertEqual(keys(p), {('set', 'runs/ro1')})
+        self.assertEqual(keys(p), {('set', 'runs/ro1'), LAST})
         self.assertFalse(p['live'])
 
     def test_linked_session_change_bumps(self):
         self.o.edit('sessions', 'b', title='renamed')
-        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'sessions/b'), STATUS})
+        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'sessions/b'), STATUS, LAST})
 
     def test_linked_run_change_bumps(self):
         self.o.edit('runs', 'rb1', kind='go')
-        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'runs/rb1'), STATUS})
+        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'runs/rb1'), STATUS, LAST})
 
     def test_deleted_linked_run_bumps(self):
         self.o.remove('runs', 'rb1')
-        self.assertEqual(keys(rf.plan(self.o.out)), {('delete', 'runs/rb1'), STATUS})
+        self.assertEqual(keys(rf.plan(self.o.out)), {('delete', 'runs/rb1'), STATUS, LAST})
 
     def test_project_tab_change_bumps(self):
         self.o.edit('projectTabs', 'p.backlog', tab='changed')
-        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'projectTabs/p.backlog'), STATUS})
+        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'projectTabs/p.backlog'), STATUS, LAST})
 
     def test_project_document_change_bumps(self):
         self.o.edit('projects', 'p', runs=3)
-        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'projects/p'), STATUS})
+        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'projects/p'), STATUS, LAST})
 
     def test_live_flip_bumps(self):
         self.o.edit('runs', 'rb1', kind='running')
@@ -219,21 +226,21 @@ class ProjectStatus(unittest.TestCase):
     def test_later_writes_merge(self):
         self.o.pushed()
         self.o.edit('runs', 'rq1', kind='go')
-        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'runs/rq1'), ('update', 'status/q')})
+        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'runs/rq1'), ('update', 'status/q'), LAST})
 
     def test_a_change_bumps_only_its_own_project(self):
         self.o.pushed()
         self.o.edit('runs', 'rb1', kind='go')
-        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'runs/rb1'), STATUS})
+        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'runs/rb1'), STATUS, LAST})
         rf.commit(self.o.out)
         self.o.edit('projectTabs', 'q.git', tab='changed')
-        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'projectTabs/q.git'), ('update', 'status/q')})
+        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'projectTabs/q.git'), ('update', 'status/q'), LAST})
 
     def test_live_is_per_project(self):
         self.o.pushed()
         self.o.edit('runs', 'rq1', kind='running')
         p = rf.plan(self.o.out)
-        self.assertEqual(keys(p), {('set', 'runs/rq1'), ('update', 'status/q')})
+        self.assertEqual(keys(p), {('set', 'runs/rq1'), ('update', 'status/q'), LAST})
         self.assertTrue(p['live'])
         self.assertTrue(self.o.read('status', 'q')['live'])
         self.assertFalse(self.o.read('meta', 'status')['live'])
@@ -241,6 +248,76 @@ class ProjectStatus(unittest.TestCase):
     def test_project_without_a_status_doc_field_uses_status_collection(self):
         self.o.edit('projects', 'q', statusDoc=None)
         self.assertIn(('set', 'status/q'), keys(rf.plan(self.o.out)))
+
+
+class LastRefresh(unittest.TestCase):
+    """meta/lastRefresh: the refresher's own record of when it last ran, set by every plan and never project data."""
+
+    def setUp(self):
+        self.o = Out()
+        self.addCleanup(self.o.cleanup)
+
+    def last(self, plan):
+        return [w for w in writes(plan) if (w['collection'], w['doc_id']) == ('meta', 'lastRefresh')]
+
+    def test_every_plan_sets_it_once_with_a_utc_time_and_the_refresher(self):
+        w = self.last(rf.plan(self.o.out))
+        self.assertEqual([x['op'] for x in w], ['set'])
+        self.assertEqual(w[0]['file_path'], self.o.path('meta', 'lastRefresh').replace('\\', '/'))
+        doc = self.o.read('meta', 'lastRefresh')
+        self.assertEqual(set(doc), {'at', 'writer'})
+        self.assertEqual(doc['writer'], 'refresher')
+        self.assertRegex(doc['at'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
+        at = datetime.strptime(doc['at'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+        self.assertLess(abs((datetime.now(timezone.utc) - at).total_seconds()), 60)
+
+    def test_a_plan_with_nothing_else_changed_still_sets_it(self):
+        self.o.pushed()
+        self.assertEqual(keys(rf.plan(self.o.out)), {LAST})
+
+    def test_commit_records_it_as_pushed(self):
+        rf.plan(self.o.out)
+        rf.commit(self.o.out)
+        self.assertIn('meta/lastRefresh', rf.load(os.path.join(self.o.out, '.pushed.json'), {}))
+
+    def test_a_refused_plan_writes_and_plans_nothing(self):
+        self.o.pushed()
+        os.remove(self.o.path('meta', 'lastRefresh'))
+        for rid in ('rb1', 'rb2', 'ro1', 'ro2'):
+            self.o.remove('runs', rid)
+        with self.assertRaises(rf.MassDelete):
+            rf.plan(self.o.out)
+        self.assertFalse(os.path.exists(self.o.path('meta', 'lastRefresh')))
+        self.assertFalse(os.path.exists(self.o.pending))
+        self.o.doc('answers', 'row-5', {'answer': 'yes'})
+        with self.assertRaises(rf.AnswersRefused):
+            rf.plan(self.o.out, allow_mass_delete=True)
+        self.assertFalse(os.path.exists(self.o.path('meta', 'lastRefresh')))
+        self.assertFalse(os.path.exists(self.o.pending))
+
+    def test_it_never_bumps_a_status(self):
+        self.o.add_project_q()
+        self.o.pushed()
+        p = rf.plan(self.o.out)
+        self.assertEqual(keys(p), {LAST})
+        self.assertFalse(p['live'])
+
+    def test_it_is_never_deleted(self):
+        self.o.pushed()
+        os.remove(self.o.path('meta', 'lastRefresh'))
+        self.o.edit('runs', 'ro1', kind='go')
+        k = keys(rf.plan(self.o.out))
+        self.assertNotIn(('delete', 'meta/lastRefresh'), k)
+        self.assertEqual(k, {('set', 'runs/ro1'), LAST})
+
+    def test_it_never_counts_toward_the_mass_delete_guard(self):
+        self.o.pushed()
+        os.remove(self.o.path('meta', 'lastRefresh'))
+        for rid in ('rb2', 'ro1', 'ro2'):  # exactly half of the six pushed runs and sessions: allowed
+            self.o.remove('runs', rid)
+        k = keys(rf.plan(self.o.out))
+        self.assertEqual({x for x in k if x[0] == 'delete'}, {('delete', 'runs/rb2'), ('delete', 'runs/ro1'), ('delete', 'runs/ro2')})
+        self.assertIn(LAST, k)
 
 
 class Save(unittest.TestCase):
@@ -355,12 +432,12 @@ class Catalogue(unittest.TestCase):
     def test_a_catalogue_change_is_one_write_and_moves_no_status(self):
         self.o.pushed()
         self.o.edit('catalogue', 'index', entries=[{'id': 'p:a'}, {'id': 'p:b'}])
-        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'catalogue/index')})
+        self.assertEqual(keys(rf.plan(self.o.out)), {('set', 'catalogue/index'), LAST})
 
     def test_a_new_generated_at_alone_is_not_a_change(self):
         self.o.pushed()
         self.o.edit('catalogue', 'index', generatedAt='2026-09-12T00:00:00+00:00')
-        self.assertIsNone(rf.plan(self.o.out))
+        self.assertEqual(keys(rf.plan(self.o.out)), {LAST})
 
     def test_deleting_the_catalogue_is_refused(self):
         self.o.pushed()
@@ -369,7 +446,7 @@ class Catalogue(unittest.TestCase):
             rf.plan(self.o.out)
         self.assertIn('catalogue/index', str(cm.exception))
         self.assertFalse(os.path.exists(self.o.pending))
-        self.assertEqual(keys(rf.plan(self.o.out, allow_mass_delete=True)), {('delete', 'catalogue/index')})
+        self.assertEqual(keys(rf.plan(self.o.out, allow_mass_delete=True)), {('delete', 'catalogue/index'), LAST})
 
 
 class Answers(unittest.TestCase):
@@ -441,9 +518,13 @@ class Cli(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out)['batches'], 1)
 
-    def test_nothing_to_push(self):
+    def test_a_quiet_tick_prints_only_the_last_refresh_write(self):
+        # Every plan now sets meta/lastRefresh, so "nothing to push" no longer occurs: main() still prints
+        # a plan, holding just that one write.
         self.o.pushed()
-        self.assertEqual(self.main()[:2], (0, 'nothing to push\n'))
+        code, out, _ = self.main()
+        self.assertEqual(code, 0)
+        self.assertEqual(keys(json.loads(out)), {LAST})
 
     def test_commit_without_pending(self):
         code, _, err = self.main('--commit')

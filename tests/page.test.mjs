@@ -1211,6 +1211,82 @@ const drawnOffline = (e, why) => {
   ok('load, late store: the app bar and Overview draw a Connecting state at once, then the data when the store arrives');
 }
 
+// ---- 19. meta/lastRefresh: "data as of" header, stale past 20 minutes, the minute timer re-evaluates it,
+// and an absent document or an unreadable "at" shows no text and logs no error
+{
+  const T = Date.parse('2026-09-11T12:00:00Z'), realNow = Date.now;
+  try {
+    Date.now = () => T;
+    const e = env();
+    await tick();
+    const asOf = () => e.el('asOf');
+    assert.equal(asOf().innerHTML, '', 'no meta/lastRefresh document yet: no "data as of" text');
+    assert.equal(asOf().className, 'faint');
+
+    e.fire('d:meta/lastRefresh', { at: new Date(T - 5 * 60000).toISOString(), writer: 'refresher' });
+    assert.match(asOf().innerHTML, /^data as of /);
+    assert.doesNotMatch(asOf().innerHTML, /stale/);
+    assert.equal(asOf().className, 'faint');
+    ok('meta/lastRefresh 5 minutes old: "data as of" shown, without the stale styling');
+
+    {
+      // Same clock, two different "at" values: the rendered time must track "at" itself, not the
+      // clock. Swapping when(lastRefresh.at) for when(Date.now()) in the page would render the same
+      // text for both of these (the clock never moves here) and this check would catch it.
+      const fmt = iso => new Date(iso).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' });
+      const atA = new Date(T - 5 * 60000).toISOString(), atB = new Date(T - 90 * 60000).toISOString();
+      e.fire('d:meta/lastRefresh', { at: atA, writer: 'refresher' });
+      const textA = asOf().innerHTML;
+      assert.equal(textA, `data as of ${fmt(atA)}`, 'the rendered time is exactly the formatted "at", not any other time');
+      e.fire('d:meta/lastRefresh', { at: atB, writer: 'refresher' });
+      const textB = asOf().innerHTML.replace(/ \(stale\)$/, '');
+      assert.equal(textB, `data as of ${fmt(atB)}`, 'a different "at" renders a different time, with the clock unchanged');
+      assert.notEqual(textA, asOf().innerHTML, 'two different "at" values render two different texts');
+    }
+    ok('meta/lastRefresh: the rendered time is derived from "at" itself, not from the clock');
+
+    e.fire('d:meta/lastRefresh', { at: new Date(T - 25 * 60000).toISOString(), writer: 'refresher' });
+    assert.match(asOf().innerHTML, /^data as of .*stale/);
+    assert.equal(asOf().className, 'faint stale');
+    ok('meta/lastRefresh 25 minutes old: "data as of" shown with the word "stale" in the --changes tone');
+
+    // The minute timer re-evaluates staleness against the clock alone, with no store change.
+    e.fire('d:meta/lastRefresh', { at: new Date(T - 15 * 60000).toISOString(), writer: 'refresher' });
+    assert.doesNotMatch(asOf().innerHTML, /stale/, 'still fresh at 15 minutes');
+    Date.now = () => T + 10 * 60000;  // the same document is now 25 minutes old; nothing in the store changed
+    e.timers.forEach(f => f());
+    assert.match(asOf().innerHTML, /stale/, 'the minute timer alone turns it stale');
+    assert.equal(asOf().className, 'faint stale');
+    ok('the minute timer re-evaluates staleness with no store change');
+
+    e.fire('d:meta/lastRefresh', null);
+    assert.equal(asOf().innerHTML, '', 'a deleted meta/lastRefresh document: no "data as of" text');
+    assert.equal(asOf().className, 'faint');
+    ok('meta/lastRefresh absent: no "data as of" text, no console error');
+
+    // new Date() coerces null, 0 and true to valid epoch dates, so the type must be checked before
+    // parsing: every one of these must stay silent, not render a 1970 date, the same as a bad string.
+    for (const bad of [null, 0, true, 12345, {}, 'not-a-time']) {
+      e.fire('d:meta/lastRefresh', { at: bad, writer: 'refresher' });
+      assert.equal(asOf().innerHTML, '', `a corrupt "at" (${JSON.stringify(bad)}): no "data as of" text`);
+      assert.equal(asOf().className, 'faint');
+    }
+    ok('meta/lastRefresh with a corrupt "at" (null, 0, true, a number, an object, or an unparsable string): no "data as of" text, no console error, for every case');
+
+    {
+      // A hostile "at" is never echoed raw: it fails to parse as a date (a trailing HTML fragment
+      // breaks Date parsing) and renders nothing, so no fragment of it can ever reach the DOM.
+      const hostile = '2026-09-11T12:00:00Z<img src=x onerror=alert(1)>';
+      e.fire('d:meta/lastRefresh', { at: hostile, writer: 'refresher' });
+      assert.equal(asOf().innerHTML, '', 'a hostile "at" renders no text');
+      assert.doesNotMatch(asOf().innerHTML, /<img|onerror/i, 'no fragment of a hostile "at" ever reaches the DOM, escaped or not');
+      assert.equal(asOf().className, 'faint');
+    }
+    ok('meta/lastRefresh with a hostile "at" (an img/onerror fragment): rendered through esc(), no HTML injected, no console error');
+  } finally { Date.now = realNow; }
+  noPageErrors('meta/lastRefresh header checks');
+}
+
 assert.deepEqual([...everySub].filter(k => k === 'c:tabs' || k.startsWith('d:tabs/')), [], 'a retired tabs/* subscription');
 assert.ok(everySub.has('c:projectTabs'), 'the guard saw the page\'s real subscriptions');
 ok('the page never subscribes to the retired tabs collection or a tabs/* document');

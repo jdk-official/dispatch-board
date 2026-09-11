@@ -264,6 +264,8 @@ class Fixture:
                 folder, _, doc_id = path.rpartition('/')
                 if path == 'catalogue/index':
                     kind, doc_id = 'catalogue', 'index'
+                elif path == 'meta/lastRefresh':
+                    kind, doc_id = 'lastRefresh', 'lastRefresh'
                 elif path == 'meta/status' or folder == 'status':
                     kind, doc_id = 'status', path
                 elif folder in FOLDERS:
@@ -336,7 +338,8 @@ class ConformanceV1(unittest.TestCase):
                 self.assertEqual(records.from_row(kind, records.to_row(kind, doc_id, d)), d)
 
     def test_every_kind_the_v1_exporters_write_was_seen(self):
-        self.assertEqual({k for k, _, _ in self.docs.values()}, {'session', 'run', 'project', 'tab', 'status', 'catalogue'})
+        self.assertEqual({k for k, _, _ in self.docs.values()},
+                          {'session', 'run', 'project', 'tab', 'status', 'catalogue', 'lastRefresh'})
 
     def test_both_status_forms_were_written(self):
         self.assertIn('meta/status', self.docs)
