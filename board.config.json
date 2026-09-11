@@ -6,7 +6,21 @@
   },
   "build": {
     "repoPath": "C:/Users/jdk/platform-catalogue",
-    "branch": "build/logic-core"
+    "branch": "build/logic-core",
+    "sessions": ["7f71729a-c7c5-4855-aab8-25ddf9bac96f"]
+  },
+  "sessions": {
+    "days": 7,
+    "projectsRoot": "C:/Users/jdk/.claude/projects",
+    "exclude": [],
+    "showFirstPrompt": false
+  },
+  "runs": {
+    "runningWindowMinutes": 10,
+    "manual": [
+      { "id": "orch-adrs-spec", "after": "ad8f34de3e0564883", "from": "ad8f34de3e0564883", "lane": "orch", "label": "3 ADRs · pbi-plan → spec rev 1", "verdict": "draft" },
+      { "id": "orch-toolchain", "after": "a4584af0b3847e2ea", "lane": "orch", "label": "PBI-000 toolchain (done in-line)", "verdict": "wired" }
+    ]
   },
   "usage": {
     "sessions": [

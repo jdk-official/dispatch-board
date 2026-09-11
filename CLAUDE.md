@@ -18,20 +18,41 @@ The page holds no data. It subscribes to the artifact's store and re-renders on 
 
 | Store path | Written by | Shape |
 |---|---|---|
-| `runs/<id>` (one per agent run) | the orchestrating session, by hand, as it dispatches and receives agents | `seq` (order), `lane` (`orch`/`req`/`plan`/`cw`/`tw`/`cr`/`ver`/`human`), `label`, `kind` (`running`/`done`/`go`/`changes`/`nogo`/`killed`), `verdict` (short text), `tok`, `min`, optional `from` / `feeds` (another run id: hand-off / verdict fed back), optional `group` (parallel batch id) |
-| `meta/status` | the orchestrating session | `title`, `message`, `live` (bool), `updatedAt` (ISO), `metrics` `{ tests, testFiles, coverage, bundle, measuredAt, measuredOn }` |
+| `sessions/<id>` (one per Claude Code session active in the last `sessions.days` days; id = session id) | `exporters/export_sessions.py`, discovered under `sessions.projectsRoot` | `title`, `project`, `cwd`, `firstPrompt` (only with `sessions.showFirstPrompt`, secrets redacted), `start`, `last`, `build` (listed in `build.sessions`, so the project tabs describe it), `windowDays` (`sessions.days`, for the picker's labels), `windowMinutes` (`runs.runningWindowMinutes`: how long after its last activity the page still shows a session as live), `runs`, `running`, `usage` (the usage tab's data) |
+| `runs/<id>` (one per agent run; id = the subagent's agent id) | `exporters/export_sessions.py`, from each session's transcripts; in-line orchestrator work comes from `runs.manual` in `board.config.json` | `session`, `seq` (order within the session), `lane` (`orch`/`req`/`plan`/`cw`/`tw`/`cr`/`ver`/`human`), `label`, `kind` (`running`/`done`/`go`/`changes`/`nogo`/`killed`; a builder that reports NOT-DONE is `changes`), `verdict` (short text), `tok`, `min`, optional `from` / `feeds` (another run id: hand-off / verdict fed back), optional `group` (parallel batch id) |
+| `meta/status` | `title`, `message`, `metrics`: the orchestrating session by hand. `live`, `updatedAt`: `exporters/refresh.py`, only when build data changed (a `tabs/*` doc, a build session, or one of its runs) or `live` flipped | `title`, `message`, `live` (bool), `updatedAt` (ISO), `metrics` `{ tests, testFiles, coverage, bundle, measuredAt, measuredOn }` |
 | `tabs/spec`, `tabs/assumptions`, `tabs/decisions`, `tabs/backlog`, `tabs/git` | `exporters/export_board.py` | read from the build repo's spec, PRD, brief, ADRs, local review notes and git |
-| `tabs/usage` | `exporters/export_usage.py` | read from Claude Code transcripts for the sessions in `board.config.json` |
 
 `snapshot/` holds a copy of every store document as of the move (2026-09-10). Restore any of it with `write_db` (`file_path` per document).
 
 ## Refresh procedure
 
-1. `python exporters/export_board.py` → `out/{spec,assumptions,decisions,backlog,git}.json`
-2. `python exporters/export_usage.py` → `out/usage.json` (add new session ids to `board.config.json` first)
-3. `Artifact` `action: "write_db"`, `db_op: "batch"`, one `set` per file into collection `tabs` with `doc_id` = file stem and `file_path` pointing at it.
-4. Update `meta/status` (`update`) with the current stage and `updatedAt`.
-5. Write or update `runs/<id>` rows as agents start (`kind: "running"`) and finish (verdict, `tok`, `min`).
+No session reports to the board; a refresher session reads what sessions leave on disk. Sessions are
+discovered automatically. The page has a session picker: Dispatch, usage and the Overview follow the
+selected session; the project tabs (spec, assumptions, decisions, backlog, GitHub) show only for build
+sessions. Add a session id to `build.sessions` in `board.config.json` to mark it as a build of the
+tracked project.
+
+1. `python exporters/refresh.py` runs both exporters (`export_board.py`, `export_sessions.py`) and prints the store writes that changed since the last push (`nothing to push` if none). Entries point at files under `out/`. If it exits non-zero instead, push nothing:
+   - `export_sessions.py` fails when `sessions.projectsRoot` is missing or a `build.sessions` transcript cannot be found, rather than exporting an empty board. A single malformed transcript only costs that session or agent (a warning on stderr).
+   - **Mass-delete guard:** if the export has no sessions, or would delete more than half of the pushed `runs` and `sessions`, refresh.py refuses and leaves nothing pending. Check the projects root and transcripts; only if the deletions are really intended, re-run as `python exporters/refresh.py --allow-mass-delete`.
+2. `Artifact` `action: "write_db"`, `db_op: "batch"`, `url` = the live page, `writes` = the printed array (it splits into several batches past 50).
+3. Only after the write succeeds: `python exporters/refresh.py --commit`. If a write fails, skip this; the next run re-offers the same changes.
+
+To keep the board live, run the refresher on a loop from a session opened in this folder:
+`/loop 2m Refresh the dispatch board: follow the Refresh procedure in CLAUDE.md; if refresh.py prints "nothing to push", end the tick without writing.`
+
+`title`, `message` and `metrics` in `meta/status` are still written by hand when the stage changes.
+Rows derive from transcripts, so labels are the agents' task descriptions and `tok` is the agent's
+reported `subagent_tokens` (context size at finish), falling back to the last transcript response.
+
+Session privacy, in `sessions` in `board.config.json`:
+
+- `exclude` (default `[]`): fnmatch globs matched against each session's working folder (`cwd`, with either slash direction) and against its project folder name under `projectsRoot` (e.g. `C--Users-jdk-private*`). Matching sessions are never read, cached or exported.
+- `showFirstPrompt` (default `false`): publish each session's first prompt as `firstPrompt`. Obvious secrets (`sk-…`, `gh[pousr]_…`, `AKIA…`, hex or base64 runs of 32+ characters, `password=` / `token=` values) are replaced with `[redacted]` first. While it is off, a session without a title shows its short id rather than its prompt.
+  - Session titles are published whatever this setting says, and Claude Code's AI-generated titles are a summary of the first prompt. Redaction is not applied to titles, run labels (the agents' task descriptions) or the usage tab's agent descriptions, so a secret in any of those is published as written; exclude the session if that matters.
+
+Tests: `python -m unittest discover -s tests` (stdlib only). They build synthetic transcripts and `out/` folders in temporary directories, pass their own config, and never touch the real `out/` or the live board.
 
 Per-PBI build state is not recorded anywhere in the build repo, so it lives in `BUILD_STATE` at the top of `exporters/export_board.py` and must be edited by hand as work items move. `NOT_WORKED_OUT` there maps the brief's open questions to ledger rows.
 
@@ -47,7 +68,8 @@ Per-PBI build state is not recorded anywhere in the build repo, so it lives in `
 ## Open items
 
 - **Two token figures disagree.** Dispatch shows agents' self-reported tokens (~2.4M); the usage tab shows transcript-derived effective usage (agents ~8.3M). Switch Dispatch to transcript figures so there is one number.
-- `runs` rows have no generator — they were seeded by hand from the overnight build. A generator could derive them from the session transcripts (`subagents/*.meta.json` gives agent type and task).
+- **Leftover documents.** The store still holds the hand-written `runs/r01`…`r36` and a stale `tabs/usage`. The page never shows those runs, because they have no `session` field and it lists only the selected session's runs. `refresh.py` never deletes them either: it deletes only documents recorded in `out/.pushed.json`, and these never were. Remove them by hand with `write_db` delete ops if wanted, and tell the build session to stop writing `runs` rows by hand.
+- Inferred links are heuristics: `feeds` needs a PBI id or the word review/notes/LOWs/fix in the task description; runs without one (e.g. "Align types.ts…") get no link.
 - The usage tab is not a plan meter: transcripts record only the moments a limit refused a request.
 - The Browser pane cannot open files outside an open project folder; preview `site/index.html` from this project instead.
 

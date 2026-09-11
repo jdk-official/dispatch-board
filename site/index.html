@@ -42,6 +42,14 @@
   .brand svg { flex: none; }
   .brand .t { font-size: 15px; font-weight: 650; white-space: nowrap; }
   .crumb { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--rule-2); border-radius: 6px; color: var(--ink-2); font: 500 12px/1.4 "IBM Plex Mono", ui-monospace, monospace; white-space: nowrap; }
+  .picker { position: relative; display: inline-flex; min-width: 0; }
+  .picker select { appearance: none; -webkit-appearance: none; font: 600 13px/1.3 inherit; font-family: inherit; color: var(--ink); background: var(--raised); border: 1px solid var(--rule-2); border-radius: 6px; padding: 5px 30px 5px 10px; max-width: 360px; text-overflow: ellipsis; cursor: pointer; }
+  .picker select:hover { background: var(--hover); }
+  .picker select:focus-visible { outline: 2px solid var(--live); outline-offset: 1px; }
+  .picker select:disabled { color: var(--ink-3); cursor: default; }
+  .picker::after { content: ""; position: absolute; right: 12px; top: 50%; width: 6px; height: 6px; border-right: 1.5px solid var(--ink-2); border-bottom: 1.5px solid var(--ink-2); transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+  .picker option, .picker optgroup { background: var(--surface); color: var(--ink); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .right { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
   .status { display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 6px; background: var(--raised); font-size: 12.5px; font-weight: 600; }
   .status i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
@@ -175,7 +183,7 @@
 
   @media (max-width: 1100px) { .g-2-1, .g-1-1, .g-3 { grid-template-columns: 1fr; } .cells { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); } }
   @media (max-width: 640px) {
-    .wrap { padding: 0 16px; } .crumb, .updated { display: none; }
+    .wrap { padding: 0 16px; } .crumb, .updated { display: none; } .picker select { max-width: 52vw; }
     .track { grid-template-columns: 1fr; gap: 6px; } .facts { grid-template-columns: 1fr; gap: 2px; } .facts dd { margin-bottom: 8px; }
     .hbars .r { grid-template-columns: 110px minmax(0, 1fr) 26px; }
   }
@@ -186,8 +194,9 @@
     <div class="row1">
       <div class="brand">
         <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.5 8.5h11M6.5 12h7M6.5 15.5h4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="17.5" cy="15.5" r="2" fill="var(--human)"/></svg>
-        <span class="t">Platform catalogue build</span>
-        <span class="crumb" id="crumb">build/logic-core</span>
+        <span class="t">Dispatch board</span>
+        <label class="picker"><span class="sr">Session</span><select id="session" disabled><option>Loading sessions…</option></select></label>
+        <span class="crumb" id="crumb" hidden>build/logic-core</span>
       </div>
       <div class="right">
         <span class="faint updated" id="updated"></span>
@@ -232,7 +241,7 @@
     if (m < 1) return 'just now'; if (m < 60) return m + ' min ago'; if (m < 1440) return Math.round(m / 60) + ' h ago';
     return when(iso);
   };
-  const src = d => d ? `<p class="faint" style="margin:0 0 16px">Source: ${esc(d.source)} · exported ${esc(when(d.generatedAt))}</p>` : '';
+  const src = d => d ? `<p class="faint" style="margin:0 0 16px">Source: ${esc(d.source)}${d.generatedAt && when(d.generatedAt) ? ` · exported ${esc(when(d.generatedAt))}` : ''}</p>` : '';
   const vKind = v => { v = String(v || '').toUpperCase(); if (v.startsWith('NO-GO')) return 'nogo'; if (v.includes('CHANGES')) return 'changes'; if (v.startsWith('GO') || v.startsWith('APPROVE')) return 'go'; return 'muted'; };
   const icon = (kind) => kind === 'lock'
     ? `<svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 9V6.5a4 4 0 0 1 8 0V9" fill="none" stroke="var(--human)" stroke-width="1.7"/><rect x="4" y="9" width="12" height="9" rx="2" fill="none" stroke="var(--human)" stroke-width="1.7"/></svg>`
@@ -242,7 +251,7 @@
   const stateLabel = { done: 'Built and reviewed', conditions: 'Conditions open', partial: 'Partly built', todo: 'Not started' };
   const kindLabel = { done: 'Done', go: 'Approved', changes: 'Changes required', nogo: 'Rejected', killed: 'Cut off', running: 'Running' };
 
-  let runs = [], status = null;
+  let allRuns = [], runs = [], sessions = [], sel = null, loaded = false, offline = false, status = null;
   const docs = { spec: null, assumptions: null, decisions: null, backlog: null, git: null, usage: null };
   const lanes = [
     ['orch', 'Orchestrator', 'this session'], ['req', 'requirements-author', 'engineering-agents'],
@@ -250,11 +259,20 @@
     ['tw', 'test-writer', 'engineering-agents'], ['cr', 'code-reviewer', 'review-agents'],
     ['ver', 'verifier', 'review-agents'], ['human', 'Human', 'plan-gate approval'],
   ];
-  const laneName = Object.fromEntries(lanes.map(l => [l[0], l[1]]));
+  const OTHER = ['other', 'Other agents', 'general-purpose, Explore, …'];
+  const laneName = Object.fromEntries([...lanes, OTHER].map(l => [l[0], l[1]]));
+  const agentName = r => r.lane === 'other' ? (r.agent || 'agent') : (laneName[r.lane] || r.lane);
+  const cur = () => sessions.find(s => s.id === sel);
+  const isBuild = () => !!cur()?.build;
+  const windowDays = () => sessions.find(s => s.windowDays)?.windowDays || 7;
+  const sessionLive = s => !!s && (s.running > 0 || Date.now() - new Date(s.last) < (Number(s.windowMinutes) || 10) * 60000);
+  // A build keeps every pipeline lane in its swimlane; any other session shows only the lanes it used.
+  const laneList = () => { const used = new Set(runs.map(r => r.lane)); const base = isBuild() ? lanes : lanes.filter(l => used.has(l[0])); return used.has('other') ? [...base, OTHER] : base; };
   const sorted = () => runs.slice().sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
   const agentRuns = () => runs.filter(r => r.lane !== 'orch');
-  const isLive = () => runs.some(r => r.kind === 'running') || status?.live === true;
-  const verdictRuns = () => runs.filter(r => ['go', 'changes', 'nogo'].includes(r.kind));
+  const isLive = () => isBuild() ? (runs.some(r => r.kind === 'running') || status?.live === true) : sessionLive(cur());
+  // Review verdicts come from reviewing lanes only; a builder's NOT-DONE is also kind 'changes'.
+  const verdictRuns = () => runs.filter(r => ['plan', 'cr', 'ver'].includes(r.lane) && ['go', 'changes', 'nogo'].includes(r.kind));
 
   // ---------------- tabs ----------------
   const tabs = [...document.querySelectorAll('[role="tab"]')];
@@ -270,10 +288,10 @@
   tabs.forEach((t, i) => {
     t.addEventListener('click', () => select(t.dataset.tab));
     t.addEventListener('keydown', e => {
-      const k = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
-      if (k) { e.preventDefault(); select(tabs[(i + k + tabs.length) % tabs.length].dataset.tab, true); }
-      else if (e.key === 'Home') { e.preventDefault(); select(tabs[0].dataset.tab, true); }
-      else if (e.key === 'End') { e.preventDefault(); select(tabs[tabs.length - 1].dataset.tab, true); }
+      const k = { ArrowRight: 1, ArrowLeft: -1 }[e.key], vis = tabs.filter(x => !x.hidden), j = vis.indexOf(t);
+      if (k) { e.preventDefault(); select(vis[(j + k + vis.length) % vis.length].dataset.tab, true); }
+      else if (e.key === 'Home') { e.preventDefault(); select(vis[0].dataset.tab, true); }
+      else if (e.key === 'End') { e.preventDefault(); select(vis[vis.length - 1].dataset.tab, true); }
     });
   });
   document.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) { select(b.dataset.go); window.scrollTo({ top: 0 }); } });
@@ -285,8 +303,10 @@
   function renderHeader() {
     const live = isLive();
     $('status').className = 'status' + (live ? ' on' : '');
-    $('statusText').textContent = live ? 'Building' : (status?.title || (status ? 'Idle' : 'Connecting'));
-    $('updated').textContent = status?.updatedAt ? 'Updated ' + ago(status.updatedAt) : '';
+    const b = isBuild(), upd = b ? status?.updatedAt : cur()?.last;
+    $('statusText').textContent = !loaded ? (offline ? 'Offline' : 'Connecting') : b ? (live ? 'Building' : (status?.title || 'Idle')) : (live ? 'Active' : 'Idle');
+    $('updated').textContent = upd ? (b ? 'Updated ' : 'Last activity ') + ago(upd) : '';
+    $('crumb').hidden = !(b && docs.git?.branch);
     if (docs.git?.branch) $('crumb').textContent = docs.git.branch;
     const you = docs.assumptions?.humanList?.length || 0, cA = $('c-assumptions');
     cA.hidden = !you; cA.textContent = you;
@@ -354,8 +374,43 @@
   }
 
   // ---------------- overview ----------------
+  function recentPanel() {
+    const R = sorted(), recent = R.slice().reverse().slice(0, 7);
+    return `<div class="panel"><div class="ph"><h3>Recent agent activity</h3><button class="linkbtn" data-go="dispatch">All runs</button></div>
+        <div class="pb flush scroll"><table><thead><tr><th>#</th><th>Agent</th><th>Run</th><th>Outcome</th><th>Detail</th><th class="num">Tokens</th></tr></thead><tbody>
+        ${recent.map(r => `<tr><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(agentName(r))}</td><td>${esc(r.label)}</td><td><span class="tag ${esc(r.kind)}">${esc(kindLabel[r.kind] || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td class="num muted">${r.tok ? esc(Number(r.tok).toLocaleString()) : '—'}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No agents dispatched in this session.</td></tr>'}
+        </tbody></table></div></div>`;
+  }
+
+  // A session that is not a tracked build: its own activity, usage and agents, and no project tabs.
+  function renderSessionOverview(p) {
+    const s = cur();
+    if (!s) { p.innerHTML = `<div class="empty">${loaded ? `No Claude Code session was active in the last ${esc(windowDays())} days.` : offline ? 'This view cannot reach the live store.' : 'Connecting to the live store…'}</div>`; return; }
+    const t = s.usage?.totals || {}, ar = agentRuns(), now = runs.filter(r => r.kind === 'running').length;
+    p.innerHTML = `
+      <div class="tiles">
+        ${tile('Agent runs', ar.length, ar.length ? `${verdictRuns().length} review verdicts` : 'no agents dispatched', 'var(--live)')}
+        ${tile('Running now', now, sessionLive(s) ? 'session active' : 'session idle', 'var(--live)', now > 0)}
+        ${tile('Claude usage', fmtTok(t.effective) + '<small> effective</small>', `${esc((t.requests || 0).toLocaleString())} requests`, 'var(--live)')}
+        ${tile('Limit hits', (s.usage?.limits || []).length, 'usage limit', 'var(--nogo)')}
+      </div>
+      <div class="grid g-2-1">
+        <div class="panel"><div class="ph"><h3>Session</h3><span class="faint">Spec, backlog and GitHub tabs appear for build sessions</span></div><div class="pb">
+          <dl class="facts">
+            <dt>Title</dt><dd>${esc(s.title)}</dd>
+            <dt>Folder</dt><dd><code>${esc(s.cwd || '—')}</code></dd>
+            <dt>Started</dt><dd>${esc(when(s.start))}</dd>
+            <dt>Last activity</dt><dd>${esc(ago(s.last))}</dd>
+            <dt>First request</dt><dd class="muted">${esc(s.firstPrompt || '—')}</dd>
+          </dl></div></div>
+        ${usagePanel()}
+      </div>
+      ${recentPanel()}`;
+  }
+
   function renderOverview() {
     const p = $('panel-overview');
+    if (!isBuild()) return renderSessionOverview(p);
     const pbis = docs.backlog?.pbis || [], m = status?.metrics || {}, g = docs.git;
     const cnt = k => pbis.filter(x => x.state === k).length;
     const built = cnt('done') + cnt('conditions');
@@ -384,9 +439,8 @@
     if (g && !pushed) att.push(['var(--ink-3)', 'Not on GitHub', 'No remote, pull request or Pages site yet.', 'git']);
     if (runs.length && !runs.some(r => r.lane === 'ver')) att.push(['var(--ink-3)', 'App not verified', 'The verifier agent has not exercised the running site yet.', 'dispatch']);
     const killed = runs.filter(r => r.kind === 'killed').length;
-    if (killed) att.push(['var(--nogo)', `${killed} runs cut off`, 'Stopped by rate limits before finishing.', 'dispatch']);
+    if (killed) att.push(['var(--nogo)', `${killed} runs cut off`, 'Stopped or cut off before finishing.', 'dispatch']);
 
-    const R = sorted(), recent = R.slice().reverse().slice(0, 7);
     const vr = verdictRuns(), vc = k => vr.filter(r => r.kind === k).length;
     const laneCounts = lanes.filter(l => !['orch', 'human'].includes(l[0])).map(l => [l[1], runs.filter(r => r.lane === l[0]).length]);
     const maxLane = Math.max(1, ...laneCounts.map(x => x[1]));
@@ -414,10 +468,7 @@
             <div class="hbars">${laneCounts.map(([n, v]) => `<div class="r"><span>${esc(n)}</span><span class="bar"><i style="width:${v / maxLane * 100}%;background:var(--live)"></i></span><span class="v">${v}</span></div>`).join('')}</div>
           </div></div>
       </div>
-      <div class="panel"><div class="ph"><h3>Recent agent activity</h3><button class="linkbtn" data-go="dispatch">All runs</button></div>
-        <div class="pb flush scroll"><table><thead><tr><th>#</th><th>Agent</th><th>Run</th><th>Outcome</th><th>Detail</th><th class="num">Tokens</th></tr></thead><tbody>
-        ${recent.map(r => `<tr><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(laneName[r.lane] || r.lane)}</td><td>${esc(r.label)}</td><td><span class="tag ${esc(r.kind)}">${esc(kindLabel[r.kind] || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td class="num muted">${r.tok ? Number(r.tok).toLocaleString() : '—'}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No runs yet.</td></tr>'}
-        </tbody></table></div></div>`;
+      ${recentPanel()}`;
   }
 
   // ---------------- dispatch ----------------
@@ -425,12 +476,12 @@
     const R = sorted(), p = $('panel-dispatch');
     if (!R.length) { p.innerHTML = '<div class="empty">No runs recorded yet. The board fills as agents are dispatched.</div>'; return; }
     const LW = 56, RW = 20, W = 1180, rowH = 38, top = 52, padB = 14;
-    const laneX = {}, lw = (W - LW - RW) / lanes.length;
-    lanes.forEach((l, i) => laneX[l[0]] = LW + i * lw);
+    const LN = laneList(), laneX = {}, lw = (W - LW - RW) / LN.length;
+    LN.forEach((l, i) => laneX[l[0]] = LW + i * lw);
     const H = top + R.length * rowH + padB, maxTok = Math.max(160430, ...R.map(r => Number(r.tok) || 0));
     const idx = Object.fromEntries(R.map((r, i) => [r.id, i])), y0 = i => top + 12 + i * rowH;
-    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Swimlane of ${R.length} runs across ${lanes.length} agents in dispatch order, with review verdicts fed back to the builders" style="min-width: 960px"><defs><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="context-stroke"/></marker></defs><g font-family="Schibsted Grotesk, system-ui, sans-serif" font-size="12">`;
-    lanes.forEach((l, i) => {
+    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Swimlane of ${R.length} runs across ${LN.length} agents in dispatch order, with review verdicts fed back to the builders" style="min-width: 960px"><defs><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="context-stroke"/></marker></defs><g font-family="Schibsted Grotesk, system-ui, sans-serif" font-size="12">`;
+    LN.forEach((l, i) => {
       const x = laneX[l[0]];
       s += `<rect x="${x + 2}" y="${top - 38}" width="${lw - 4}" height="${H - top + 38 - padB}" rx="6" fill="${l[0] === 'human' ? 'color-mix(in srgb, var(--human) 8%, transparent)' : i % 2 ? 'var(--raised)' : 'transparent'}" fill-opacity="${l[0] === 'human' ? 1 : 0.55}" ${l[0] === 'human' ? 'stroke="var(--human)" stroke-opacity="0.5" stroke-dasharray="4 4"' : ''}/>`;
       s += `<text x="${x + lw / 2}" y="${top - 20}" text-anchor="middle" font-weight="600" font-size="12" fill="${l[0] === 'human' ? 'var(--human)' : 'var(--ink)'}">${l[1]}</text>`;
@@ -465,10 +516,10 @@
     const tokens = agentRuns().reduce((a, r) => a + (Number(r.tok) || 0), 0);
     p.innerHTML = `
       <div class="tiles">
-        ${tile('Agent runs', agentRuns().length, 'dispatched this build', 'var(--live)')}
+        ${tile('Agent runs', agentRuns().length, 'dispatched in this session', 'var(--live)')}
         ${tile('Running now', runs.filter(r => r.kind === 'running').length, isLive() ? 'live' : 'paused', 'var(--live)')}
         ${tile('Review verdicts', verdictRuns().length, `${verdictRuns().filter(r => r.kind === 'go').length} approved`, 'var(--go)')}
-        ${tile('Cut off', runs.filter(r => r.kind === 'killed').length, 'stopped by rate limits', 'var(--nogo)')}
+        ${tile('Cut off', runs.filter(r => r.kind === 'killed').length, 'stopped or cut off before finishing', 'var(--nogo)')}
         ${tile('Agent tokens', (tokens / 1e6).toFixed(2) + '<small> M</small>', 'across all runs', 'var(--rule-2)')}
       </div>
       <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Swimlane</h3><div class="legend"><span><i style="background:var(--live)"></i>Running</span><span><i style="background:var(--ink-3)"></i>Done</span><span><i style="background:var(--go)"></i>Approved</span><span><i style="background:var(--changes)"></i>Changes required</span><span><i style="background:var(--nogo)"></i>Rejected or cut off</span></div></div>
@@ -476,7 +527,7 @@
         <div class="pb faint" style="border-top:1px solid var(--rule)">Box width is proportional to tokens used. Arrows show hand-offs and the verdicts that sent work back; a bracket marks runs dispatched in parallel. Gate-review rounds ran on the harness's built-in Plan agent following the catalogue's pbi-review runbook.</div></div>
       <div class="panel"><div class="ph"><h3>Run log</h3><span class="faint">newest first</span></div>
         <div class="pb flush scroll"><table><thead><tr><th>#</th><th>Agent</th><th>Run</th><th>Outcome</th><th>Detail</th><th style="min-width:120px">Tokens</th><th class="num">Minutes</th></tr></thead><tbody>
-        ${R.slice().reverse().map(r => `<tr><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(laneName[r.lane] || r.lane)}</td><td class="wide">${esc(r.label)}</td><td><span class="tag ${esc(r.kind)}">${esc(kindLabel[r.kind] || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td>${r.tok ? `<div class="bar"><i style="width:${Math.max(2, (Number(r.tok) || 0) / maxTok * 100)}%"></i></div><div class="sub">${Number(r.tok).toLocaleString()}</div>` : '<span class="faint">—</span>'}</td><td class="num muted">${r.min || '—'}</td></tr>`).join('')}
+        ${R.slice().reverse().map(r => `<tr><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(agentName(r))}</td><td class="wide">${esc(r.label)}</td><td><span class="tag ${esc(r.kind)}">${esc(kindLabel[r.kind] || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td>${r.tok ? `<div class="bar"><i style="width:${Math.max(2, (Number(r.tok) || 0) / maxTok * 100)}%"></i></div><div class="sub">${esc(Number(r.tok).toLocaleString())}</div>` : '<span class="faint">—</span>'}</td><td class="num muted">${esc(r.min || '—')}</td></tr>`).join('')}
         </tbody></table></div></div>`;
   }
 
@@ -660,7 +711,7 @@
     const bw = iw / hours.length, gap = Math.min(3, bw * 0.22), y = v => T + ih - (v / max) * ih;
     const idx = iso => { const d = new Date(iso); return isNaN(d) ? -1 : hours.findIndex(h => h.hour === d.toISOString().slice(0, 13)); };
     const fs = compact ? 10 : 11;
-    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Effective Claude usage per hour for the main session and the agents, with the times the five-hour limit was hit" ${compact ? '' : 'style="min-width:560px"'}><g font-family="Schibsted Grotesk, system-ui, sans-serif" font-size="${fs}">`;
+    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Effective Claude usage per hour for the main session and the agents, with the times a usage limit was hit" ${compact ? '' : 'style="min-width:560px"'}><g font-family="Schibsted Grotesk, system-ui, sans-serif" font-size="${fs}">`;
     [0, 0.5, 1].forEach(f => { const yy = y(max * f); s += `<line x1="${L}" x2="${L + iw}" y1="${yy}" y2="${yy}" stroke="var(--rule)"/><text x="${L - 6}" y="${yy + 3.5}" text-anchor="end" fill="var(--ink-3)">${fmtTok(max * f)}</text>`; });
     hours.forEach((h, i) => {
       const x = L + i * bw + gap / 2, w = Math.max(1, bw - gap), when_ = esc(hourLabel(h.hour));
@@ -681,7 +732,7 @@
   function usagePanel() {
     const u = docs.usage;
     const body = !u ? '<p class="faint">Usage has not been exported yet.</p>'
-      : `${usageChart(u, 440, 150, true)}<div class="legend" style="margin-top:10px"><span><i style="background:var(--live)"></i>Agents</span><span><i style="background:var(--ink-3)"></i>Main session</span><span><i style="background:var(--nogo)"></i>Limit hit</span></div><p class="faint" style="margin-top:10px">${fmtTok(u.totals?.effective)} effective · ${(u.totals?.requests || 0).toLocaleString()} requests · five-hour limit hit ${(u.limits || []).length}×</p>`;
+      : `${usageChart(u, 440, 150, true)}<div class="legend" style="margin-top:10px"><span><i style="background:var(--live)"></i>Agents</span><span><i style="background:var(--ink-3)"></i>Main session</span><span><i style="background:var(--nogo)"></i>Limit hit</span></div><p class="faint" style="margin-top:10px">${fmtTok(u.totals?.effective)} effective · ${esc((u.totals?.requests || 0).toLocaleString())} requests · usage limit hit ${(u.limits || []).length}×</p>`;
     return `<div class="panel"><div class="ph"><h3>Claude usage</h3><button class="linkbtn" data-go="usage">View</button></div><div class="pb">${body}</div></div>`;
   }
 
@@ -694,18 +745,18 @@
     const subEff = subs.reduce((a, x) => a + x.effective, 0), smax = Math.max(1, ...subs.map(x => x.effective));
     const byType = {}; subs.forEach(x => { byType[x.type] = (byType[x.type] || 0) + x.effective; });
     const top = Object.entries(byType).sort((a, b) => b[1] - a[1])[0];
-    const reread = groups.find(g => g.key === 'reread'), refused = lim.reduce((a, l) => a + l.refused, 0);
+    const reread = groups.find(g => g.key === 'reread'), refused = lim.reduce((a, l) => a + (Number(l.refused) || 0), 0);
     const bullets = [
-      `The agents did most of the work: ${pct(subEff)}% of usage came from ${subs.length} agent runs${top ? `, and ${esc(top[0])} alone was ${pct(top[1])}%` : ''}.`,
+      subs.length ? `Agents accounted for ${pct(subEff)}% of usage across ${subs.length} run${subs.length === 1 ? '' : 's'}${top ? `; ${esc(top[0])} alone was ${pct(top[1])}%` : ''}.` : 'No agents were dispatched, so all of it is the main session.',
       reread ? `Keeping the conversation in memory took ${pct(reread.effective)}%. Each turn re-reads the instructions and everything so far, which is cheap per token but never stops.` : null,
-      lim.length ? `The five-hour limit was hit ${lim.length} time${lim.length === 1 ? '' : 's'} and ${refused} request${refused === 1 ? ' was' : 's were'} refused. Work picked up again after each reset (${lim.map(l => esc(when(l.resetsAt))).join(' and ')}).` : 'No usage limit was hit.',
+      lim.length ? `A usage limit was hit ${lim.length} time${lim.length === 1 ? '' : 's'} and ${refused} request${refused === 1 ? ' was' : 's were'} refused. Work picked up again after each reset (${lim.map(l => esc(when(l.resetsAt))).join(' and ')}).` : 'No usage limit was hit.',
       (u.byModel || []).length > 1 ? `Two models shared the work: ${u.byModel.map(m => `${esc(m.label)} ${pct(m.effective)}%`).join(', ')}.` : null,
     ].filter(Boolean);
     p.innerHTML = `
       <h2>Claude usage</h2>${src(u)}
       <div class="tiles">
         ${tile('Effective usage', fmtTok(t.effective), 'input-token equivalents', 'var(--live)')}
-        ${tile('Requests to Claude', (t.requests || 0).toLocaleString(), `${subs.length} agent runs`, 'var(--rule-2)')}
+        ${tile('Requests to Claude', esc((t.requests || 0).toLocaleString()), `${subs.length} agent runs`, 'var(--rule-2)')}
         ${tile('Done by agents', pct(subEff) + '%', 'of effective usage', 'var(--live)')}
         ${tile('Limit hits', lim.length, `${refused} requests refused`, 'var(--nogo)')}
         ${tile('Output written', fmtTok(t.output), `${fmtTok(t.cacheRead)} tokens read from cache`, 'var(--rule-2)')}
@@ -721,29 +772,72 @@
       </div>
       <div class="grid g-1-1">
         <div class="panel"><div class="ph"><h3>By model</h3></div><div class="pb flush scroll"><table><thead><tr><th>Model</th><th class="num">Requests</th><th class="num">Input</th><th class="num">Output</th><th class="num">Cache read</th><th class="num">Cache write</th><th class="num">Effective</th></tr></thead><tbody>
-          ${(u.byModel || []).map(m => `<tr><td>${esc(m.label)}<div class="sub">${esc(m.model)}</div></td><td class="num">${m.requests.toLocaleString()}</td><td class="num">${fmtTok(m.input)}</td><td class="num">${fmtTok(m.output)}</td><td class="num">${fmtTok(m.cacheRead)}</td><td class="num">${fmtTok(m.cacheWrite)}</td><td class="num"><b>${fmtTok(m.effective)}</b></td></tr>`).join('')}
+          ${(u.byModel || []).map(m => `<tr><td>${esc(m.label)}<div class="sub">${esc(m.model)}</div></td><td class="num">${esc(m.requests?.toLocaleString())}</td><td class="num">${fmtTok(m.input)}</td><td class="num">${fmtTok(m.output)}</td><td class="num">${fmtTok(m.cacheRead)}</td><td class="num">${fmtTok(m.cacheWrite)}</td><td class="num"><b>${fmtTok(m.effective)}</b></td></tr>`).join('')}
         </tbody></table></div></div>
         <div class="panel"><div class="ph"><h3>Usage limits</h3></div><div class="pb flush scroll"><table><thead><tr><th>Limit</th><th>First refused</th><th class="num">Refused</th><th>Reset</th></tr></thead><tbody>
-          ${lim.map((l, k) => `<tr><td>${k + 1} · five-hour limit</td><td>${esc(when(l.firstAt))}</td><td class="num">${l.refused}</td><td>${esc(when(l.resetsAt)) || '—'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No limit was hit.</td></tr>'}
+          ${lim.map((l, k) => `<tr><td>${k + 1} · usage limit</td><td>${esc(when(l.firstAt))}</td><td class="num">${esc(l.refused)}</td><td>${esc(when(l.resetsAt)) || '—'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No limit was hit.</td></tr>'}
         </tbody></table>${u.overage ? `<div class="pb faint" style="border-top:1px solid var(--rule)">${esc(u.overage)}</div>` : ''}</div></div>
       </div>
       <div class="panel"><div class="ph"><h3>Agent runs</h3><span class="faint">${subs.length} runs · ${fmtTok(subEff)} effective</span></div><div class="pb flush scroll"><table><thead><tr><th>Agent</th><th>Task</th><th>Model</th><th class="num">Requests</th><th style="min-width:150px">Effective</th></tr></thead><tbody>
-        ${subs.slice().sort((a, b) => b.effective - a.effective).map(x => `<tr><td style="white-space:nowrap">${esc(x.type)}</td><td>${esc(x.description)}</td><td class="muted">${esc(x.modelLabel)}</td><td class="num">${x.requests}</td><td><div class="bar"><i style="width:${Math.max(2, x.effective / smax * 100)}%;background:var(--live)"></i></div><div class="sub">${fmtTok(x.effective)}</div></td></tr>`).join('')}
+        ${subs.slice().sort((a, b) => b.effective - a.effective).map(x => `<tr><td style="white-space:nowrap">${esc(x.type)}</td><td>${esc(x.description)}</td><td class="muted">${esc(x.modelLabel)}</td><td class="num">${esc(x.requests)}</td><td><div class="bar"><i style="width:${Math.max(2, x.effective / smax * 100)}%;background:var(--live)"></i></div><div class="sub">${fmtTok(x.effective)}</div></td></tr>`).join('')}
       </tbody></table></div></div>`;
   }
 
   function renderAll() { renderHeader(); renderOverview(); renderDispatch(); renderSpec(); renderAssumptions(); renderDecisions(); renderBacklog(); renderGit(); renderUsage(); }
-  renderAll();
-  setInterval(renderHeader, 60000);
+
+  // ---------------- session picker ----------------
+  const PROJECT_TABS = ['spec', 'assumptions', 'decisions', 'backlog', 'git'];
+  function pickSession() {
+    let saved = null;
+    try { saved = localStorage.getItem('board-session'); } catch (e) {}
+    const builds = sessions.filter(s => s.build);
+    return (sessions.find(s => s.id === saved) || builds.find(sessionLive) || builds[0] || sessions[0] || {}).id || null;
+  }
+  function fillPicker() {
+    if (!loaded) return;
+    const dup = {};
+    sessions.forEach(s => { dup[s.title] = (dup[s.title] || 0) + 1; });
+    const opt = s => `<option value="${esc(s.id)}"${s.id === sel ? ' selected' : ''}>${esc(s.title + (dup[s.title] > 1 && s.project ? ' · ' + s.project : '') + (sessionLive(s) ? ' · live' : ''))}</option>`;
+    const b = sessions.filter(s => s.build), o = sessions.filter(s => !s.build);
+    $('session').innerHTML = (b.length ? `<optgroup label="Builds">${b.map(opt).join('')}</optgroup>` : '')
+      + (o.length ? `<optgroup label="Other sessions · last ${esc(windowDays())} days">${o.map(opt).join('')}</optgroup>` : '')
+      || '<option>No recent sessions</option>';
+    $('session').disabled = !sessions.length;
+  }
+  function applySession() {
+    runs = allRuns.filter(r => r.session === sel);
+    docs.usage = cur()?.usage || null;
+    PROJECT_TABS.forEach(t => { $('tab-' + t).hidden = !isBuild(); });
+    // Before sessions load no build is selected, so every project tab is hidden; falling back then would
+    // overwrite the saved tab.
+    if (loaded && tabs.find(t => t.getAttribute('aria-selected') === 'true')?.hidden) select('overview');
+    renderAll();
+  }
+  $('session').addEventListener('change', e => {
+    sel = e.target.value;
+    try { localStorage.setItem('board-session', sel); } catch (x) {}
+    applySession();
+  });
+  // Updates are not drawn into the picker while it has focus, so catch up once it loses it.
+  $('session').addEventListener('blur', fillPicker);
+  applySession();
+  setInterval(() => { renderHeader(); if (document.activeElement !== $('session')) fillPicker(); }, 60000);
 
   (async () => {
     const db = await window.claude?.use?.('db');
-    if (!db) { $('statusText').textContent = 'Offline'; $('foot').textContent = 'This view cannot reach the live store, so it shows no data.'; return; }
+    if (!db) { offline = true; renderHeader(); renderOverview(); $('foot').textContent = 'This view cannot reach the live store, so it shows no data.'; return; }
     const fail = e => { $('foot').textContent = 'A live subscription ended (' + e.code + '). Reload the page to reconnect.'; };
-    db.collection('runs').orderBy('seq').onSnapshot(snap => { runs = snap.docs.filter(x => x.exists).map(x => ({ id: x.id, ...x.data() })); renderHeader(); renderOverview(); renderDispatch(); }, fail);
+    db.collection('sessions').orderBy('last').onSnapshot(snap => {
+      sessions = snap.docs.filter(x => x.exists).map(x => ({ id: x.id, ...x.data() })).reverse();
+      loaded = true;
+      if (!cur()) sel = pickSession();
+      if (document.activeElement !== $('session')) fillPicker(); // rebuilding it would close an open picker
+      applySession();
+    }, fail);
+    db.collection('runs').orderBy('seq').onSnapshot(snap => { allRuns = snap.docs.filter(x => x.exists).map(x => ({ id: x.id, ...x.data() })); applySession(); }, fail);
     db.doc('meta/status').onSnapshot(snap => { status = snap.exists ? snap.data() : null; renderHeader(); renderOverview(); }, fail);
     const sub = (id, after) => db.doc('tabs/' + id).onSnapshot(snap => { docs[id] = snap.exists ? snap.data() : null; renderHeader(); renderOverview(); after(); }, fail);
-    sub('spec', renderSpec); sub('assumptions', renderAssumptions); sub('decisions', renderDecisions); sub('backlog', renderBacklog); sub('git', renderGit); sub('usage', renderUsage);
+    sub('spec', renderSpec); sub('assumptions', renderAssumptions); sub('decisions', renderDecisions); sub('backlog', renderBacklog); sub('git', renderGit);
   })();
 })();
 </script>
