@@ -1,11 +1,13 @@
 """The local-first app's collector: follows the Claude Code transcripts as they grow and writes session, run,
-project, catalogue and last-refresh records into the local SQLite database. It is the database's only writer.
+project, tab, status, catalogue and last-refresh records into the local SQLite database. It is the database's
+only writer.
 
     python local/collector.py [--once] [--allow-mass-delete] [--interval SECONDS] [--config PATH]
 
 For the same transcripts, config and time, the database holds exactly the documents export_sessions.py writes:
 every derivation comes from exporters/derive.py and the exporter's own helpers, and only the few lines that
-assemble rows across sessions are repeated here.
+assemble rows across sessions are repeated here. The tab and status records are local/tabs.py's, and hold
+export_board.py's documents and refresh.py's status rule under the same guarantee.
 
 A transcript already read is reopened only for its new bytes. How far each file was read (its cursor) and the
 derivation state its lines built are kept in the collector_* tables, committed in the same transaction as the
@@ -32,10 +34,15 @@ import derive  # noqa: E402
 import export_catalogue  # noqa: E402
 import export_sessions  # noqa: E402
 import records  # noqa: E402
+import tabs  # noqa: E402
 
 CONFIG = os.path.join(HERE, 'board.config.json')
 STATE_VERSION = 1  # bump when the layout of the stored state changes, to read every transcript again once
 KINDS = ('session', 'run', 'project')
+# The kinds a pass may delete, and the kinds it upserts before the status records, which depend on what those
+# writes changed. status is in neither: refresh.py never deletes a status document, and nor does a pass here.
+DELETABLE = KINDS + ('tab',)
+UPSERTED = KINDS + ('catalogue', 'tab')
 # What storing one record may raise without costing the rest of the pass.
 RECORD_ERRORS = (ValueError, UnicodeEncodeError, RecursionError, TypeError, OverflowError, sqlite3.DataError)
 CURSOR_KEYS = {'path', 'dev', 'ino', 'offset', 'size', 'mtime'}
@@ -462,7 +469,9 @@ class _Pass:
             except (TypeError, ValueError):
                 pass
         out = []
-        for kind in KINDS:
+        # A tab is not a session: it has no last activity to prune by, and belongs to a project that is either
+        # configured or gone, so a tab id is never in aged and every tab deletion carries the reason "other".
+        for kind in DELETABLE:
             for rid, doc in stored[kind].items():
                 if rid not in docs[kind]:
                     sid = rid if kind == 'session' else doc.get('session') if kind == 'run' else None
@@ -480,6 +489,17 @@ class _Pass:
         lost = [i for k, i, _ in deletions if k == 'project']
         if lost:
             refused.append('project %s' % ', '.join(lost))
+        # The carry rule keeps a tab whose source went missing, so a project losing every tab it had stored can
+        # only mean it left the export. stored['tab'] holds the owned records alone, so a project whose only
+        # stored tab is another writer's has no group here and cannot trip this.
+        tabs_of = {}
+        for rid in stored['tab']:
+            tabs_of.setdefault(rid.split('.', 1)[0], []).append(rid)
+        gone_tabs = {i for k, i, _ in deletions if k == 'tab'}
+        emptied = sorted(pid for pid, ids in tabs_of.items() if all(i in gone_tabs for i in ids))
+        if emptied:
+            refused.append('every tab of project %s (check its repoPath and docs in board.config.json)'
+                           % ', '.join(emptied))
         if any(k == 'catalogue' for k, _, _ in deletions):
             refused.append('the catalogue')
         if refused:
@@ -544,10 +564,15 @@ class _Pass:
         cache['version'] = self.conn.execute('PRAGMA data_version').fetchone()[0]
 
 
-def run_pass(conn, config, projects_root=None, now=None, allow_mass_delete=False, clock=None):
+def run_pass(conn, config, projects_root=None, now=None, allow_mass_delete=False, clock=None, data_dir=None,
+             run=None):
     """One pass: read what the transcripts gained, derive, and write the changed records, all in one transaction.
     Returns a report dict; raises Refusal (nothing written) for an unusable config, a missing projects root or
-    linked transcript, an unusable catalogue block, or a pass the mass-delete guard stops."""
+    linked transcript, an unusable catalogue block, or a pass the mass-delete guard stops.
+
+    data_dir holds the projects' hand-kept data files (default the repository's projects/) and run stands in
+    for subprocess.run when the tab pass runs git; a malformed data file raises ValueError and writes nothing,
+    as it stops the whole export on the board."""
     started = time.time()
     t0 = started if now is None else now
     clock = clock or (lambda: datetime.now(timezone.utc))
@@ -563,24 +588,44 @@ def run_pass(conn, config, projects_root=None, now=None, allow_mass_delete=False
         missing = sorted(st['build'] - found)
         if missing:
             raise Refusal('no transcript under %s for project session(s) %s; nothing written' % (st['root'], ', '.join(missing)))
+        # Outside the transaction: the document reads and the git calls need nothing from the database, and
+        # holding the write lock across ten subprocesses per project would make the server and a second
+        # collector wait on them. The carry decision is taken inside, from what is stored.
+        stamp = datetime.fromtimestamp(t0, timezone.utc).isoformat(timespec='seconds')
+        built, notes = tabs.build(st['projects'], data_dir or tabs.DATA_DIR, stamp, run=run)
+        for note in notes:
+            warn(note)
         conn.execute('BEGIN IMMEDIATE')
         try:
             p = _Pass(conn, st, t0, _load(conn))
             p.discover(mains, found)
             docs = p.assemble()
             cat = p.catalogue(config)
-            stored = {kind: db.stored(conn, kind) for kind in KINDS + ('catalogue',)}
+            stored = {kind: db.stored(conn, kind) for kind in KINDS + ('catalogue', 'tab', 'status')}
             docs['catalogue'] = {'index': cat} if cat is not None else dict(stored['catalogue'])
+            # A tab suffix another exporter owns is set aside before anything else looks at the stored tabs, so
+            # the diff, the deletions and the guard are all scoped to the five this pass owns.
+            stored['tab'] = {rid: doc for rid, doc in stored['tab'].items() if tabs.owns(rid)}
+            docs['tab'] = tabs.carry(built, stored['tab'], stamp, warn)
             deletions = p.reasons(stored, docs)
             if not allow_mass_delete:
                 p.guard(stored, deletions)
-            written = sum(p.store(kind, rid, doc, stored[kind].get(rid))
-                          for kind in KINDS + ('catalogue',) for rid, doc in docs[kind].items())
+            wrote = [(kind, rid) for kind in UPSERTED for rid, doc in docs[kind].items()
+                     if p.store(kind, rid, doc, stored[kind].get(rid))]
             for kind, rid, _ in deletions:
                 db.delete(conn, kind, rid)
+            # After the writes and the deletions, because a status moves only for a project whose own records
+            # this pass really changed. One clock reading stamps both the statuses and the last-refresh record.
+            at = clock().isoformat(timespec='seconds')
+            changed = {tabs.project_of(kind, rid, docs[kind].get(rid)) for kind, rid in wrote}
+            changed |= {tabs.project_of(kind, rid, stored[kind].get(rid)) for kind, rid, _ in deletions}
+            docs['status'] = tabs.statuses(st['projects'], docs['run'], stored['status'], changed - {None}, at)
+            statuses = sum(p.store('status', rid, doc, stored['status'].get(rid))
+                           for rid, doc in docs['status'].items())
+            written = len(wrote) + statuses
             p.write_state()
             db.upsert(conn, 'lastRefresh', records.to_row('lastRefresh', 'lastRefresh', {
-                'at': clock().isoformat(timespec='seconds'), 'writer': 'collector'}))
+                'at': at, 'writer': 'collector'}))
             conn.execute('COMMIT')
         except BaseException:
             if conn.in_transaction:
@@ -591,13 +636,16 @@ def run_pass(conn, config, projects_root=None, now=None, allow_mass_delete=False
         raise
     p.promote()
     return {'sessions': len(p.results), 'rederived': p.rederived, 'bytes': p.bytes, 'runs': len(docs['run']),
-            'projects': len(docs['project']), 'written': written, 'deleted': len(deletions),
-            'aged': sum(why == 'age' for _, _, why in deletions), 'seconds': time.time() - started}
+            'projects': len(docs['project']), 'tabs': len(docs['tab']), 'statuses': statuses, 'written': written,
+            'deleted': len(deletions), 'aged': sum(why == 'age' for _, _, why in deletions),
+            'seconds': time.time() - started}
 
 
 def summary(r):
-    return 'collector: %d sessions (%d re-derived, %d bytes read), %d runs, %d projects; %d written, %d deleted (%d by age) | %.1fs' % (
-        r['sessions'], r['rederived'], r['bytes'], r['runs'], r['projects'], r['written'], r['deleted'], r['aged'], r['seconds'])
+    return ('collector: %d sessions (%d re-derived, %d bytes read), %d runs, %d projects, %d tabs; '
+            '%d written, %d deleted (%d by age) | %.1fs') % (
+        r['sessions'], r['rederived'], r['bytes'], r['runs'], r['projects'], r['tabs'], r['written'],
+        r['deleted'], r['aged'], r['seconds'])
 
 
 def _locked(e):

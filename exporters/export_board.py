@@ -29,9 +29,10 @@ from datetime import datetime, timezone
 
 import board_config
 import derive
-# The spec parsing lives in derive.py; these names stay importable from here.
+# The spec parsing and the git tab's arithmetic live in derive.py; these names stay importable from here.
 from derive import (  # noqa: F401
-    LATER, MARKER, RULE, STATES, build_state, bullets, clean, later_items, not_worked_out, section, table)
+    LATER, MARKER, RULE, STATES, USERINFO, build_state, bullets, clean, later_items, not_worked_out,
+    public_remote, section, table)
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(HERE, 'board.config.json')
@@ -115,35 +116,18 @@ def spec_tabs(p, data, now):
     return derive.spec_docs(p['id'], paths, spec, prd, brief, design, adrs, rounds, data, now)
 
 
-# The userinfo of a URL remote: everything between "://" and the last "@" before the host's first "/".
-USERINFO = re.compile(r'(?<=://)[^/\s]*@')
-
-
-def public_remote(line):
-    """A `git remote -v` line without the userinfo of its URL, so a token stored in a remote URL is never published."""
-    return USERINFO.sub('', line)
-
-
 def git_tab(root, now):
+    """The git tab: run the commands, and let derive turn their output into the document."""
     branch = git(root, 'branch', '--show-current')
-    default = 'master' if git(root, 'rev-parse', '--verify', '--quiet', 'master') else ('main' if git(root, 'rev-parse', '--verify', '--quiet', 'main') else '')
-    commits = []
-    for line in git(root, 'log', '--pretty=format:%h|%ad|%s', '--date=iso-strict').splitlines():
-        sha, date, subject = line.split('|', 2)
-        commits.append({'sha': sha, 'date': date, 'subject': subject})
-    tracked = git(root, 'ls-files').splitlines()
-    by_dir = {}
-    for f in tracked:
-        d = f.split('/')[0] if '/' in f else '(root)'
-        by_dir[d] = by_dir.get(d, 0) + 1
-    dirty = [l for l in git(root, 'status', '--short').splitlines() if l.strip()]
-    remotes = [public_remote(l) for l in git(root, 'remote', '-v').splitlines() if l.strip()]
+    default = derive.git_default(git(root, 'rev-parse', '--verify', '--quiet', 'master'),
+                                 git(root, 'rev-parse', '--verify', '--quiet', 'main'))
+    log = git(root, 'log', '--pretty=format:%h|%ad|%s', '--date=iso-strict')
+    files, status, remotes = git(root, 'ls-files'), git(root, 'status', '--short'), git(root, 'remote', '-v')
+    # Skipped rather than run without both branches; derive.git_doc empties them under the same condition.
     ahead = git(root, 'rev-list', '--count', '%s..%s' % (default, branch)) if default and branch else ''
     shortstat = git(root, 'diff', '--shortstat', default, branch) if default and branch else ''
-    return {'source': 'git, local repository', 'generatedAt': now, 'repoPath': root.replace('\\', '/'),
-            'branch': branch, 'defaultBranch': default, 'head': git(root, 'rev-parse', '--short', 'HEAD'),
-            'remotes': remotes, 'ahead': ahead, 'shortstat': shortstat, 'dirty': dirty,
-            'tracked': len(tracked), 'byDir': by_dir, 'commits': commits}
+    return derive.git_doc(root, branch, default, log, files, status, remotes,
+                          git(root, 'rev-parse', '--short', 'HEAD'), ahead, shortstat, now)
 
 
 # https://github.com/..., ssh://git@github.com/... and the scp form git@github.com:...; the host must end at
