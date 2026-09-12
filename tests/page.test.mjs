@@ -1,5 +1,6 @@
 // Checks the page's project picker and session filter, the project Overview, the Agent catalogue tab, the Backlog's
-// Later group and the pull requests (the GitHub tab's panel, the Overview's awaiting-merge items): runs the inline script from
+// Later group, the pull requests (the GitHub tab's panel, the Overview's awaiting-merge items) and the data-adapter
+// seam (the store adapter, and the local API adapter over a stub of the local server): runs the inline script from
 // site/index.html against a stub DOM and a fake store, fires store snapshots and picker changes, and asserts on
 // what the page renders.
 //
@@ -40,7 +41,8 @@ const everySub = new Set();
 // A fresh page: each call re-runs the script against new stubs, with localStorage preset to `storage`.
 // With offline, the page gets no store, as when the artifact runs without its db capability. claude, when given,
 // builds the page's window.claude from the fake store, for a store that is absent, refuses to open or opens late.
-function env(storage = {}, { offline = false, claude } = {}) {
+// local, when given, is a localStub(): the page is then the one the local server wraps, and gets its data over HTTP.
+function env(storage = {}, { offline = false, claude, local } = {}) {
   const els = {}, doc = { activeElement: null, appended: [] };
   const el = id => els[id] || (els[id] = {
     id, innerHTML: '', textContent: '', className: '', hidden: false, disabled: false, value: '', tabIndex: 0, dataset: {}, attrs: {}, listeners: {},
@@ -61,8 +63,16 @@ function env(storage = {}, { offline = false, claude } = {}) {
   });
   globalThis.document = doc;
   globalThis.window = globalThis;
+  // The page's own address: the marker's URLs are judged same-origin against it, and the local server serves the
+  // page from the same loopback origin it names in the marker.
+  globalThis.location = { href: 'http://127.0.0.1:8765/', origin: 'http://127.0.0.1:8765' };
   globalThis.localStorage = { getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, String(v)) };
   globalThis.claude = claude ? claude(db) : { use: async () => offline ? null : db };
+  // The local server's seam: the marker it injects and the two transports that marker names. Without it the page
+  // is the artifact, where the local API is unreachable anyway, so these stubs fail the run if it reaches for HTTP.
+  globalThis.__DISPATCH_LOCAL__ = local ? local.marker : undefined;
+  globalThis.fetch = local ? local.fetch : u => { throw new Error(`the page called fetch(${u}) with no local marker`); };
+  globalThis.EventSource = local ? local.EventSource : function () { throw new Error('the page opened an EventSource with no local marker'); };
   globalThis.scrollTo = () => {};
   // The page's timers are recorded rather than started; a check runs them with timers.forEach(f => f()).
   const timers = [];
@@ -1331,6 +1341,295 @@ const drawnOffline = (e, why) => {
   assert.match(empty.el('panel-findings').innerHTML, /^<div class="empty">[^<]*<\/div>$/);
   noPageErrors('the findings tab with no findings document');
   ok('findings ledger: with no findings document the view says so and logs no console error');
+}
+
+// ---- 21. the data-adapter seam: one interface, the store adapter and the local API adapter (FR-97 to FR-99, AC-73)
+// A stand-in for the local server: the marker it injects into the page it wraps, fetch over the snapshot URL, and
+// an EventSource the checks drive by hand. answer(url) returns what the snapshot request resolves to, or throws.
+function localStub(answer) {
+  const streams = [], asked = [];
+  return {
+    streams, asked,
+    marker: { snapshot: '/api/snapshot', events: '/api/events', version: 1 },
+    fetch: async url => { asked.push(url); return answer(url); },
+    EventSource: class {
+      constructor(url) { this.url = url; this.readyState = 1; this.ls = {}; streams.push(this); }
+      addEventListener(t, f) { (this.ls[t] = this.ls[t] || []).push(f); }
+      close() { this.readyState = 2; }
+      fire(type, data) { (this.ls[type] || []).forEach(f => f({ data: JSON.stringify(data) })); }
+      blip() { (this.ls.error || []).forEach(f => f({})); }          // a drop the browser will retry itself
+      giveUp() { this.readyState = 2; this.blip(); }                 // the browser has stopped retrying
+    },
+  };
+}
+const served = body => ({ ok: true, status: 200, json: async () => body });
+// The fixtures above, in the snapshot shape the local server serves: one entry per store path, each carrying its
+// kind, its id and its document, under a version the stream is then joined at.
+const recordsOf = (sessions, projects, runs, tabs, extra = {}) => {
+  const out = {};
+  const add = (kind, coll, list) => list.forEach(({ id, ...doc }) => { out[`${coll}/${id}`] = { kind, id, doc }; });
+  add('session', 'sessions', sessions); add('project', 'projects', projects);
+  add('run', 'runs', runs); add('tab', 'projectTabs', tabs);
+  return Object.assign(out, extra);
+};
+const snapshotOf = (records, version = 7) => ({ version, generatedAt: now, skipped: 0, records });
+// Unique sort keys, so "the order the store hands them over in" is one order: the check below compares like with
+// like, and would otherwise turn on how each side happens to break a tie.
+const step = (iso, i, n) => new Date(Date.parse(iso) - (n - i) * 1000).toISOString();
+const EQ_SESSIONS = SESSIONS.map((s, i) => ({ ...s, last: step(s.last, i, SESSIONS.length) }));
+const EQ_RUNS = RUNS.map((r, i) => ({ ...r, seq: i + 1 }));
+// Every project tab of the compared view carries real content, so no panel is compared empty to empty. It covers
+// what the renderers branch on and walk: a nested array (pull requests, findings rounds), an optional field
+// (carriedSince), work items in each of the four states, and assumptions still waiting on a human.
+const EQ_PULLS = [
+  { number: 31, title: 'The open one', state: 'OPEN', url: 'https://github.com/o/dispatch-board/pull/31', branch: 'pbi/the-open-one', updatedAt: now },
+  { number: 30, title: 'The merged one', state: 'MERGED', url: 'https://github.com/o/dispatch-board/pull/30', branch: 'pbi/the-merged-one', updatedAt: old },
+];
+const EQ_PROJECT_TABS = [
+  { id: 'dispatch-board.spec', source: 'DBSPEC', revision: '5', prd: { frs: 99, nfrs: 12, constraints: 4, acs: 77 },
+    rounds: [{ gate: 'Plan gate', round: 1, verdict: 'GO-WITH-CONDITIONS' }, { gate: 'Plan gate', round: 2, verdict: 'GO' }, { gate: 'Design gate', round: 1, verdict: 'GO' }],
+    goals: [{ id: 'G-1', text: 'One board, `two` sources' }], scopeIn: ['a local source'], scopeOut: ['a hosted service'],
+    logicCore: ['Snapshot.', 'Stream.'], approval: 'Approved by the **owner**', approvedBy: 'jdk' },
+  { id: 'dispatch-board.assumptions', source: 'DBASSUME', humanList: ['Which port?'],
+    rows: [{ n: 1, question: 'Which port?', resolution: 'A free loopback one', source: 'the brief', level: 'Medium', impact: 'Medium — one module', status: 'ASSUMED', needsYou: true },
+      { n: 2, question: 'Who may read it?', resolution: 'Only the owner', source: 'the PRD', level: 'Low', impact: 'Low', status: 'RESOLVED', needsYou: false }] },
+  { id: 'dispatch-board.decisions', source: 'DBDEC', carriedSince: '2026-09-11T08:30:00Z',
+    notWorkedOut: [{ item: 'An open point', landed: 'A `default` the build chose', row: 11, adr: 'ADR-0004', needsYou: true }],
+    adrs: [{ id: 'ADR-0004', resolves: 'row 11', title: 'The chosen default', status: 'Proposed', path: 'docs/adr/0004-default.md' }],
+    decisions: [{ decision: 'A key decision', rationale: 'Its rationale', madeBy: 'the build', date: old }] },
+  { id: 'dispatch-board.backlog', source: 'DBBACK', board: 'The board note', later: [{ title: 'A hosted board', description: 'Not planned' }],
+    pbis: [{ id: 'PBI-001', title: 'Built one', dependsOn: '—', state: 'done', group: 'g', risk: 'Medium', review: 'GO', open: '', commit: 'abc1234' },
+      { id: 'PBI-002', title: 'Conditions one', dependsOn: '[PBI-001]', state: 'conditions', group: 'g', risk: 'Low', review: 'GO-WITH-CONDITIONS', open: 'two findings' },
+      { id: 'PBI-003', title: 'Partial one', dependsOn: '[PBI-001]', state: 'partial', group: 'g', risk: 'High', review: '—', open: 'half built' },
+      { id: 'PBI-004', title: 'Not started one', dependsOn: '[PBI-002]', state: 'todo', group: 'g', risk: 'Low', review: '—', open: '' }] },
+  { id: 'dispatch-board.findings', source: 'DBFIND',
+    items: {
+      'PBI-001': { rounds: 2, roundsToGo: 2, open: [],
+        resolved: [{ id: 'F1', severity: 'HIGH', title: 'A fixed one', location: 'app.py:1', remediation: 'Fix F1', round: 1, lastSeen: 1 }] },
+      'PBI-002': { rounds: 2,
+        open: [{ id: 'F2', severity: 'MEDIUM', title: 'Still open <img src=x onerror=alert(1)>', location: 'app.py:2', remediation: 'Fix F2', round: 1, lastSeen: 2 }],
+        resolved: [{ id: 'F3', severity: 'LOW', title: 'A fixed one too', location: 'app.py:3', remediation: 'Fix F3', round: 1, lastSeen: 1 }] },
+    } },
+];
+const EQ_TAB_DOCS = [
+  ...TABS.map(t => t.id === 'dispatch-board.git'
+    ? { ...t, defaultBranch: 'main', head: 'beefcaf', ahead: '2', tracked: 41, dirty: ['site/index.html'], byDir: { site: 3, tests: 2 }, pulls: EQ_PULLS }
+    : t),
+  ...EQ_PROJECT_TABS,
+];
+const EQ_TABS = EQ_TAB_DOCS.map((t, i) => ({ ...t, generatedAt: step(now, i, EQ_TAB_DOCS.length) }));
+const EQ_CAT = { generatedAt: now, source: {}, plugins: [{ plugin: 'engineering-agents', purpose: 'E.', purposeFull: 'E.', installed: true, agents: 1, skills: 0 }],
+  entries: [{ id: 'engineering-agents:code-writer', kind: 'agent', plugin: 'engineering-agents', name: 'code-writer', description: 'd', installed: true }] };
+const EQ_LAST = { at: old, writer: 'refresher' };
+const EQ_DOCS = {
+  'meta/status': { kind: 'status', id: 'meta/status', doc: { live: false, title: 'Paused', updatedAt: old } },
+  'status/dispatch-board': { kind: 'status', id: 'status/dispatch-board', doc: { live: true, updatedAt: now } },
+  'catalogue/index': { kind: 'catalogue', id: 'index', doc: EQ_CAT },
+  'meta/lastRefresh': { kind: 'lastRefresh', id: 'lastRefresh', doc: EQ_LAST },
+};
+const EQ_RECORDS = () => recordsOf(EQ_SESSIONS, PROJECTS, EQ_RUNS, EQ_TABS, EQ_DOCS);
+// Everything the page draws, so "both adapters render the same board" is checked on the whole board, not a corner.
+const rendered = e => Object.fromEntries([
+  ...tabNames.map(n => ['panel-' + n, e.el('panel-' + n).innerHTML]),
+  ...['project', 'session', 'asOf'].map(id => [id, e.el(id).innerHTML]),
+  ...['statusText', 'crumb', 'foot'].map(id => [id, e.el(id).textContent]),
+]);
+const VIEW = { 'board-view': 'p:dispatch-board' };
+// The same data through the store adapter, fed in the order orderBy() would give it.
+const overStore = async () => {
+  const e = env(VIEW);
+  await tick();
+  e.fire('c:projects', PROJECTS); e.fire('c:sessions', EQ_SESSIONS); e.fire('c:runs', EQ_RUNS); e.fire('c:projectTabs', EQ_TABS);
+  e.fire('d:meta/status', EQ_DOCS['meta/status'].doc); e.fire('d:status/dispatch-board', EQ_DOCS['status/dispatch-board'].doc);
+  e.fire('d:catalogue/index', EQ_CAT); e.fire('d:meta/lastRefresh', EQ_LAST);
+  return e;
+};
+{
+  const s = await overStore();
+  assert.deepEqual(Object.keys(s.subs).sort(), ['c:projectTabs', 'c:projects', 'c:runs', 'c:sessions', 'd:catalogue/index', 'd:meta/lastRefresh', 'd:meta/status', 'd:status/dispatch-board']);
+  ok('AC-73, the artifact half: with no local marker the page opens store subscriptions and makes no HTTP request');
+
+  const stub = localStub(() => served(snapshotOf(EQ_RECORDS())));
+  const l = env(VIEW, { local: stub });   // window.claude is present too: the marker still decides
+  await tick();
+  assert.deepEqual(Object.keys(l.subs), [], 'served locally, the page opens no store subscription');
+  assert.deepEqual(stub.asked, ['/api/snapshot']);
+  assert.equal(stub.streams.length, 1);
+  assert.equal(stub.streams[0].url, '/api/events?since=7', 'the stream is joined at the snapshot\'s own version');
+  ok('AC-73, the local half: served by the local server the page requests the snapshot and opens the event stream, and opens no store subscription');
+
+  // The claim is "the same board", so the fixture must not let a panel be compared empty to empty: an empty state
+  // is what both sides would show if a renderer were never reached at all.
+  const emptyPanels = e => tabNames.filter(n => /class="empty"/.test(e.el('panel-' + n).innerHTML));
+  assert.deepEqual(emptyPanels(s), [], 'every panel of the store side carries real content');
+  assert.deepEqual(emptyPanels(l), [], 'every panel of the local side carries real content');
+  const seen = rendered(l);
+  for (const [what, re] of [['a pull request', /pbi\/the-open-one/], ['a carried tab', /data-carried/],
+    ['an open finding', /Still open/], ['a running agent', /class="flow"/],
+    ['an assumption awaiting a human', /Which port\?/], ['work items in four states', /class="cell partial"/]]) {
+    assert.ok(Object.values(seen).some(h => re.test(h)), `the compared board shows ${what}`);
+  }
+  assert.deepEqual(rendered(l), rendered(s));
+  ok('FR-97: the store adapter and the local API adapter render the same board from the same data, on a board where every panel has content');
+
+  // live push: the server sends whole documents in `set` and gone paths in `deleted`, so no re-fetch is needed
+  const { id, ...doc } = { ...EQ_RUNS[2], kind: 'go', label: 'DB write finished' };
+  stub.streams[0].fire('change', { version: 8, set: { [`runs/${id}`]: { kind: 'run', id, doc } }, deleted: [] });
+  assert.match(l.el('panel-dispatch').innerHTML, /DB write finished/);
+  stub.streams[0].fire('change', { version: 9, set: {}, deleted: [`runs/${id}`] });
+  assert.doesNotMatch(l.el('panel-dispatch').innerHTML, /DB write/);
+  assert.deepEqual(stub.asked, ['/api/snapshot'], 'a change event needs no second snapshot');
+  ok('local adapter: a change event redraws the board from the documents it carries, and a deleted path removes the record');
+
+  stub.streams[0].fire('reset', { version: 10 });
+  await tick();
+  assert.deepEqual(stub.asked, ['/api/snapshot', '/api/snapshot']);
+  assert.match(l.el('panel-dispatch').innerHTML, /DB write/);
+  assert.equal(stub.streams.length, 1, 'a reset re-reads the snapshot without reopening the stream');
+  ok('local adapter: a reset event re-fetches the snapshot and redraws from it, on the one stream it opened');
+
+  const foot = l.el('foot').textContent;
+  stub.streams[0].blip();
+  assert.equal(l.el('foot').textContent, foot, 'a drop the browser will retry says nothing');
+  stub.streams[0].giveUp();
+  assert.equal(l.el('foot').textContent, 'Live updates from the local server stopped. Reload the page to reconnect.');
+  // The page joins once, at the snapshot's own version, and never builds a second stream URL: resumption is the
+  // browser's Last-Event-ID against a server that resumes from whichever of that and the query position is
+  // further on, so the page holds no resume position of its own that could drift.
+  assert.equal(stub.streams.length, 1, 'the page never opens a second stream, not even after the browser gave up');
+  assert.deepEqual(stub.streams.map(x => x.url), ['/api/events?since=7']);
+  ok('local adapter: a stream the browser has given up retrying is reported, a transient drop is not, and the page never reopens it at a position of its own');
+}
+{
+  // One arrival of data, one render pass. The store adapter hands a snapshot to one reader, so it already draws
+  // once; the local adapter hands one event to every reader that watches a path, and must still draw once.
+  // Counted on the real innerHTML writes, and with one page alive at a time, since each env() takes over the
+  // global document and a page's renderers follow it.
+  const writes = el => { let n = 0, v = el.innerHTML; Object.defineProperty(el, 'innerHTML', { configurable: true, get: () => v, set: x => { n++; v = x; } }); return () => n; };
+  const { id, ...doc } = { ...EQ_RUNS[2], kind: 'go', label: 'DB write finished' };
+
+  const s = await overStore();
+  const storeWrites = writes(s.el('panel-dispatch'));
+  s.fire('c:runs', EQ_RUNS.map(r => r.id === id ? { id, ...doc } : r));
+  assert.equal(storeWrites(), 1, 'one store snapshot draws the panel once');
+
+  const stub = localStub(() => served(snapshotOf(EQ_RECORDS())));
+  const l = env(VIEW, { local: stub });
+  await tick();
+  const localWrites = writes(l.el('panel-dispatch'));
+  stub.streams[0].fire('change', { version: 8, set: { [`runs/${id}`]: { kind: 'run', id, doc } }, deleted: [] });
+  assert.equal(localWrites(), 1, 'one change event draws the panel once, not once per reader');
+  assert.match(l.el('panel-dispatch').innerHTML, /DB write finished/, 'and it drew the pushed document');
+  // A single event that touches several collections at once is still one pass.
+  stub.streams[0].fire('change', { version: 9, set: {
+    [`runs/${id}`]: { kind: 'run', id, doc: { ...doc, label: 'DB write again' } },
+    'sessions/s2': { kind: 'session', id: 's2', doc: { ...EQ_SESSIONS[3], title: 'DB build II' } },
+    'catalogue/index': { kind: 'catalogue', id: 'index', doc: EQ_CAT },
+    'meta/lastRefresh': { kind: 'lastRefresh', id: 'lastRefresh', doc: { at: now, writer: 'collector' } },
+  }, deleted: [] });
+  assert.equal(localWrites(), 2, 'an event touching four paths is still one render pass');
+  assert.match(l.el('panel-dispatch').innerHTML, /DB write again/);
+  stub.streams[0].fire('reset', { version: 10 });
+  await tick();
+  assert.equal(localWrites(), 3, 'a reset re-reads the snapshot and draws once');
+  ok('the adapters cost the same work: one event, like one store snapshot, is one render pass');
+}
+{
+  // No silent blank board: a local server that cannot be reached, refuses, or answers with something that is not
+  // the snapshot must say so, exactly as an unreachable store does.
+  const warned = [], realWarn = console.warn;
+  console.warn = (...a) => warned.push(a);
+  try {
+    for (const [answer, why] of [
+      [() => Promise.reject(new Error('connection refused')), 'the server is not running'],
+      [() => ({ ok: false, status: 503, json: async () => ({}) }), 'the database is not ready yet'],
+      [() => ({ ok: true, status: 200, json: async () => { throw new Error('not JSON'); } }), 'the body is not JSON'],
+      // A 200 carrying well-formed JSON of the wrong shape is the silent-blank-board case: it must degrade too,
+      // because an empty board and a board whose data never arrived read the same to the owner.
+      [() => served(null), 'a 200 whose body is null'],
+      [() => served([{ kind: 'run' }]), 'a 200 whose body is an array'],
+      [() => served({ version: 7, generatedAt: now }), 'a 200 with no records at all'],
+      [() => served({ records: 'nothing' }), 'a 200 whose records is a string'],
+      [() => served({ records: null }), 'a 200 whose records is null'],
+      [() => served({ records: [] }), 'a 200 whose records is an array'],
+    ]) {
+      const stub = localStub(answer);
+      const e = env({}, { local: stub });
+      await tick();
+      assert.equal(e.el('statusText').textContent, 'Offline', why);
+      assert.match(e.el('panel-overview').innerHTML, /^<div class="empty">This view cannot reach the local server\.<\/div>$/, why);
+      assert.equal(e.el('foot').textContent, 'This view cannot reach the local server, so it shows no data.', why);
+      assert.equal(e.el('panel-catalogue').innerHTML, '<div class="empty">This view cannot reach the local server.</div>', why);
+      assert.equal(stub.streams.length, 0, why);
+    }
+  } finally { console.warn = realWarn; }
+  assert.equal(warned.length, 9);
+  assert.ok(warned.every(a => a[0] === 'Board: the local server could not be reached' && a[1] instanceof Error), 'each failure is logged with its error');
+  ok('local adapter: an unreachable, refusing or wrongly shaped answer draws the out-of-reach board naming the local server, not a silent blank one');
+
+  // The other side of that guard: a snapshot whose records really are empty is a board with nothing on it yet,
+  // which is a legitimate state and must not be reported as a server that could not be reached.
+  const bare = localStub(() => served({ version: 0, generatedAt: now, records: {} }));
+  const b = env({}, { local: bare });
+  await tick();
+  assert.notEqual(b.el('statusText').textContent, 'Offline');
+  assert.equal(b.el('foot').textContent, '');
+  assert.equal(bare.streams.length, 1, 'the stream is still joined');
+  assert.doesNotMatch(b.el('panel-overview').innerHTML, /cannot reach/);
+  ok('local adapter: a snapshot with genuinely no records is an empty board, not an out-of-reach one');
+}
+{
+  // AC-SV7 keeps answers and the collector's own tables out of the API. The page must not reintroduce them:
+  // it reads only the paths its views watch, so anything else in a snapshot is inert.
+  const hostile = Object.assign(EQ_RECORDS(), {
+    'answers/a1': { kind: 'answer', id: 'a1', doc: { text: 'NEVER-RENDER-answers', by: 'someone' } },
+    'collector_state/x': { kind: 'collector', id: 'x', doc: { note: 'NEVER-RENDER-collector' } },
+    'sessions': { kind: 'session', id: 'sessions', doc: { title: 'NEVER-RENDER-bare-path' } },
+  });
+  // One page at a time: a page's own document is the global one only until the next env() replaces it.
+  const clean = env(VIEW, { local: localStub(() => served(snapshotOf(EQ_RECORDS()))) });
+  await tick();
+  const expected = rendered(clean);
+  const dirty = env(VIEW, { local: localStub(() => served(snapshotOf(hostile))) });
+  await tick();
+  const drawn = rendered(dirty);
+  assert.deepEqual(drawn, expected, 'records outside the watched collections change nothing the page draws');
+  assert.ok(!JSON.stringify(drawn).includes('NEVER-RENDER'), 'no unwatched record reaches the DOM');
+  ok('local adapter: answers, collector state and a record outside every watched collection are never read or rendered');
+}
+{
+  // The marker decides, and it is a marker only when it names both URLs and names them on the page's own origin.
+  // The local server always injects both, so anything else is not a page it served and the store adapter is right.
+  // The origin half is defence in depth: only whoever serves the page can set the marker, but the board's two
+  // network reaches should not be left to the setter's good behaviour.
+  for (const [marker, why] of [
+    [{ events: '/api/events' }, 'no snapshot URL'],
+    [{ snapshot: '/api/snapshot' }, 'no events URL'],
+    [{ snapshot: '/api/snapshot', events: 7 }, 'an events URL that is not a string'],
+    [{ snapshot: 'https://evil.example/api/snapshot', events: '/api/events' }, 'a cross-origin snapshot URL'],
+    [{ snapshot: '/api/snapshot', events: 'https://evil.example/api/events' }, 'a cross-origin events URL'],
+    [{ snapshot: '//evil.example/api/snapshot', events: '//evil.example/api/events' }, 'protocol-relative URLs on another host'],
+    [{ snapshot: 'http://127.0.0.1:9999/api/snapshot', events: 'http://127.0.0.1:9999/api/events' }, 'another port on the same host'],
+    [{ snapshot: 'javascript:alert(1)', events: 'javascript:alert(2)' }, 'javascript: URLs'],
+    [{ snapshot: 'data:application/json,{}', events: 'data:text/event-stream,' }, 'data: URLs'],
+  ]) {
+    const stub = localStub(() => served(snapshotOf(EQ_RECORDS())));
+    const e = env(VIEW, { local: { ...stub, marker } });
+    await tick();
+    assert.deepEqual(stub.asked, [], why + ': no snapshot is requested');
+    assert.equal(stub.streams.length, 0, why + ': no stream is opened');
+    assert.ok(e.subs['c:sessions'] && e.subs['c:projects'], why + ': the store adapter ran instead');
+  }
+  ok('adapter choice: a marker missing either URL, or naming one that is not on the page\'s own origin, is not taken as the local server; the store adapter runs');
+
+  // The marker the local server really injects names two paths relative to the page, which are its own origin.
+  const good = localStub(() => served(snapshotOf(EQ_RECORDS())));
+  const e = env(VIEW, { local: { ...good, marker: { snapshot: '/api/snapshot', events: '/api/events', version: 1 } } });
+  await tick();
+  assert.deepEqual(good.asked, ['/api/snapshot']);
+  assert.equal(good.streams.length, 1);
+  assert.deepEqual(Object.keys(e.subs), [], 'and no store subscription');
+  ok('adapter choice: the marker the local server injects, whose URLs are relative to the page, is taken as the local server');
 }
 
 assert.deepEqual([...everySub].filter(k => k === 'c:tabs' || k.startsWith('d:tabs/')), [], 'a retired tabs/* subscription');
