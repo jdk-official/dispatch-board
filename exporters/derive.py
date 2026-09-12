@@ -938,6 +938,51 @@ def spec_docs(pid, paths, spec, prd, brief, design, adrs, rounds, data, now):
     }
 
 
+# --- the git tab -------------------------------------------------------------
+# The commands themselves stay with their callers: running git is I/O, and a caller may need its own timeout.
+
+# The userinfo of a URL remote: everything between "://" and the last "@" before the host's first "/".
+USERINFO = re.compile(r'(?<=://)[^/\s]*@')
+
+
+def public_remote(line):
+    """A `git remote -v` line without the userinfo of its URL, so a token stored in a remote URL is never published."""
+    return USERINFO.sub('', line)
+
+
+def git_default(master_out, main_out):
+    """The repository's default branch from the stdout of `git rev-parse --verify --quiet` for master and for
+    main: master when it exists, else main, else "" when it has neither."""
+    return 'master' if master_out else ('main' if main_out else '')
+
+
+def git_doc(root, branch, default, log, files, status, remotes_raw, head, ahead_out, shortstat_out, now):
+    """The git tab of the repository at root, from the already-captured stdout (stripped) of the commands its
+    caller ran: log as "%h|%ad|%s" lines, files from ls-files, status from status --short, remotes_raw from
+    remote -v, head from rev-parse --short HEAD, and the rev-list and diff --shortstat output.
+
+    ahead and shortstat are "" unless the repository has both a default branch and a current branch, since
+    neither comparison means anything without both. A caller may therefore skip those two commands and pass
+    "": the answer is the same either way, so it cannot diverge from the rule by getting the condition wrong.
+    """
+    commits = []
+    for line in log.splitlines():
+        sha, date, subject = line.split('|', 2)
+        commits.append({'sha': sha, 'date': date, 'subject': subject})
+    tracked = files.splitlines()
+    by_dir = {}
+    for f in tracked:
+        d = f.split('/')[0] if '/' in f else '(root)'
+        by_dir[d] = by_dir.get(d, 0) + 1
+    dirty = [l for l in status.splitlines() if l.strip()]
+    remotes = [public_remote(l) for l in remotes_raw.splitlines() if l.strip()]
+    both = bool(default and branch)
+    return {'source': 'git, local repository', 'generatedAt': now, 'repoPath': root.replace('\\', '/'),
+            'branch': branch, 'defaultBranch': default, 'head': head,
+            'remotes': remotes, 'ahead': ahead_out if both else '', 'shortstat': shortstat_out if both else '',
+            'dirty': dirty, 'tracked': len(tracked), 'byDir': by_dir, 'commits': commits}
+
+
 # --- catalogue ---------------------------------------------------------------
 
 PURPOSE_MAX = 120  # characters in a plugin's one-line purpose, the ellipsis included

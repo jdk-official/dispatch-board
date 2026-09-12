@@ -32,12 +32,15 @@ class Case(unittest.TestCase):
         self.now = time.time()
 
     def tearDown(self):
-        # No scenario ever creates an answers table or writes a record kind other than the collector's five.
+        # No scenario ever creates an answers table. No scenario here configures a project with a readable
+        # repository either, so none writes a tab record. A pass writes one status record per configured
+        # project and no other, and the project records name those same projects, so the stored statuses are
+        # exactly their statusDoc paths -- the empty set for the many scenarios that configure no project.
         c = self.e.conn
         names = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         self.assertFalse({n for n in names if 'answer' in n.lower()})
-        for table in ('project_tabs', 'statuses'):
-            self.assertEqual(c.execute('SELECT COUNT(*) FROM %s' % table).fetchone()[0], 0, table)
+        self.assertEqual(c.execute('SELECT COUNT(*) FROM project_tabs').fetchone()[0], 0)
+        self.assertEqual(set(db.stored(c, 'status')), self.e.configured)
 
     def assert_equivalent(self, cfg=None, now=None):
         self.assertEqual(self.e.stored(), self.e.exported(cfg, now if now is not None else self.now))
@@ -799,16 +802,19 @@ class Records(Case):
                                now=self.now, clock=lambda: CLOCK + timedelta(hours=2))
         self.assertEqual(self.e.last_refresh(), before)
 
-    def test_only_the_five_kinds_are_written(self):
+    def test_only_the_kinds_the_collector_writes_are_written(self):
         f = tc.Fixture()
         self.addCleanup(f.cleanup)
         f.transcripts()
         f.marketplace()
-        cfg = f.config()
+        cfg = self.e.seen(f.config())  # this pass is driven directly, so the config is declared to the guard
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             collector.run_pass(self.e.conn, cfg, projects_root=f.root, now=self.now)
         counts = {t: self.e.conn.execute('SELECT COUNT(*) FROM %s' % t).fetchone()[0] for t, _ in records.TABLES.values()}
-        self.assertEqual({t for t, n in counts.items() if n}, {'sessions', 'runs', 'projects', 'catalogue', 'last_refresh'})
+        # No project of this fixture has its repository on disk (repos() is not called), so the tab pass builds
+        # no tab record; it still writes every configured project's status.
+        self.assertEqual({t for t, n in counts.items() if n},
+                         {'sessions', 'runs', 'projects', 'statuses', 'catalogue', 'last_refresh'})
 
 
 class Catalogue(Case):
@@ -862,8 +868,8 @@ class CommandLine(Case):
     def test_once_exits_0_after_a_committed_pass(self):
         self.e.t.basic()
         self.assertEqual(self.e.main(['--once'], now=self.now), 0, self.e.err)
-        self.assertRegex(self.e.out, r'collector: 1 sessions \(1 re-derived, \d+ bytes read\), 1 runs, 0 projects; '
-                                     r'2 written, 0 deleted \(0 by age\) \| [\d.]+s')
+        self.assertRegex(self.e.out, r'collector: 1 sessions \(1 re-derived, \d+ bytes read\), 1 runs, 0 projects, '
+                                     r'0 tabs; 2 written, 0 deleted \(0 by age\) \| [\d.]+s')
 
     def test_once_exits_2_for_a_config_error_and_a_missing_root(self):
         cfg = self.e.cfg()

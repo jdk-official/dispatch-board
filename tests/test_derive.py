@@ -413,6 +413,67 @@ class Board(unittest.TestCase):
         self.assertEqual(adr, {'id': 'ADR-001', 'title': 'Use X', 'status': 'accepted', 'resolves': '', 'path': 'docs/adr/1.md'})
 
 
+class Git(unittest.TestCase):
+    """The git tab's derivation: the arithmetic over captured git output, with no subprocess anywhere near it."""
+
+    LOG = ('a1b2c3d|2026-09-10T10:00:00+01:00|Add the widget\n'
+           'e4f5a6b|2026-09-09T09:00:00+01:00|Split a|b on the first pipe only')
+    FILES = 'README.md\nsite/index.html\nsite/app.js\nexporters/derive.py'
+    STATUS = ' M site/app.js\n\n?? notes.txt'
+    REMOTES = 'origin\thttps://user:token@github.com/owner/repo.git (fetch)\n\norigin\tgit@github.com:owner/repo.git (push)'
+
+    def doc(self, **over):
+        args = dict(root='C:\\work\\app', branch='main', default='master', log=self.LOG, files=self.FILES,
+                    status=self.STATUS, remotes_raw=self.REMOTES, head='a1b2c3d', ahead_out='3',
+                    shortstat_out=' 2 files changed, 9 insertions(+)', now='NOW')
+        args.update(over)
+        return derive.git_doc(**args)
+
+    def test_the_document_is_derived_from_the_captured_output(self):
+        d = self.doc()
+        self.assertEqual(d['source'], 'git, local repository')
+        self.assertEqual(d['repoPath'], 'C:/work/app')
+        self.assertEqual(d['byDir'], {'(root)': 1, 'site': 2, 'exporters': 1})
+        self.assertEqual(d['tracked'], 4)
+        self.assertEqual(d['dirty'], [' M site/app.js', '?? notes.txt'])
+        self.assertEqual(d['commits'], [
+            {'sha': 'a1b2c3d', 'date': '2026-09-10T10:00:00+01:00', 'subject': 'Add the widget'},
+            {'sha': 'e4f5a6b', 'date': '2026-09-09T09:00:00+01:00', 'subject': 'Split a|b on the first pipe only'}])
+        self.assertEqual(d['remotes'], ['origin\thttps://github.com/owner/repo.git (fetch)',
+                                        'origin\tgit@github.com:owner/repo.git (push)'])
+        self.assertEqual((d['branch'], d['defaultBranch'], d['head'], d['generatedAt']), ('main', 'master', 'a1b2c3d', 'NOW'))
+
+    def test_ahead_and_shortstat_are_empty_without_both_branches(self):
+        for over in ({'default': ''}, {'branch': ''}, {'default': '', 'branch': ''}):
+            with self.subTest(**over):
+                d = self.doc(**over)
+                self.assertEqual((d['ahead'], d['shortstat']), ('', ''))
+
+    def test_ahead_and_shortstat_pass_through_with_both_branches(self):
+        d = self.doc()
+        self.assertEqual((d['ahead'], d['shortstat']), ('3', ' 2 files changed, 9 insertions(+)'))
+
+    def test_an_empty_repository_derives_empty_lists_and_counts(self):
+        d = self.doc(log='', files='', status='', remotes_raw='', head='')
+        self.assertEqual((d['commits'], d['tracked'], d['byDir'], d['dirty'], d['remotes']), ([], 0, {}, [], []))
+
+    def test_git_default_prefers_master_over_main(self):
+        self.assertEqual(derive.git_default('deadbee', ''), 'master')
+        self.assertEqual(derive.git_default('', 'deadbee'), 'main')
+        self.assertEqual(derive.git_default('', ''), '')
+        self.assertEqual(derive.git_default('deadbee', 'cafebab'), 'master')
+
+    def test_public_remote_strips_userinfo_and_leaves_the_scp_form_alone(self):
+        self.assertEqual(derive.public_remote('origin\thttps://u:t@github.com/o/r.git (fetch)'),
+                         'origin\thttps://github.com/o/r.git (fetch)')
+        self.assertEqual(derive.public_remote('origin\tgit@github.com:o/r.git (push)'),
+                         'origin\tgit@github.com:o/r.git (push)')
+
+    def test_derive_still_runs_no_subprocess(self):
+        # derive's contract is that it reads no file, config, git or network; the git tab's I/O stays in its callers.
+        self.assertFalse(hasattr(derive, 'subprocess'))
+
+
 class Catalogue(unittest.TestCase):
     def test_frontmatter_reads_single_line_values(self):
         said = []

@@ -12,6 +12,7 @@ for _p in (os.path.join(HERE, 'tests'), os.path.join(HERE, 'exporters'), os.path
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+import board_config  # noqa: E402
 import collector  # noqa: E402
 import db  # noqa: E402
 import export_sessions as es  # noqa: E402
@@ -32,6 +33,7 @@ class Env:
         case.addCleanup(self.cleanup)
         self.conn = self.connect()
         self.out = self.err = ''
+        self.configured = set()
 
     def connect(self):
         """A new connection with no in-memory cache: what a restarted collector has."""
@@ -51,18 +53,30 @@ class Env:
                           'installedPath': os.path.join(self.tmp, 'no-installed.json')}
         return c
 
+    def seen(self, cfg):
+        """Remember the statusDoc of every project this config names, read through the loader the pass itself
+        uses, so a test can say which status records a pass was ever entitled to write. A config the loader
+        refuses names no project a pass could write for, and the pass refuses it too."""
+        try:
+            self.configured |= {p['statusDoc'] for p in board_config.projects(cfg)}
+        except ValueError:
+            pass
+        return cfg
+
     def run(self, cfg=None, now=None, conn=None, **kw):
         out, err = io.StringIO(), io.StringIO()
+        cfg = self.seen(cfg or self.cfg())
         try:
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                return collector.run_pass(conn or self.conn, cfg or self.cfg(), projects_root=self.root, now=now, **kw)
+                return collector.run_pass(conn or self.conn, cfg, projects_root=self.root, now=now, **kw)
         finally:
             self.out, self.err = out.getvalue(), err.getvalue()
 
     def main(self, argv, cfg=None, now=None, db_path=None):
         out, err = io.StringIO(), io.StringIO()
+        cfg = self.seen(cfg or self.cfg())
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            code = collector.main(argv, config=cfg or self.cfg(), db_path=db_path or self.db_path,
+            code = collector.main(argv, config=cfg, db_path=db_path or self.db_path,
                                   projects_root=self.root, now=now)
         self.out, self.err = out.getvalue(), err.getvalue()
         return code

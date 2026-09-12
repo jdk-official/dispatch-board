@@ -11,6 +11,7 @@ import ast, contextlib, glob, io, json, os, shutil, subprocess, sys, tempfile, u
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(HERE, 'exporters'))
 import board_config as bc  # noqa: E402
+import derive  # noqa: E402
 import export_board as eb  # noqa: E402
 
 HAS_GIT = shutil.which('git') is not None
@@ -687,6 +688,140 @@ class Remotes(ReposCase):
                     published += f.read()
         for secret in ('TOPSECRET', 'ANOTHERSECRET', 'ONLYTOKENSECRET', 'jdk:', 'x-access-token'):
             self.assertNotIn(secret, published)
+
+
+class FakeGit:
+    """Stands in for export_board.git: fixed captured stdout per argv. One instance drives both the live git_tab
+    and the pre-move reference below, so the two see identical input and neither touches a repository."""
+
+    def __init__(self, out):
+        self.out, self.calls = out, []
+
+    def __call__(self, root, *args):
+        self.calls.append(args)
+        return self.out.get(args, '')
+
+
+def _reference_git_tab(root, now):
+    """export_board.git_tab exactly as it stood at commit 5baa922, before its pure half moved into
+    derive.git_default and derive.git_doc. Only the first line is new: it binds the two names the body calls.
+
+    The git tab cannot be pinned to committed bytes -- its repoPath is a fresh temporary directory and its head
+    and commit shas come from a repository built anew by each run -- so the old implementation is kept here and
+    compared against the live one in-run instead, which compares the two implementations directly.
+    """
+    git, public_remote = eb.git, eb.public_remote
+    branch = git(root, 'branch', '--show-current')
+    default = 'master' if git(root, 'rev-parse', '--verify', '--quiet', 'master') else ('main' if git(root, 'rev-parse', '--verify', '--quiet', 'main') else '')
+    commits = []
+    for line in git(root, 'log', '--pretty=format:%h|%ad|%s', '--date=iso-strict').splitlines():
+        sha, date, subject = line.split('|', 2)
+        commits.append({'sha': sha, 'date': date, 'subject': subject})
+    tracked = git(root, 'ls-files').splitlines()
+    by_dir = {}
+    for f in tracked:
+        d = f.split('/')[0] if '/' in f else '(root)'
+        by_dir[d] = by_dir.get(d, 0) + 1
+    dirty = [l for l in git(root, 'status', '--short').splitlines() if l.strip()]
+    remotes = [public_remote(l) for l in git(root, 'remote', '-v').splitlines() if l.strip()]
+    ahead = git(root, 'rev-list', '--count', '%s..%s' % (default, branch)) if default and branch else ''
+    shortstat = git(root, 'diff', '--shortstat', default, branch) if default and branch else ''
+    return {'source': 'git, local repository', 'generatedAt': now, 'repoPath': root.replace('\\', '/'),
+            'branch': branch, 'defaultBranch': default, 'head': git(root, 'rev-parse', '--short', 'HEAD'),
+            'remotes': remotes, 'ahead': ahead, 'shortstat': shortstat, 'dirty': dirty,
+            'tracked': len(tracked), 'byDir': by_dir, 'commits': commits}
+
+
+FAKE_ROOT = 'C:\\repos\\app'
+CAPTURED = {
+    ('branch', '--show-current'): 'work',
+    ('rev-parse', '--verify', '--quiet', 'master'): '1111111',
+    ('rev-parse', '--verify', '--quiet', 'main'): '2222222',
+    ('log', '--pretty=format:%h|%ad|%s', '--date=iso-strict'):
+        'aaaaaaa|2026-09-10T10:00:00+01:00|Add the widget\nbbbbbbb|2026-09-09T09:00:00+01:00|Tidy up',
+    ('ls-files',): 'README.md\nsite/index.html\nsite/app.js',
+    ('status', '--short'): ' M site/app.js\n\n?? notes.txt',
+    ('remote', '-v'): 'origin\thttps://github.com/o/r.git (fetch)\norigin\thttps://github.com/o/r.git (push)',
+    ('rev-parse', '--short', 'HEAD'): 'aaaaaaa',
+    ('rev-list', '--count', 'master..work'): '4',
+    ('diff', '--shortstat', 'master', 'work'): ' 2 files changed, 9 insertions(+)',
+}
+
+
+class GitTabUnchanged(unittest.TestCase):
+    """T-6 for the git tab: the same document as the pre-move implementation, keys, values and key order."""
+
+    def cases(self):
+        return [
+            ('a default branch and a current branch', CAPTURED),
+            ('neither branch', {**CAPTURED, ('branch', '--show-current'): '',
+                                ('rev-parse', '--verify', '--quiet', 'master'): '',
+                                ('rev-parse', '--verify', '--quiet', 'main'): ''}),
+            ('a commit subject holding a pipe', {**CAPTURED,
+                ('log', '--pretty=format:%h|%ad|%s', '--date=iso-strict'):
+                    'aaaaaaa|2026-09-10T10:00:00+01:00|Split a|b on the first pipe only'}),
+            ('a remote carrying userinfo', {**CAPTURED,
+                ('remote', '-v'): 'origin\thttps://jdk:ghp_TOKEN@github.com/o/r.git (fetch)\n\n'
+                                  'origin\tgit@github.com:o/r.git (push)'}),
+        ]
+
+    def drive(self, out):
+        fake = FakeGit(out)
+        before = eb.git
+        eb.git = fake
+        try:
+            return eb.git_tab(FAKE_ROOT, NOW), _reference_git_tab(FAKE_ROOT, NOW), fake
+        finally:
+            eb.git = before
+
+    def test_git_tab_equals_the_pre_move_implementation(self):
+        for name, out in self.cases():
+            with self.subTest(name):
+                live, reference, fake = self.drive(out)
+                self.assertEqual(live, reference)
+                self.assertEqual(list(live), list(reference))
+                self.assertTrue(fake.calls)
+
+    def test_the_fake_drives_both_without_touching_a_repository(self):
+        # Without this, an equal pair could just mean both implementations read the same real repository.
+        live, reference, _ = self.drive(CAPTURED)
+        self.assertEqual((live['repoPath'], live['head'], live['ahead']), ('C:/repos/app', 'aaaaaaa', '4'))
+        self.assertFalse(os.path.exists(FAKE_ROOT))
+        self.assertEqual(reference['branch'], 'work')
+
+    def test_the_move_changes_no_public_surface(self):
+        self.assertIs(eb.public_remote, derive.public_remote)
+        self.assertEqual(eb.TABS, ('spec', 'assumptions', 'decisions', 'backlog', 'git'))
+
+
+# The bytes export_board.main writes for app's four spec-derived tabs, captured from the implementation at
+# commit 5baa922, before the git tab's pure half moved into derive. They are deterministic -- fixed text plus
+# the injected now, with no sha, path or clock in them -- so unlike the git tab they can be pinned byte for byte.
+PRE_MOVE_SPEC_TABS = json.loads(r'''
+{
+ "spec": "{\n \"source\": \"docs/backlog/specs/app.md\",\n \"generatedAt\": \"2026-09-11T00:00:00+00:00\",\n \"revision\": \"4\",\n \"designRevision\": \"—\",\n \"goals\": [\n  {\n   \"id\": \"G-1\",\n   \"text\": \"Ship the `widget`.\"\n  },\n  {\n   \"id\": \"G-2\",\n   \"text\": \"Keep it **small**.\"\n  }\n ],\n \"scopeIn\": [\n  \"Widgets\"\n ],\n \"scopeOut\": [\n  \"Gadgets\"\n ],\n \"logicCore\": [\n  \"Eligibility.\",\n  \"Cost.\"\n ],\n \"prd\": {\n  \"path\": \"docs/prd/app.md\",\n  \"frs\": 2,\n  \"nfrs\": 1,\n  \"constraints\": 1,\n  \"acs\": 1,\n  \"assumptions\": 1\n },\n \"rounds\": [\n  {\n   \"gate\": \"Plan gate\",\n   \"round\": 1,\n   \"verdict\": \"GO\"\n  }\n ],\n \"approval\": \"—\",\n \"approvedBy\": \"—\"\n}",
+ "assumptions": "{\n \"source\": \"docs/backlog/specs/app.md\",\n \"generatedAt\": \"2026-09-11T00:00:00+00:00\",\n \"rows\": [\n  {\n   \"n\": 1,\n   \"question\": \"Where does the data live?\",\n   \"resolution\": \"JSON\",\n   \"status\": \"RESOLVED\",\n   \"source\": \"PRD\",\n   \"impact\": \"Low - one file\",\n   \"level\": \"Low\",\n   \"needsYou\": false\n  },\n  {\n   \"n\": 2,\n   \"question\": \"Who owns an entry?\",\n   \"resolution\": \"The team\",\n   \"status\": \"ASSUMED\",\n   \"source\": \"brief\",\n   \"impact\": \"Medium - rework\",\n   \"level\": \"Medium\",\n   \"needsYou\": true\n  },\n  {\n   \"n\": 3,\n   \"question\": \"Search?\",\n   \"resolution\": \"In the client\",\n   \"status\": \"ASSUMED\",\n   \"source\": \"brief\",\n   \"impact\": \"High - rewrite\",\n   \"level\": \"High\",\n   \"needsYou\": true\n  }\n ],\n \"humanList\": [\n  2,\n  3\n ]\n}",
+ "decisions": "{\n \"source\": \"docs/backlog/specs/app.md, docs/adr/, docs/brief/raw-notes.md\",\n \"generatedAt\": \"2026-09-11T00:00:00+00:00\",\n \"notWorkedOut\": [\n  {\n   \"item\": \"Where the data lives\",\n   \"row\": 1,\n   \"adr\": \"ADR-0001\",\n   \"landed\": \"JSON\",\n   \"status\": \"RESOLVED\",\n   \"needsYou\": false\n  }\n ],\n \"adrs\": [\n  {\n   \"id\": \"ADR-0001\",\n   \"title\": \"Data in JSON\",\n   \"status\": \"proposed\",\n   \"resolves\": \"row 1\",\n   \"path\": \"docs/adr/0001-data.md\"\n  }\n ],\n \"decisions\": [\n  {\n   \"decision\": \"Use JSON\",\n   \"rationale\": \"simple\",\n   \"madeBy\": \"owner\",\n   \"date\": \"2026-09-01\"\n  }\n ]\n}",
+ "backlog": "{\n \"source\": \"docs/backlog/specs/app.md (PBI list) + build state kept in projects/app.json in the dispatch-board repo\",\n \"generatedAt\": \"2026-09-11T00:00:00+00:00\",\n \"pbis\": [\n  {\n   \"id\": \"PBI-001\",\n   \"title\": \"Widget\",\n   \"dependsOn\": \"—\",\n   \"group\": \"core\",\n   \"risk\": \"Low\",\n   \"requiresSpec\": \"no\",\n   \"state\": \"done\",\n   \"review\": \"GO\",\n   \"open\": \"\",\n   \"commit\": \"abc1234\"\n  },\n  {\n   \"id\": \"PBI-002\",\n   \"title\": \"Gadget\",\n   \"dependsOn\": \"PBI-001\",\n   \"group\": \"core\",\n   \"risk\": \"Low\",\n   \"requiresSpec\": \"no\",\n   \"state\": \"todo\",\n   \"review\": \"—\",\n   \"open\": \"\",\n   \"commit\": \"\"\n  }\n ],\n \"board\": \"Nothing is on the BOARD yet.\",\n \"later\": []\n}"
+}
+''')
+
+
+class SpecTabBytes(ReposCase):
+    """T-6 for the four deterministic tabs: main writes the same bytes as it did before the move."""
+
+    def test_the_four_spec_tabs_are_byte_identical_to_the_committed_fixture(self):
+        root = self.r.repo('app', FULL, with_git=False)
+        self.r.data('app', DATA)
+        self.assertEqual(self.r.run([project('app', root)]), 0)
+        for tab, want in sorted(PRE_MOVE_SPEC_TABS.items()):
+            with io.open(os.path.join(self.r.out, 'projectTabs', 'app.%s.json' % tab), 'rb') as f:
+                got = f.read()
+            with self.subTest(tab):
+                # The fixture can only pin bytes that hold no temporary path; this fails if one ever creeps in.
+                self.assertNotIn(root.encode('utf-8'), got)
+                self.assertNotIn(root.replace('\\', '/').encode('utf-8'), got)
+                self.assertEqual(got, want.encode('utf-8'))
 
 
 class PublicRemote(unittest.TestCase):
