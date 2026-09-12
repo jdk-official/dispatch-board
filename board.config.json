@@ -49,7 +49,8 @@
     "installedPath": "~/.claude/plugins/installed_plugins.json"
   },
   "local": {
-    "databasePath": "out/local/board.db"
+    "databasePath": "out/local/board.db",
+    "port": 8765
   },
   "sessions": {
     "days": 7,
