@@ -284,6 +284,79 @@ class Fixture:
             shutil.rmtree(self.tmp, onerror=_make_writable_and_retry)
 
 
+class FindingsFixture(Fixture):
+    """A Fixture whose session A also carries a completed PBI-001 code-review round, so export_sessions.py
+    writes projectTabs/alpha.findings (PBI-011) among the documents this test checks for conformance."""
+
+    FINDINGS_RESULT = (
+        '**Verdict:** **GO**\n\n'
+        '```json\n'
+        '{"findings": [{"id": "F1", "severity": "LOW", "title": "Tidy naming", '
+        '"subject": {"id": "widget.py:12"}, "remediation": "Rename the helper"}]}\n'
+        '```'
+    )
+
+    def transcripts(self):
+        self.jsonl(os.path.join(self.root, FOLDER, SID_A + '.jsonl'), [
+            user(0, 'Please build the widget'),
+            launch(1, 'toolu_cw'), launch(2, 'toolu_run'), launch(3, 'toolu_kill'), launch(4, 'toolu_gp'),
+            launch(5, 'toolu_rev'),
+            reply(6, 'm-skill-timed', tools=[('toolu_sk1', 'Skill', {'skill': 'eng:tdd'})]),
+            untimed(reply(7, 'm-skill-untimed', tools=[('toolu_sk2', 'Skill', {'skill': 'eng:untimed'})])),
+            stop(8, 'akill'),
+            notify(30, 'acw', 'All green. DONE', '5000', '1740000'),
+            notify(31, 'agp', 'Looked around.', '800', '60000'),
+            notify(32, 'arev', self.FINDINGS_RESULT, '3000', '900000'),
+        ])
+        self.agent(SID_A, 'acw', [user(1, 'task'), reply(2, 'm-cw', text='All green. DONE')],
+                   {'agentType': 'engineering-agents:code-writer', 'description': 'PBI-001 widget', 'toolUseId': 'toolu_cw'})
+        self.agent(SID_A, 'arun', [user(2, 'task'), reply(3, 'm-run', text='Reading the diff')],
+                   {'agentType': 'review-agents:code-reviewer', 'description': 'Review PBI-001', 'toolUseId': 'toolu_run'})
+        self.agent(SID_A, 'akill', [user(3, 'task'), reply(4, 'm-kill', text='Writing tests')],
+                   {'agentType': 'engineering-agents:test-writer', 'description': 'PBI-001 tests', 'toolUseId': 'toolu_kill'})
+        self.agent(SID_A, 'agp', [user(4, 'task'), reply(5, 'm-gp', text='Looked around.')],
+                   {'agentType': 'general-purpose', 'description': 'Explore the repo', 'toolUseId': 'toolu_gp'})
+        self.agent(SID_A, 'arev', [user(5, 'task'), reply(6, 'm-rev', text='GO')],
+                   {'agentType': 'review-agents:code-reviewer', 'description': 'Review PBI-001 round 2', 'toolUseId': 'toolu_rev'})
+        self.jsonl(os.path.join(self.root, FOLDER, SID_B + '.jsonl'), [
+            untimed(user(0, 'Hello beta')), untimed(reply(1, 'm-b'), stamp='yesterday-ish')])
+        self.jsonl(os.path.join(self.root, FOLDER, SID_C + '.jsonl'), [
+            {'type': 'custom-title', 'customTitle': 'Side quest', 'sessionId': SID_C},
+            user(10, 'Something else'), reply(11, 'm-c', text='Done.')])
+
+
+class ConformanceFindings(unittest.TestCase):
+    """PBI-026: projectTabs/<projectId>.findings (PBI-011's review findings ledger) must validate as a "tab"
+    record and round-trip through to_row/from_row with its store path preserved, like the five original tabs.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.f = FindingsFixture()
+        try:
+            cls.f.transcripts()
+            cls.f.repos()
+            cls.f.marketplace()
+            cls.f.export()
+            cls.docs = cls.f.documents()
+        except BaseException:
+            cls.f.cleanup()
+            raise
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.f.cleanup()
+
+    def test_a_findings_tab_was_written_and_conforms(self):
+        self.assertIn('projectTabs/alpha.findings', self.docs)
+        kind, doc_id, d = self.docs['projectTabs/alpha.findings']
+        self.assertEqual((kind, doc_id), ('tab', 'alpha.findings'))
+        self.assertIn('PBI-001', d.get('items', {}))
+        self.assertEqual(records.validate(kind, d), [])
+        self.assertEqual(records.store_path(kind, doc_id), 'projectTabs/alpha.findings')
+        self.assertEqual(records.from_row(kind, records.to_row(kind, doc_id, d)), d)
+
+
 class Cleanup(unittest.TestCase):
     def test_cleanup_removes_a_folder_holding_read_only_files(self):
         f = Fixture()

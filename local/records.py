@@ -88,7 +88,7 @@ SHAPES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'records.
 COLLECTION = {'session': 'sessions', 'run': 'runs', 'project': 'projects', 'tab': 'projectTabs', 'status': None,
               'lastRefresh': 'meta', 'catalogue': 'catalogue'}
 LAST_REFRESH_PATH = 'meta/lastRefresh'
-TAB_NAMES = ('spec', 'assumptions', 'decisions', 'backlog', 'git')
+TAB_NAMES = ('spec', 'assumptions', 'decisions', 'backlog', 'git', 'findings')
 
 # Every form is applied with fullmatch: re.match with "$" would also accept a trailing newline. That makes the
 # project and status forms stricter than board_config.ID and STATUS_DOC, but only for strings ending in one.

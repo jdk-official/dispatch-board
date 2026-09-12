@@ -502,6 +502,28 @@ class Paths(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         records.from_row(kind, {'id': rid, 'doc': json.dumps(doc(kind))})
 
+    def test_findings_is_a_valid_tab_name(self):
+        # PBI-011 publishes projectTabs/<projectId>.findings; the local shapes must accept its id form and
+        # round-trip it like any other tab, with its store path preserved.
+        self.assertIn('findings', records.TAB_NAMES)
+        self.assertEqual(records.store_path('tab', 'alpha.findings'), 'projectTabs/alpha.findings')
+        row = records.to_row('tab', 'alpha.findings', {'generatedAt': NOW})
+        self.assertEqual(row['project'], 'alpha')
+        self.assertEqual(row['tab'], 'findings')
+        self.assertEqual(records.from_row('tab', row), {'generatedAt': NOW})
+
+    def test_tab_names_widened_by_exactly_one(self):
+        # The widening adds only "findings"; every other tab name, and their order, stays as it was.
+        self.assertEqual(records.TAB_NAMES, ('spec', 'assumptions', 'decisions', 'backlog', 'git', 'findings'))
+
+    def test_an_unlisted_tab_name_is_still_rejected(self):
+        for rid in ('alpha.notes', 'alpha.usage', 'alpha.findings.git'):
+            with self.subTest(id=rid):
+                with self.assertRaises(ValueError):
+                    records.store_path('tab', rid)
+                with self.assertRaises(ValueError):
+                    records.to_row('tab', rid, {'generatedAt': NOW})
+
     def test_meta_last_refresh_is_reserved_from_status(self):
         with self.assertRaises(ValueError):
             records.store_path('status', 'meta/lastRefresh')
