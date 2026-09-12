@@ -301,6 +301,11 @@
   let allRuns = [], runs = [], sessions = [], projects = [], tabDocs = {}, statuses = {}, view = null, sel = '';
   let gotSessions = false, gotProjects = false, gotRuns = false, gotCatalogue = false, loaded = false, offline = false, status = null, catalogue = null;
   let lastRefresh = null;
+  // Where this copy of the board gets its data, named in the connecting and out-of-reach states so a board with
+  // nothing on it always says what it could not reach. Set once, when the data adapter is chosen.
+  let source = 'the live store';
+  const cannotReach = () => `This view cannot reach ${source}.`;
+  const connectingTo = () => `Connecting to ${source}…`;
   // The board counts its data stale more than this long after the refresher's last recorded run.
   const STALE_MS = 20 * 60000;
   // null when there is no meta/lastRefresh document, or its "at" cannot be parsed as a time: the header then
@@ -462,7 +467,7 @@
   // A session linked to no project: its own activity, usage and agents, and no project tabs.
   function renderSessionOverview(p) {
     const s = cur();
-    if (!s) { p.innerHTML = `<div class="empty">${loaded ? `No Claude Code session outside a project was active in the last ${esc(windowDays())} days.` : offline ? 'This view cannot reach the live store.' : 'Connecting to the live store…'}</div>`; return; }
+    if (!s) { p.innerHTML = `<div class="empty">${loaded ? `No Claude Code session outside a project was active in the last ${esc(windowDays())} days.` : offline ? cannotReach() : connectingTo()}</div>`; return; }
     const t = s.usage?.totals || {}, ar = agentRuns(), now = runs.filter(r => r.kind === 'running').length;
     p.innerHTML = `
       <div class="tiles">
@@ -645,7 +650,7 @@
   function renderCatalogue() {
     const c = catalogue, p = $('panel-catalogue');
     // "Not exported" only once the store has answered; before that, an absent document says nothing.
-    if (!c) { p.innerHTML = `<div class="empty">${loaded && gotCatalogue ? 'The agent catalogue has not been exported yet.' : offline ? 'This view cannot reach the live store.' : 'Connecting to the live store…'}</div>`; return; }
+    if (!c) { p.innerHTML = `<div class="empty">${loaded && gotCatalogue ? 'The agent catalogue has not been exported yet.' : offline ? cannotReach() : connectingTo()}</div>`; return; }
     const entries = Array.isArray(c.entries) ? c.entries : [], groups = Array.isArray(c.plugins) ? c.plugins : [];
     const pr = proj();
     // The same scope as runs: the project narrowed by the session filter, or the chosen "Other sessions" session.
@@ -1084,7 +1089,18 @@
   // second reading could fall past the forecast or the window's end, recording a state as drawn that no tile shows,
   // and the minute timer would then never redraw that tile.
   let renderNow = Date.now(), drawnClock = '';
+  // One arrival of data can reach several of the page's readers at once. Held, they each leave a mark and the
+  // board is drawn once at the end, from the state all of them left, instead of once per reader. Counted, not a
+  // flag, so a nested hold cannot release the outer one; synchronous, so what is drawn is never a step behind.
+  let held = 0, heldDraw = false;
+  const holdRender = fn => {
+    held++;
+    // In the finally, so a reader that throws still leaves the board showing what did arrive, as it would have
+    // if each reader had drawn for itself.
+    try { fn(); } finally { held--; if (!held && heldDraw) { heldDraw = false; renderAll(); } }
+  };
   function renderAll() {
+    if (held) { heldDraw = true; return; }
     const now = renderNow = Date.now();
     RENDERERS.forEach(([draw, tab]) => {
       try { draw(); } catch (e) {
@@ -1176,31 +1192,121 @@
   apply();
   setInterval(() => { const now = Date.now(); renderHeader(now); fillPickers(); if (clockState(now) !== drawnClock) renderAll(); }, 60000);
 
-  (async () => {
-    // A store that refuses to open is shown as out of reach, like an absent one, rather than left reading Connecting.
-    let db = null;
-    try { db = await window.claude?.use?.('db'); } catch (e) { console.warn('Board: the live store could not be opened', e); }
-    if (!db) { offline = true; renderAll(); $('foot').textContent = 'This view cannot reach the live store, so it shows no data.'; return; }
+  // ---------------- the data adapters ----------------
+  // Nothing above this line knows where a document came from. An adapter offers two calls, each of which reports
+  // the current value at once and again whenever it changes:
+  //   collection(name, order, cb) -> cb([{ id, ...doc }]), sorted by the document field `order`
+  //   doc(path, cb)               -> cb(doc), or cb(null) when the document does not exist
+
+  const storeAdapter = db => {
     const fail = e => { $('foot').textContent = 'A live subscription ended (' + e.code + '). Reload the page to reconnect.'; };
     const all = snap => snap.docs.filter(x => x.exists).map(x => ({ id: x.id, ...x.data() }));
+    return {
+      collection: (name, order, cb) => db.collection(name).orderBy(order).onSnapshot(snap => cb(all(snap)), fail),
+      doc: (path, cb) => db.doc(path).onSnapshot(snap => cb(snap.exists ? snap.data() : null), fail),
+    };
+  };
+
+  // The local server's API: one snapshot object keyed by store path, each entry { kind, id, doc }, then a stream
+  // of whole documents (added or changed in `set`, gone in `deleted`) with a `reset` telling the page to re-fetch.
+  // Only the paths the calls above name are ever read, so a record in any other collection is inert here.
+  const localAdapter = async local => {
+    let records = {};
+    const watchers = [];
+    const watch = w => { watchers.push(w); w(); };
+    // One event carries whole documents for any number of paths, so every reader it touches is told before the
+    // board is drawn: one event, one render pass, as one store snapshot is.
+    const notify = () => holdRender(() => watchers.forEach(w => w()));
+    const entry = path => { const e = records[path]; return e && e.doc && typeof e.doc === 'object' ? e : null; };
+    // The store orders a collection by a document field; this reproduces that, with the id breaking a tie so the
+    // same data is always in the same order.
+    const cmp = (a, b) => typeof a === 'number' && typeof b === 'number' ? a - b
+      : a === undefined ? 1 : b === undefined ? -1 : String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+    // An answer that is not a snapshot is a failed read, not an empty board: a 200 of the wrong shape would
+    // otherwise draw the normal empty states, which the owner cannot tell from a database with nothing in it yet.
+    // An empty records map is kept, because a collector that has not written yet is a real and honest state.
+    const read = async () => {
+      const r = await fetch(local.snapshot, { headers: { accept: 'application/json' } });
+      if (!r?.ok) throw new Error('the local server answered ' + r?.status);
+      const body = await r.json();
+      if (!body?.records || typeof body.records !== 'object' || Array.isArray(body.records)) throw new Error('the local server answered with something that is not a snapshot');
+      records = body.records;
+      return Number.isFinite(body.version) ? body.version : 0;
+    };
+    // The first read decides whether there is a board at all, so its failure is the caller's to report.
+    const version = await read();
+    const stopped = () => { $('foot').textContent = 'Live updates from the local server stopped. Reload the page to reconnect.'; };
+    if (typeof EventSource === 'function') {
+      // Joined once, at the version the snapshot was taken at, and never rebuilt: the page keeps no resume
+      // position of its own to drift. A dropped stream is resumed by the browser, which replays the id of the
+      // last event it saw as Last-Event-ID, and the server resumes from whichever of that and this query
+      // position is further on, so an old query string here can never rewind the stream.
+      const es = new EventSource(local.events + '?since=' + version);
+      es.addEventListener('change', ev => {
+        let d = null;
+        try { d = JSON.parse(ev.data); } catch (e) { console.warn('Board: an unreadable event from the local server', e); return; }
+        if (d?.set && typeof d.set === 'object') Object.assign(records, d.set);
+        if (Array.isArray(d?.deleted)) d.deleted.forEach(p => { delete records[p]; });
+        notify();
+      });
+      es.addEventListener('reset', () => read().then(notify, e => { console.warn('Board: the local server could not be re-read', e); stopped(); }));
+      // EventSource reconnects on its own, so an error is only worth reporting once it has stopped trying.
+      es.addEventListener('error', () => { if (es.readyState === 2) stopped(); });
+    }
+    return {
+      collection: (name, order, cb) => watch(() => cb(Object.keys(records)
+        .filter(p => p.startsWith(name + '/') && entry(p))
+        .map(p => ({ id: records[p].id, ...records[p].doc }))
+        .sort((x, y) => cmp(x[order], y[order]) || cmp(x.id, y.id)))),
+      doc: (path, cb) => watch(() => cb(entry(path)?.doc || null)),
+    };
+  };
+
+  // A URL the page is willing to reach for: one on the page's own origin. A path relative to the page resolves
+  // to that origin, which is the form the local server injects. A javascript: or data: URL has no origin of its
+  // own, so it can never match and is refused here rather than left to what fetch and EventSource happen to do
+  // with it. Only whoever serves the page can set the marker, so this is depth, not the only defence.
+  const sameOrigin = url => {
+    if (typeof url !== 'string') return false;
+    try { const here = new URL(location.href); return new URL(url, here).origin === here.origin; } catch (e) { return false; }
+  };
+
+  (async () => {
+    // Where the page was loaded decides its source. The local server injects __DISPATCH_LOCAL__, naming both its
+    // URLs, into the page it wraps; the artifact never carries it, and could not reach the local API in any case.
+    // Both URLs are checked, because both are used: a marker naming only one of them is not a page it served.
+    const local = window.__DISPATCH_LOCAL__;
+    let adapter = null;
+    if (local && sameOrigin(local.snapshot) && sameOrigin(local.events)) {
+      source = 'the local server';
+      // A server that cannot be reached is said out loud: a board that quietly drew nothing would read as a board
+      // with nothing on it.
+      try { adapter = await localAdapter(local); } catch (e) { console.warn('Board: the local server could not be reached', e); }
+    } else {
+      // A store that refuses to open is shown as out of reach, like an absent one, rather than left reading Connecting.
+      let db = null;
+      try { db = await window.claude?.use?.('db'); } catch (e) { console.warn('Board: the live store could not be opened', e); }
+      if (db) adapter = storeAdapter(db);
+    }
+    if (!adapter) { offline = true; renderAll(); $('foot').textContent = `This view cannot reach ${source}, so it shows no data.`; return; }
     const refresh = () => { sync(); fillPickers(); apply(); };
     const watched = new Set();
     const watchStatus = path => {
       if (!path || watched.has(path)) return;
       watched.add(path);
-      db.doc(path).onSnapshot(snap => { statuses[path] = snap.exists ? snap.data() : null; apply(); }, fail);
+      adapter.doc(path, doc => { statuses[path] = doc; apply(); });
     };
-    db.collection('sessions').orderBy('last').onSnapshot(snap => { sessions = all(snap).reverse(); gotSessions = true; refresh(); }, fail);
-    db.collection('projects').orderBy('order').onSnapshot(snap => {
-      projects = all(snap);
+    adapter.collection('sessions', 'last', docs => { sessions = docs.reverse(); gotSessions = true; refresh(); });
+    adapter.collection('projects', 'order', docs => {
+      projects = docs;
       gotProjects = true;
       projects.forEach(p => watchStatus(p.statusDoc));
       refresh();
-    }, fail);
-    db.collection('runs').orderBy('seq').onSnapshot(snap => { allRuns = all(snap); gotRuns = true; apply(); }, fail);
-    db.collection('projectTabs').orderBy('generatedAt').onSnapshot(snap => { tabDocs = Object.fromEntries(all(snap).map(d => [d.id, d])); apply(); }, fail);
-    db.doc('catalogue/index').onSnapshot(snap => { catalogue = snap.exists ? snap.data() : null; gotCatalogue = true; apply(); }, fail);
-    db.doc('meta/lastRefresh').onSnapshot(snap => { lastRefresh = snap.exists ? snap.data() : null; apply(); }, fail);
+    });
+    adapter.collection('runs', 'seq', docs => { allRuns = docs; gotRuns = true; apply(); });
+    adapter.collection('projectTabs', 'generatedAt', docs => { tabDocs = Object.fromEntries(docs.map(d => [d.id, d])); apply(); });
+    adapter.doc('catalogue/index', doc => { catalogue = doc; gotCatalogue = true; apply(); });
+    adapter.doc('meta/lastRefresh', doc => { lastRefresh = doc; apply(); });
   })();
 })();
 </script>
