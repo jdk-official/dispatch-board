@@ -560,6 +560,19 @@ class MissingSources(ReposCase):
         self.r.run([project('app', root)])
         self.assertFalse(os.path.exists(legacy))
 
+    def test_a_document_outside_tabs_is_never_deleted_even_for_a_dropped_project(self):
+        # projectTabs/<pid>.findings.json is export_sessions.py's document, not this exporter's: it must
+        # survive a run of export_board.py on its own, whether the project is still configured or was dropped.
+        root = self.r.repo('app', FULL)
+        self.r.run([project('app', root)])
+        folder = os.path.join(self.r.out, 'projectTabs')
+        for pid in ('app', 'other'):
+            with io.open(os.path.join(folder, pid + '.findings.json'), 'w', encoding='utf-8') as f:
+                f.write('{"items": {}}')
+        self.assertEqual(self.r.run([project('app', root)]), 0)
+        self.assertIn('app.findings', self.r.tabs())
+        self.assertIn('other.findings', self.r.tabs())
+
 
 # ---------------------------------------------------------------- pull requests, from a fake gh
 

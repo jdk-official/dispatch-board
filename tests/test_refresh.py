@@ -85,8 +85,8 @@ class Plan(unittest.TestCase):
     def test_first_plan_sets_everything_and_the_status(self):
         p = rf.plan(self.o.out)
         k = keys(p)
-        self.assertEqual(len(k), 1 + 5 + 2 + 4 + 1 + 1)
-        self.assertEqual([w['op'] for w in writes(p)].count('set'), 13)
+        self.assertEqual(len(k), 1 + 6 + 2 + 4 + 1 + 1)
+        self.assertEqual([w['op'] for w in writes(p)].count('set'), 14)
         self.assertEqual([w['op'] for w in writes(p)].count('update'), 1)
         self.assertIn(('set', 'projects/p'), k)
         self.assertIn(('set', 'projectTabs/p.spec'), k)
@@ -101,7 +101,7 @@ class Plan(unittest.TestCase):
 
     def test_commit_then_a_quiet_tick_prints_only_the_last_refresh_write(self):
         rf.plan(self.o.out)
-        self.assertEqual(rf.commit(self.o.out), 15)  # 12 documents, p's live flag and document list, plus meta/lastRefresh
+        self.assertEqual(rf.commit(self.o.out), 16)  # 13 documents (p's six tabs among them), p's live flag and document list, plus meta/lastRefresh
         self.assertFalse(os.path.exists(self.o.pending))
         self.assertEqual(keys(rf.plan(self.o.out)), {LAST})
 

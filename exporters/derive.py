@@ -42,6 +42,14 @@ NEGATED = re.compile(r"(?:\b(?:not|never|no|cannot|without|unable\s+to|rather\s+
                      r"(?:[\s-]+(?:be|been|being|yet|fully|actually|really))*[\s*`-]*$", re.I)
 RATE_LIMIT = re.compile(r"hit your (?:session|weekly|usage) limit", re.I)
 FIX = re.compile(r'\b(review|LOWs?|notes|fix(?:es)?|CR-\d)', re.I)
+# A review-lane run's structured findings: the LAST fenced code block at the very end of its result. Split in
+# two so findings_of() can try each fence in turn and keep the rightmost match: FENCE_START finds every fence
+# opening, FENCE_JSON (matched from just after one, with re.Pattern.match's pos) requires the greedy body --
+# greedy so a finding's own nested braces stay inside the capture -- to reach the final closing fence and the
+# end of the text. An earlier fence's opening also satisfies this (its greedy body can swallow everything up to
+# the real block), so trying every opening left to right and keeping the last success lands on the real one.
+FENCE_START = re.compile(r'```(?:json)?\s*')
+FENCE_JSON = re.compile(r'(\{[\s\S]*\})\s*```\s*\Z')
 # Obvious credentials in prompt text. The long-run rule needs a digit, an upper- and a lower-case letter
 # and leaves out "/", so ordinary words, paths and commit hashes under 32 characters survive.
 SECRETS = [
@@ -482,6 +490,13 @@ def agent_row(state, aid, meta, sub, age, window):
            'fix': lane in BUILD_LANES and bool(FIX.search(label)), 'agentType': sub['agentType']}
     if lane == 'other':
         row['agent'] = short or 'agent'
+    if lane == 'cr':
+        # Kept only for findings_doc(), never published on the run document: run_doc() copies an explicit key list.
+        # found is None when the result carried no parseable findings block; hasFindingsBlock lets findings_doc()
+        # tell that apart from a round that reported an empty findings list.
+        found = findings_of((fin or {}).get('result') or '')
+        row['findings'] = found or []
+        row['hasFindingsBlock'] = found is not None
     return row
 
 
@@ -620,6 +635,78 @@ def link(rows):
             for x in batch:
                 x['group'] = chr(64 + n)
         batch = [r] if r else []
+
+
+def findings_of(text):
+    """The structured findings a review-lane run's result ends with: the last fenced code block, when it
+    parses as an object holding a "findings" list (the catalog's code-reviewer schema). Each finding's id,
+    severity, title, file:line (its subject's id) and remediation are kept, coerced to strings.
+    None -- not an error -- when the result carries no such block: no fence at the end, one that fails to
+    parse, or an object without a findings list. A list, possibly empty, when a block was found: the round
+    itself reported no findings, which is a real state (nothing open) rather than an unreadable one."""
+    m = None
+    for start in FENCE_START.finditer(text):
+        cand = FENCE_JSON.match(text, start.end())
+        if cand:
+            m = cand  # keep the rightmost fence whose body reaches the end of the text
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(1))
+    except (ValueError, RecursionError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get('findings'), list):
+        return None
+    out = []
+    for f in data['findings']:
+        if not isinstance(f, dict):
+            continue
+        fid = str(f.get('id', ''))
+        if not fid:
+            continue  # every id-less finding would coerce to "" and collapse into one entry in findings_doc()
+        subject = f.get('subject') if isinstance(f.get('subject'), dict) else {}
+        out.append({'id': fid, 'severity': str(f.get('severity', '')),
+                    'title': str(f.get('title', '')), 'location': str(subject.get('id', '')),
+                    'remediation': str(f.get('remediation', ''))})
+    return out
+
+
+def findings_doc(rows):
+    """The findings ledger for one project's runs: {PBI id: {open, resolved, rounds, roundsToGo?}}. rows are
+    that project's runs in read order (chronological); only a finished cr-lane run (kind go/changes/nogo)
+    with a PBI id is a code-review round -- a run still running or cut off before finishing has not produced
+    one yet, and a round whose result carried no parseable findings block (hasFindingsBlock False: this
+    repo's own reviewers routinely write findings to a file and reply in prose) still counts as a round but
+    is never authoritative for what is open, so it cannot wrongly resolve findings it could not read. A
+    finding present in the most recently read round that DID carry a block is open; one seen only in an
+    earlier round is resolved, so a round that lists a previous round's finding again keeps it open. Each
+    finding also carries round (1-based, first seen) and lastSeen (1-based, most recently seen), so the page
+    can show its age. roundsToGo is the round, 1-based, that first reached GO; left out while none has."""
+    rounds = {}
+    for r in rows:
+        if r.get('lane') != 'cr' or r.get('kind') not in ('go', 'changes', 'nogo') or not r.get('pbis'):
+            continue
+        for code in r['pbis']:
+            rounds.setdefault('PBI-' + code, []).append(r)
+    items = {}
+    for pbi, runs in rounds.items():
+        with_block = [r for r in runs if r.get('hasFindingsBlock')]
+        latest_ids = {f['id'] for f in with_block[-1]['findings']} if with_block else set()
+        seen, first_round, last_round = {}, {}, {}
+        for i, r in enumerate(runs, 1):
+            for f in r.get('findings') or []:
+                seen[f['id']] = f  # a finding's most recently read text wins if it recurs
+                first_round.setdefault(f['id'], i)
+                last_round[f['id']] = i
+        with_round = lambda f: dict(f, round=first_round[f['id']], lastSeen=last_round[f['id']])
+        item = {'open': sorted((with_round(f) for fid, f in seen.items() if fid in latest_ids), key=lambda f: f['id']),
+                'resolved': sorted((with_round(f) for fid, f in seen.items() if fid not in latest_ids), key=lambda f: f['id']),
+                'rounds': len(runs)}
+        go_at = next((i + 1 for i, r in enumerate(runs) if r.get('kind') == 'go'), None)
+        if go_at is not None:
+            item['roundsToGo'] = go_at
+        items[pbi] = item
+    return items
 
 
 def place_manual(rows, manual):

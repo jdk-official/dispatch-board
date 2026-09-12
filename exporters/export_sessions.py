@@ -44,6 +44,7 @@ is unusable, a sessions or runs value is not its documented type or a runs.manua
 linked session's transcript cannot be found.
 """
 import glob, io, json, os, shutil, sys, tempfile, time
+from datetime import datetime, timezone
 
 import board_config
 import derive
@@ -56,7 +57,7 @@ from derive import (  # noqa: F401
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(HERE, 'board.config.json')
-PARSER_VERSION = 5  # bump when parsing changes, to drop cached results
+PARSER_VERSION = 6  # bump when parsing changes, to drop cached results
 
 
 # (block, key, check, what the value must be) for each typed value under sessions and runs; board_config.manual
@@ -286,6 +287,26 @@ def main(config=None, out_dir=None, projects_root=None, now=None):
     for order, p in enumerate(st['projects']):
         write_json(os.path.join(out, 'projects', p['id'] + '.json'),
                    derive.project_doc(p, order, results, counts, running, st['project_of']))
+    # The findings ledger, one projectTabs/<id>.findings document per project that has a code-review round: it
+    # reuses export_board.py's projectTabs folder (created here too, since this exporter can run on its own).
+    # This exporter owns that document's whole lifecycle -- write and delete -- rather than relying on
+    # export_board.py's folder wipe: export_board.py never touches a tab outside its own TABS, so a project
+    # with no code-review round yet, or one that has lost its only round, must have its stale file removed here.
+    tabs_dir = os.path.join(out, 'projectTabs')
+    os.makedirs(tabs_dir, exist_ok=True)
+    kept_findings = set()
+    for p in st['projects']:
+        items = derive.findings_doc([r for r in rows if st['project_of'].get(r['session']) == p['id']])
+        name = p['id'] + '.findings.json'
+        if items:
+            write_json(os.path.join(tabs_dir, name), {
+                'source': "Claude Code transcripts for this project's code-reviewer runs",
+                'generatedAt': datetime.fromtimestamp(t0, timezone.utc).isoformat(timespec='seconds'),
+                'items': items})
+            kept_findings.add(name)
+    for name in os.listdir(tabs_dir):
+        if name.endswith('.findings.json') and name not in kept_findings:
+            os.remove(os.path.join(tabs_dir, name))
     legacy = os.path.join(out, 'usage.json')  # replaced by the usage block in each session document
     if os.path.exists(legacy):
         os.remove(legacy)

@@ -1287,6 +1287,52 @@ const drawnOffline = (e, why) => {
   noPageErrors('meta/lastRefresh header checks');
 }
 
+// ---- 20. the findings ledger: AC-77 (two review rounds, one finding still open) and the empty case
+{
+  const f = (id, extra) => ({ id, severity: 'HIGH', title: 'Bug ' + id, location: 'app.py:' + id, remediation: 'Fix ' + id, round: 1, lastSeen: 1, ...extra });
+  const FINDINGS = {
+    id: 'dispatch-board.findings', generatedAt: now, source: 'x',
+    items: { 'PBI-001': { open: [f('F2', { lastSeen: 2 })], resolved: [f('F1'), f('F3')], rounds: 2 } },
+  };
+  const load = async tabs => {
+    const e = env({ 'board-view': 'p:dispatch-board' });
+    await tick();
+    e.fire('c:projects', PROJECTS); e.fire('c:sessions', SESSIONS); e.fire('c:runs', RUNS); e.fire('c:projectTabs', tabs);
+    return e;
+  };
+
+  const e = await load([...TABS, FINDINGS]);
+  const H = e.el('panel-findings').innerHTML;
+  assert.deepEqual(tileOf(H, 'Open findings'), ['1', 'still to fix']);
+  assert.deepEqual(tileOf(H, 'Resolved findings'), ['2', 'fixed since they were raised']);
+  assert.deepEqual(tileOf(H, 'Work items reviewed'), ['1', '&nbsp;']);
+  assert.deepEqual(tileOf(H, 'Reached GO'), ['0', 'of 1 reviewed']);
+  assert.match(H, /<h3>PBI-001<\/h3><span class="faint">2 review rounds<\/span>/);
+  assert.doesNotMatch(H, /reached GO/, 'no round reached GO yet, so no rounds-to-GO note');
+  const rows = [...H.matchAll(/<tr>(?:(?!<\/tr>)[\s\S])*?<\/tr>/g)].map(m => m[0]).filter(r => r.includes('<span class="id">F'));
+  assert.equal(rows.length, 3, 'F1, F2 and F3 each get one row');
+  const rowOf = id => rows.find(r => r.includes(`<span class="id">${id}</span>`));
+  assert.match(rowOf('F1'), /<span class="tag go">Resolved<\/span>/);
+  assert.match(rowOf('F2'), /<span class="tag changes">Open<\/span>/);
+  assert.match(rowOf('F3'), /<span class="tag go">Resolved<\/span>/);
+  assert.ok(!H.includes('--human') && !H.includes('class="tag human"'), 'the findings ledger never uses --human');
+  assert.match(rowOf('F1'), />Round 1</, 'a finding seen once shows the single round it was raised in');
+  assert.match(rowOf('F2'), />Round 1-2</, 'a finding still open since an earlier round shows its raised-to-last-seen span');
+  ok('findings ledger: AC-77 -- round 1 lists F1, F2, F3 and round 2 lists only F2, so F1 and F3 show resolved, F2 open, 2 rounds so far');
+
+  const withGo = { ...FINDINGS, items: { 'PBI-001': { ...FINDINGS.items['PBI-001'], roundsToGo: 2 } } };
+  const g = await load([...TABS, withGo]);
+  const G = g.el('panel-findings').innerHTML;
+  assert.match(G, /<span class="faint">2 review rounds · reached GO at round 2<\/span>/);
+  assert.deepEqual(tileOf(G, 'Reached GO'), ['1', 'of 1 reviewed']);
+  ok('findings ledger: a work item that reached GO shows its rounds-to-GO');
+
+  const empty = await load(TABS);  // no dispatch-board.findings document at all
+  assert.match(empty.el('panel-findings').innerHTML, /^<div class="empty">[^<]*<\/div>$/);
+  noPageErrors('the findings tab with no findings document');
+  ok('findings ledger: with no findings document the view says so and logs no console error');
+}
+
 assert.deepEqual([...everySub].filter(k => k === 'c:tabs' || k.startsWith('d:tabs/')), [], 'a retired tabs/* subscription');
 assert.ok(everySub.has('c:projectTabs'), 'the guard saw the page\'s real subscriptions');
 ok('the page never subscribes to the retired tabs collection or a tabs/* document');

@@ -4,8 +4,11 @@
 
 For each project, reads the solution spec, PRD, brief, ADRs, local review notes and git of its repository
 (paths from the project's docs, relative to its repoPath) and writes out/projectTabs/<projectId>.<tab>.json
-for tab in spec, assumptions, decisions, backlog and git, replacing that folder. A tab is built only when
-its source exists: spec, assumptions, decisions and backlog all need the spec, git needs a git repository.
+for tab in spec, assumptions, decisions, backlog and git, replacing only those five tabs (TABS) of that
+folder -- a document another exporter writes there, such as export_sessions.py's <projectId>.findings, is
+outside TABS and is never touched here; that exporter owns its own document's whole lifecycle. A tab is
+built only when its source exists: spec, assumptions, decisions and backlog all need the spec, git needs a
+git repository.
 A tab that was exported before but cannot be built now (the repoPath has moved, the spec was renamed, git
 is unavailable) keeps its last export, with a warning on stderr, so one broken project cannot blank its
 tabs on the board while the others refresh. The kept document gets carriedSince, the UTC time the carry
@@ -21,7 +24,7 @@ the build repo, so they are kept by hand in projects/<projectId>.json in this re
 build state. A malformed one stops the export and leaves out/ as it was, so a typo cannot reset every PBI
 to "not started".
 """
-import io, json, os, re, shutil, subprocess, sys
+import io, json, os, re, subprocess, sys
 from datetime import datetime, timezone
 
 import board_config
@@ -271,8 +274,15 @@ def main(config=None, out_dir=None, data_dir=None, now=None, run=None):
         print('export_board: %s; nothing exported' % e, file=sys.stderr)
         return 2
 
-    shutil.rmtree(folder, ignore_errors=True)
-    os.makedirs(folder)
+    # Only the tabs this exporter owns (TABS) are removed, and only when they are not about to be (re)written
+    # below -- a project dropped from the config, or one whose kept-bytes read above found nothing to keep. A
+    # document outside TABS, such as export_sessions.py's <projectId>.findings, is never this exporter's to
+    # delete: the folder is shared, but each exporter manages only its own tab suffix's lifecycle.
+    os.makedirs(folder, exist_ok=True)
+    keep = {'%s.%s.json' % (pid, tab) for pid, docs, kept in exported for tab in list(docs) + list(kept)}
+    for name in os.listdir(folder):
+        if name.endswith('.json') and name[:-len('.json')].rsplit('.', 1)[-1] in TABS and name not in keep:
+            os.remove(os.path.join(folder, name))
     for pid, docs, kept in exported:
         for key, body in docs.items():
             with io.open(os.path.join(folder, '%s.%s.json' % (pid, key)), 'wb') as f:

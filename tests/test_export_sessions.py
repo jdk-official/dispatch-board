@@ -965,6 +965,157 @@ class Projects(TreeCase):
         self.assertIsNone(self.t.docs('sessions')[SID]['project'])
 
 
+def finding(fid, loc='app.py:1'):
+    return {'id': fid, 'severity': 'HIGH', 'title': 't-' + fid, 'subject': {'type': 'file', 'id': loc, 'name': 'x'}, 'remediation': 'fix-' + fid}
+
+
+def review_result(verdict, *fids):
+    """A code-reviewer's result: the headline verdict, then its structured findings, as its real output ends."""
+    body = {'schema_version': '1', 'audit': {'agent': 'code-reviewer', 'verdict': verdict}, 'findings': [finding(f) for f in fids]}
+    return '%s\n\nsome prose.\n\n```json\n%s\n```' % (verdict, json.dumps(body))
+
+
+def review_meta(tool_id, pbi='PBI-001'):
+    return {'agentType': 'review-agents:code-reviewer', 'description': 'Review ' + pbi, 'toolUseId': tool_id}
+
+
+def review_result_no_block(verdict):
+    """A code-reviewer's real, findings-file workflow: it writes findings to a file and replies in prose, so
+    its result carries no fenced JSON at all."""
+    return '%s. Findings written to docs/backlog/reviews/PBI-001/findings.json.' % verdict
+
+
+class Findings(TreeCase):
+    def review_meta(self, tool_id):
+        return review_meta(tool_id)
+
+    def test_ac77_two_rounds_open_and_resolved(self):
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_r1'), notify(10, 'acr1', result=review_result('NO-GO', 'F1', 'F2', 'F3')),
+                             launch(11, 'toolu_r2'), notify(20, 'acr2', result=review_result('GO-WITH-CONDITIONS', 'F2'))])
+        self.t.agent(SID, 'acr1', [reply(2, 'a', text='reviewing')], self.review_meta('toolu_r1'))
+        self.t.agent(SID, 'acr2', [reply(12, 'b', text='reviewing')], self.review_meta('toolu_r2'))
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        item = self.t.docs('projectTabs')['app.findings']['items']['PBI-001']
+        self.assertEqual(sorted(f['id'] for f in item['open']), ['F2'])
+        self.assertEqual(sorted(f['id'] for f in item['resolved']), ['F1', 'F3'])
+        self.assertEqual(item['rounds'], 2)
+        self.assertEqual(item['roundsToGo'], 2)
+
+    def test_findings_document_has_no_generated_at_or_source_missing(self):
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_r1'), notify(10, 'acr1', result=review_result('GO'))])
+        self.t.agent(SID, 'acr1', [reply(2, 'a', text='reviewing')], self.review_meta('toolu_r1'))
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        doc = self.t.docs('projectTabs')['app.findings']
+        self.assertIn('generatedAt', doc)
+        self.assertEqual(doc['items']['PBI-001'], {'open': [], 'resolved': [], 'rounds': 1, 'roundsToGo': 1})
+
+    def test_no_findings_document_without_a_review_round(self):
+        self.t.basic()
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        self.assertNotIn('app.findings', self.t.docs('projectTabs'))
+
+    def test_run_documents_carry_no_findings_field(self):
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_r1'), notify(10, 'acr1', result=review_result('NO-GO', 'F1'))])
+        self.t.agent(SID, 'acr1', [reply(2, 'a', text='reviewing')], self.review_meta('toolu_r1'))
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        self.assertNotIn('findings', self.t.docs('runs')['acr1'])
+
+    def test_a_cache_from_the_previous_parser_version_is_not_reused(self):
+        # A cache written before PARSER_VERSION's bump has cr-lane rows with no "findings" key at all (the
+        # field parser 5 never wrote). Its signature must not match, so the session is re-parsed rather than
+        # replaying a findings-free round that would publish F1 as resolved.
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_r1'), notify(10, 'acr1', result=review_result('NO-GO', 'F1'))])
+        self.t.agent(SID, 'acr1', [reply(2, 'a', text='reviewing')], self.review_meta('toolu_r1'))
+        cfg = pconfig(proj('app', SID))
+        self.assertEqual(self.t.run(cfg), 0)
+        cache_path = os.path.join(self.t.out, '.cache', 'sessions.json')
+        with io.open(cache_path, encoding='utf-8') as f:
+            cache = json.load(f)
+        cache[SID]['sig'][0] = es.PARSER_VERSION - 1  # as parser 5 would have signed it
+        for row in cache[SID]['result']['rows']:
+            row.pop('findings', None)
+            row.pop('hasFindingsBlock', None)
+        with io.open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump(cache, f)
+        self.assertEqual(self.t.run(cfg), 0)
+        item = self.t.docs('projectTabs')['app.findings']['items']['PBI-001']
+        self.assertEqual([f['id'] for f in item['open']], ['F1'])
+        self.assertEqual(item['resolved'], [])
+
+    def test_a_nogo_round_with_no_findings_block_does_not_resolve_earlier_findings(self):
+        # This repo's own code-reviewer is told to write findings to a file and reply in prose, so a real
+        # NO-GO round routinely carries no JSON block at all.
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_r1'), notify(10, 'acr1', result=review_result('NO-GO', 'F1')),
+                             launch(11, 'toolu_r2'), notify(20, 'acr2', result=review_result_no_block('NO-GO'))])
+        self.t.agent(SID, 'acr1', [reply(2, 'a', text='reviewing')], self.review_meta('toolu_r1'))
+        self.t.agent(SID, 'acr2', [reply(12, 'b', text='reviewing')], self.review_meta('toolu_r2'))
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        item = self.t.docs('projectTabs')['app.findings']['items']['PBI-001']
+        self.assertEqual([f['id'] for f in item['open']], ['F1'])
+        self.assertEqual(item['resolved'], [])
+        self.assertEqual(item['rounds'], 2)
+
+    def test_findings_carry_their_first_and_last_seen_round(self):
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_r1'), notify(10, 'acr1', result=review_result('NO-GO', 'F1', 'F2')),
+                             launch(11, 'toolu_r2'), notify(20, 'acr2', result=review_result('GO-WITH-CONDITIONS', 'F2'))])
+        self.t.agent(SID, 'acr1', [reply(2, 'a', text='reviewing')], self.review_meta('toolu_r1'))
+        self.t.agent(SID, 'acr2', [reply(12, 'b', text='reviewing')], self.review_meta('toolu_r2'))
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        item = self.t.docs('projectTabs')['app.findings']['items']['PBI-001']
+        f1 = next(f for f in item['resolved'] if f['id'] == 'F1')
+        f2 = next(f for f in item['open'] if f['id'] == 'F2')
+        self.assertEqual((f1['round'], f1['lastSeen']), (1, 1))
+        self.assertEqual((f2['round'], f2['lastSeen']), (1, 2))
+
+    def test_a_review_naming_two_pbis_is_credited_to_both(self):
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_r1'),
+                             notify(10, 'acr1', result=review_result('NO-GO', 'F1'))])
+        self.t.agent(SID, 'acr1', [reply(2, 'a', text='reviewing')],
+                     {'agentType': 'review-agents:code-reviewer', 'description': 'Review PBI-001/004', 'toolUseId': 'toolu_r1'})
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        items = self.t.docs('projectTabs')['app.findings']['items']
+        self.assertEqual(set(items), {'PBI-001', 'PBI-004'})
+        for pbi in ('PBI-001', 'PBI-004'):
+            self.assertEqual([f['id'] for f in items[pbi]['open']], ['F1'])
+            self.assertEqual(items[pbi]['rounds'], 1)
+
+
+class Ownership(TreeCase):
+    """The findings document's lifecycle (CR-011-4): export_sessions.py, not the folder's incidental wipe by
+    export_board.py, owns writing and removing its own projectTabs/<pid>.findings.json."""
+
+    def make_round(self):
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_r1'), notify(10, 'acr1', result=review_result('NO-GO', 'F1'))])
+        self.t.agent(SID, 'acr1', [reply(2, 'a', text='reviewing')], review_meta('toolu_r1'))
+
+    def test_stale_findings_document_is_removed_once_the_project_has_no_round(self):
+        self.make_round()
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        self.assertIn('app.findings', self.t.docs('projectTabs'))
+        # The session is no longer linked to the project, so it carries no round for "app" any more.
+        self.assertEqual(self.t.run(pconfig(proj('app'))), 0)
+        self.assertNotIn('app.findings', self.t.docs('projectTabs'))
+
+    def test_export_board_run_alone_does_not_delete_the_findings_document(self):
+        import export_board as eb
+        self.make_round()
+        cfg = pconfig(proj('app', SID))
+        self.assertEqual(self.t.run(cfg), 0)
+        self.assertIn('app.findings', self.t.docs('projectTabs'))
+        self.assertEqual(eb.main(config=cfg, out_dir=self.t.out, data_dir=self.t.tmp), 0)
+        self.assertIn('app.findings', self.t.docs('projectTabs'))
+
+    def test_running_the_exporters_in_refresh_order_leaves_exactly_one_findings_document(self):
+        import export_board as eb
+        self.make_round()
+        cfg = pconfig(proj('app', SID))
+        # refresh.py's order: export_board.py first, export_sessions.py second, sharing out/projectTabs.
+        self.assertEqual(eb.main(config=cfg, out_dir=self.t.out, data_dir=self.t.tmp), 0)
+        self.assertEqual(self.t.run(cfg), 0)
+        found = [n for n in os.listdir(os.path.join(self.t.out, 'projectTabs')) if n.endswith('.findings.json')]
+        self.assertEqual(found, ['app.findings.json'])
+
+
 class LegacyProjects(TreeCase):
     def test_build_block_is_one_project(self):
         self.t.basic()

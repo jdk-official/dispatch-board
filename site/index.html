@@ -233,6 +233,7 @@
       <button role="tab" id="tab-decisions" aria-controls="panel-decisions" data-tab="decisions">Decisions &amp; not worked out</button>
       <button role="tab" id="tab-backlog" aria-controls="panel-backlog" data-tab="backlog">Backlog &amp; status <span class="count warn" id="c-backlog" hidden></span></button>
       <button role="tab" id="tab-git" aria-controls="panel-git" data-tab="git">GitHub details</button>
+      <button role="tab" id="tab-findings" aria-controls="panel-findings" data-tab="findings">Findings ledger</button>
       <button role="tab" id="tab-dispatch" aria-controls="panel-dispatch" data-tab="dispatch" class="grp">Dispatch</button>
       <button role="tab" id="tab-catalogue" aria-controls="panel-catalogue" data-tab="catalogue">Agent catalogue</button>
       <button role="tab" id="tab-usage" aria-controls="panel-usage" data-tab="usage">Claude usage</button>
@@ -249,6 +250,7 @@
   <section role="tabpanel" id="panel-decisions" aria-labelledby="tab-decisions" hidden></section>
   <section role="tabpanel" id="panel-backlog" aria-labelledby="tab-backlog" hidden></section>
   <section role="tabpanel" id="panel-git" aria-labelledby="tab-git" hidden></section>
+  <section role="tabpanel" id="panel-findings" aria-labelledby="tab-findings" hidden></section>
   <section role="tabpanel" id="panel-usage" aria-labelledby="tab-usage" hidden></section>
   <footer><span>Built with Claude Code and the agent-catalog plugins — planning by backlog-delivery, code by engineering-agents, review by review-agents.</span><span id="foot">Live data</span></footer>
 </main>
@@ -310,7 +312,7 @@
     const at = new Date(lastRefresh.at);
     return isNaN(at) ? null : { stale: now - at.getTime() > STALE_MS };
   };
-  const docs = { spec: null, assumptions: null, decisions: null, backlog: null, git: null, usage: null };
+  const docs = { spec: null, assumptions: null, decisions: null, backlog: null, git: null, findings: null, usage: null };
   const lanes = [
     ['orch', 'Orchestrator', 'this session'], ['req', 'requirements-author', 'engineering-agents'],
     ['plan', 'Gate reviewer', 'Plan · pbi-review'], ['cw', 'code-writer', 'engineering-agents'],
@@ -888,6 +890,47 @@
       <div class="panel" data-pulls style="margin-top:16px"><div class="ph"><h3>Pull requests</h3><span class="faint">${prs && prs.length ? `${esc(prs.length)} most recently updated · ${esc(prOpen)} open` : ''}</span></div>${prBody}</div>`;
   }
 
+  // ---------------- findings ledger ----------------
+  function renderFindings() {
+    const d = docs.findings, p = $('panel-findings');
+    if (!d) { p.innerHTML = '<div class="empty">No review round with structured findings has been recorded yet.</div>'; return; }
+    const items = d.items && typeof d.items === 'object' ? d.items : {};
+    const ids = Object.keys(items).sort();
+    const openCount = id => (Array.isArray(items[id].open) ? items[id].open : []).length;
+    const resolvedCount = id => (Array.isArray(items[id].resolved) ? items[id].resolved : []).length;
+    const openTotal = ids.reduce((a, id) => a + openCount(id), 0), resolvedTotal = ids.reduce((a, id) => a + resolvedCount(id), 0);
+    const wentGo = ids.filter(id => items[id].roundsToGo != null).length;
+    // A finding's age in rounds: the round it was first raised, and, when it was seen again since, the last
+    // round it was still listed in.
+    const roundLabel = f => {
+      const first = Number(f.round) || 0;
+      if (!first) return '—';
+      const last = Number(f.lastSeen) || first;
+      return last > first ? `Round ${first}-${last}` : `Round ${first}`;
+    };
+    const findingRow = (f, open) => `<tr><td><span class="id">${esc(f.id)}</span></td><td class="muted">${esc(f.severity) || '—'}</td>`
+      + `<td class="wide">${md(f.title)}${f.location ? `<div class="sub id">${esc(f.location)}</div>` : ''}</td>`
+      + `<td class="wide muted">${md(f.remediation)}</td><td class="muted">${esc(roundLabel(f))}</td>`
+      + `<td><span class="tag ${open ? 'changes' : 'go'}">${open ? 'Open' : 'Resolved'}</span></td></tr>`;
+    const itemPanel = id => {
+      const it = items[id] || {}, open = Array.isArray(it.open) ? it.open : [], resolved = Array.isArray(it.resolved) ? it.resolved : [];
+      const rounds = Number(it.rounds) || 0, sub = `${rounds} review round${rounds === 1 ? '' : 's'}` + (it.roundsToGo != null ? ` · reached GO at round ${esc(it.roundsToGo)}` : '');
+      return `<div class="panel" style="margin-bottom:16px"><div class="ph"><h3>${esc(id)}</h3><span class="faint">${sub}</span></div>
+        <div class="pb flush scroll"><table><thead><tr><th>Finding</th><th>Severity</th><th>What's wrong</th><th>Remediation</th><th>Round</th><th>Status</th></tr></thead><tbody>
+        ${open.map(f => findingRow(f, true)).join('') + resolved.map(f => findingRow(f, false)).join('') || '<tr><td colspan="6" class="muted">No findings recorded.</td></tr>'}
+        </tbody></table></div></div>`;
+    };
+    p.innerHTML = `
+      <h2>Review findings ledger</h2>${src(d)}
+      <div class="tiles">
+        ${tile('Work items reviewed', ids.length, '', 'var(--rule-2)')}
+        ${tile('Open findings', openTotal, 'still to fix', 'var(--changes)')}
+        ${tile('Resolved findings', resolvedTotal, 'fixed since they were raised', 'var(--go)')}
+        ${tile('Reached GO', wentGo, `of ${ids.length} reviewed`, 'var(--go)')}
+      </div>
+      ${ids.length ? ids.map(itemPanel).join('') : '<div class="empty">No review round with structured findings has been recorded yet.</div>'}`;
+  }
+
   // ---------------- Claude usage ----------------
   const fmtTok = n => { n = Number(n) || 0; return n >= 1e6 ? (n / 1e6).toFixed(n >= 1e8 ? 0 : 1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(Math.round(n)); };
   const niceCeil = v => { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p; return 10 * p; };
@@ -1030,7 +1073,7 @@
 
   // Each tab is drawn on its own, so a tab that cannot read the data it was given leaves the others drawn.
   const RENDERERS = [[renderHeader, null], [renderOverview, 'overview'], [renderDispatch, 'dispatch'], [renderCatalogue, 'catalogue'], [renderSpec, 'spec'],
-    [renderAssumptions, 'assumptions'], [renderDecisions, 'decisions'], [renderBacklog, 'backlog'], [renderGit, 'git'], [renderUsage, 'usage']];
+    [renderAssumptions, 'assumptions'], [renderDecisions, 'decisions'], [renderBacklog, 'backlog'], [renderGit, 'git'], [renderFindings, 'findings'], [renderUsage, 'usage']];
   // The store may not change for hours while the board sits idle, yet the clock alone changes two things drawn: whether
   // the forecast shown has gone by, and whether the session shown is past its running window (the header and the
   // "Running now" tiles). The minute timer compares this against what was last drawn and redraws once when it differs.
@@ -1053,7 +1096,7 @@
   }
 
   // ---------------- project picker and session filter ----------------
-  const PROJECT_TABS = ['spec', 'assumptions', 'decisions', 'backlog', 'git'];
+  const PROJECT_TABS = ['spec', 'assumptions', 'decisions', 'backlog', 'git', 'findings'];
   const viewOf = p => 'p:' + p.id;
   const projectLive = p => p.running > 0 || sessions.some(s => s.project === p.id && sessionLive(s));
   const views = () => [...projects.map(viewOf), ...(unlinked().length ? [OTHER_VIEW] : [])];
