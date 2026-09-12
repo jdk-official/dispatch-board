@@ -8,7 +8,8 @@ export_board.py always read for it.
 
 catalogue() reads the "catalogue" block: where export_catalogue.py finds the agent-catalog marketplace clone
 and the installed-plugins file. manual() reads runs.manual: the rows for work the orchestrator did in-line.
-local() reads the "local" block: where the local-first app's SQLite database lives.
+local() reads the "local" block: where the local-first app's SQLite database lives and which port its
+server binds.
 """
 import os, re
 
@@ -66,18 +67,23 @@ def catalogue(cfg):
 
 
 LOCAL_DATABASE = 'out/local/board.db'  # relative paths are resolved against the repository root by their reader
+LOCAL_PORT = 8765
 
 
 def local(cfg):
-    """{"databasePath": <str>} from the local block, with the default filled in and a leading ~ expanded. Raises
-    ValueError for a block that is not an object, or a path that is not a string or is blank."""
+    """{"databasePath": <str>, "port": <int>} from the local block, with the defaults filled in and a leading ~
+    expanded. Raises ValueError for a block that is not an object, a path that is not a string or is blank, or a
+    port that is not a whole number from 1 to 65535 (a bool included, since True is an int in Python)."""
     block = cfg.get('local', {})
     if not isinstance(block, dict):
         raise ValueError('"local" must be an object, not %s' % type(block).__name__)
     value = block.get('databasePath', LOCAL_DATABASE)
     if not isinstance(value, str) or not value.strip():
         raise ValueError('local.databasePath must be a non-empty string, not %r' % (value,))
-    return {'databasePath': os.path.expanduser(value)}
+    port = block.get('port', LOCAL_PORT)
+    if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
+        raise ValueError('local.port must be a whole number from 1 to 65535, not %r' % (port,))
+    return {'databasePath': os.path.expanduser(value), 'port': port}
 
 
 def legacy(cfg):
