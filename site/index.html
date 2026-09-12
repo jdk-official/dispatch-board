@@ -34,6 +34,7 @@
   p { margin: 0; }
   .muted { color: var(--ink-2); }
   .faint { color: var(--ink-3); font-size: 12px; }
+  .faint.stale { color: var(--changes); font-weight: 600; }
   .lead { color: var(--ink-2); max-width: 78ch; margin: 0 0 18px; }
 
   /* ---------- app bar ---------- */
@@ -220,6 +221,7 @@
         <span class="crumb" id="crumb" hidden></span>
       </div>
       <div class="right">
+        <span class="faint" id="asOf"></span>
         <span class="faint updated" id="updated"></span>
         <span class="status" id="status"><i></i><span id="statusText">Connecting</span></span>
       </div>
@@ -296,6 +298,18 @@
   // view is "p:<projectId>" or "other"; sel is the session filter ('' = all of the project's sessions).
   let allRuns = [], runs = [], sessions = [], projects = [], tabDocs = {}, statuses = {}, view = null, sel = '';
   let gotSessions = false, gotProjects = false, gotRuns = false, gotCatalogue = false, loaded = false, offline = false, status = null, catalogue = null;
+  let lastRefresh = null;
+  // The board counts its data stale more than this long after the refresher's last recorded run.
+  const STALE_MS = 20 * 60000;
+  // null when there is no meta/lastRefresh document, or its "at" cannot be parsed as a time: the header then
+  // shows no "data as of" text and never throws, so a missing or malformed document logs no error.
+  // "at" must be a string before it reaches Date: new Date() otherwise coerces null, 0 and true to
+  // valid epoch dates, which would render a false "data as of 1970" header for a corrupt record.
+  const asOfInfo = now => {
+    if (!lastRefresh || typeof lastRefresh.at !== 'string') return null;
+    const at = new Date(lastRefresh.at);
+    return isNaN(at) ? null : { stale: now - at.getTime() > STALE_MS };
+  };
   const docs = { spec: null, assumptions: null, decisions: null, backlog: null, git: null, usage: null };
   const lanes = [
     ['orch', 'Orchestrator', 'this session'], ['req', 'requirements-author', 'engineering-agents'],
@@ -363,6 +377,9 @@
     const upd = p ? status?.updatedAt : cur()?.last, branch = docs.git?.branch || p?.branch;
     $('statusText').textContent = !loaded ? (offline ? 'Offline' : 'Connecting') : p ? (live ? 'Building' : (status?.title || 'Idle')) : (live ? 'Active' : 'Idle');
     $('updated').textContent = upd ? (p ? 'Updated ' : 'Last activity ') + ago(upd) : '';
+    const info = asOfInfo(now), asOf = $('asOf');
+    asOf.className = 'faint' + (info?.stale ? ' stale' : '');
+    asOf.innerHTML = info ? `data as of ${esc(when(lastRefresh.at))}${info.stale ? ' (stale)' : ''}` : '';
     $('crumb').hidden = !(p && branch);
     if (branch) $('crumb').textContent = branch;
     const you = docs.assumptions?.humanList?.length || 0, cA = $('c-assumptions');
@@ -1140,6 +1157,7 @@
     db.collection('runs').orderBy('seq').onSnapshot(snap => { allRuns = all(snap); gotRuns = true; apply(); }, fail);
     db.collection('projectTabs').orderBy('generatedAt').onSnapshot(snap => { tabDocs = Object.fromEntries(all(snap).map(d => [d.id, d])); apply(); }, fail);
     db.doc('catalogue/index').onSnapshot(snap => { catalogue = snap.exists ? snap.data() : null; gotCatalogue = true; apply(); }, fail);
+    db.doc('meta/lastRefresh').onSnapshot(snap => { lastRefresh = snap.exists ? snap.data() : null; apply(); }, fail);
   })();
 })();
 </script>

@@ -24,6 +24,10 @@ that would delete any projects/ document, one that would delete every pushed pro
 project, or one that would delete catalogue/index, is taken to be a broken export rather than real change:
 refresh.py prints why, exits non-zero and leaves nothing pending, unless --allow-mass-delete is given.
 
+Every plan also sets meta/lastRefresh to {at, writer: "refresher"} (at: the UTC time, to the second, with a Z),
+so the page can say how old its data is even when nothing else changed. It is not project data: it moves no
+status document, is never deleted and never counts toward the mass-delete guard.
+
 Answers to plan-gate questions are recorded only by a human, never by an exporter or an agent. An export that
 holds any document in the answers collection is refused outright: refresh.py names the collection, exits
 non-zero and leaves nothing pending, and no flag lifts that.
@@ -40,6 +44,7 @@ EXPORTERS = ('export_board.py', 'export_sessions.py', 'export_catalogue.py')
 MANAGED = ('runs', 'sessions', 'projects', 'projectTabs', 'catalogue')  # the collections refresh.py sets and deletes
 TABS = ('spec', 'assumptions', 'decisions', 'backlog', 'git')  # projectTabs/<projectId>.<tab>, from export_board.py
 META_STATUS = 'meta/status'
+LAST_REFRESH = 'meta/lastRefresh'
 
 
 class MassDelete(Exception):
@@ -100,9 +105,10 @@ def split(key):
 
 
 def plan(out, allow_mass_delete=False):
-    """Diff out/ against the last push. Returns {batches, live, writes} and records it as pending, or None
-    when nothing changed. Raises MassDelete, leaving nothing pending, for a delete that looks like a broken export,
-    and AnswersRefused, leaving nothing pending whatever allow_mass_delete says, for an export holding an answer."""
+    """Diff out/ against the last push. Returns {batches, live, writes} and records it as pending; the
+    writes always include the set of meta/lastRefresh. Raises MassDelete, leaving nothing pending, for
+    a delete that looks like a broken export, and AnswersRefused, leaving nothing pending whatever
+    allow_mass_delete says, for an export holding an answer."""
     pushed_path, pending_path = os.path.join(out, '.pushed.json'), os.path.join(out, '.pending.json')
     answers = sorted(glob.glob(os.path.join(out, 'answers', '**', '*.json'), recursive=True))
     if answers:
@@ -177,9 +183,16 @@ def plan(out, allow_mass_delete=False):
             op = 'update' if sdoc == META_STATUS or (sdoc + '#live') in pushed else 'set'
             writes.append({'op': op, 'collection': coll, 'doc_id': doc_id, 'file_path': status.replace('\\', '/')})
 
-    if not writes:
-        discard(pending_path)  # an older plan must not be committed as if it were this one
-        return None
+    # The refresher's own run time, so the page can tell a stale board from a quiet one; hence every plan sets it.
+    # It is added after the status documents so none of them counts it as a change, and meta is not a managed
+    # collection, so no plan deletes it and the mass-delete guard never sees it.
+    coll, doc_id = split(LAST_REFRESH)
+    last = os.path.join(out, coll, doc_id + '.json')
+    os.makedirs(os.path.dirname(last), exist_ok=True)
+    save(last, {'at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'writer': 'refresher'})
+    state[LAST_REFRESH] = digest(last)
+    writes.append({'op': 'set', 'collection': coll, 'doc_id': doc_id, 'file_path': last.replace('\\', '/')})
+
     save(pending_path, {'state': state})
     batches = [writes[i:i + BATCH] for i in range(0, len(writes), BATCH)]
     return {'batches': len(batches), 'live': live_any, 'writes': batches[0] if len(batches) == 1 else batches}
@@ -214,9 +227,6 @@ def main(argv=None, out=OUT, run_export=export):
     except (MassDelete, AnswersRefused) as e:
         print('refresh.py: %s' % e, file=sys.stderr)
         return 2
-    if p is None:
-        print('nothing to push')
-        return 0
     print(json.dumps(p, indent=1))
     return 0
 
