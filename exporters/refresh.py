@@ -42,7 +42,9 @@ OUT = os.path.join(HERE, 'out')
 BATCH = 50  # write_db batch limit
 EXPORTERS = ('export_board.py', 'export_sessions.py', 'export_catalogue.py')
 MANAGED = ('runs', 'sessions', 'projects', 'projectTabs', 'catalogue')  # the collections refresh.py sets and deletes
-TABS = ('spec', 'assumptions', 'decisions', 'backlog', 'git')  # projectTabs/<projectId>.<tab>, from export_board.py
+# projectTabs/<projectId>.<tab>: the first five from export_board.py, findings from export_sessions.py -- two
+# writers into one collection, each owning only its own tab suffix's lifecycle.
+TABS = ('spec', 'assumptions', 'decisions', 'backlog', 'git', 'findings')
 META_STATUS = 'meta/status'
 LAST_REFRESH = 'meta/lastRefresh'
 

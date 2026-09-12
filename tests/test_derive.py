@@ -258,6 +258,106 @@ class Sessions(unittest.TestCase):
         self.assertEqual(derive.session_doc(result, 'abcdefgh-1234', dict(st, show_first_prompt=True), 0, 0)['title'], 'hello there')
 
 
+def report(*findings, verdict='NO-GO'):
+    body = {'schema_version': '1', 'audit': {'agent': 'code-reviewer', 'verdict': verdict}, 'findings': [
+        {'id': fid, 'severity': 'HIGH', 'title': 't-' + fid, 'subject': {'type': 'file', 'id': 'app.py:%d' % n, 'name': 'x'},
+         'remediation': 'fix-' + fid} for n, fid in enumerate(findings, 1)]}
+    return 'Some prose.\n\n```json\n%s\n```' % json.dumps(body)
+
+
+class FindingsOf(unittest.TestCase):
+    def test_a_result_with_no_json_yields_none_not_an_error(self):
+        self.assertIsNone(derive.findings_of('Looks fine. GO'))
+
+    def test_a_fenced_block_without_a_findings_list_yields_none(self):
+        self.assertIsNone(derive.findings_of('```json\n{"schema_version": "1", "audit": {}}\n```'))
+
+    def test_malformed_json_is_skipped_without_a_crash(self):
+        self.assertIsNone(derive.findings_of('```json\n{"findings": [\n```'))
+
+    def test_text_after_the_fence_means_it_does_not_end_with_json(self):
+        self.assertIsNone(derive.findings_of(report('F1') + '\nOne more line.'))
+
+    def test_findings_are_read_with_file_line_from_the_subject(self):
+        found = derive.findings_of(report('F1', 'F2'))
+        self.assertEqual([f['id'] for f in found], ['F1', 'F2'])
+        self.assertEqual(found[0], {'id': 'F1', 'severity': 'HIGH', 'title': 't-F1', 'location': 'app.py:1', 'remediation': 'fix-F1'})
+
+    def test_an_empty_findings_list_is_read_as_a_reported_empty_list_not_none(self):
+        # A block was found and it reported nothing: a real "all clear", distinct from no block at all.
+        self.assertEqual(derive.findings_of(report()), [])
+
+    def test_an_earlier_decoy_fenced_object_does_not_swallow_the_real_block(self):
+        text = 'Here is the schema I will use:\n```json\n{"example": true}\n```\n\nNow the findings.\n' + report('F1')
+        found = derive.findings_of(text)
+        self.assertEqual([f['id'] for f in found], ['F1'])
+
+    def test_a_finding_with_no_id_is_dropped_rather_than_collapsed(self):
+        body = {'schema_version': '1', 'audit': {}, 'findings': [
+            {'severity': 'LOW', 'title': 'no id', 'subject': {}, 'remediation': 'x'},
+            {'id': 'F1', 'severity': 'HIGH', 'title': 't-F1', 'subject': {'id': 'app.py:1'}, 'remediation': 'fix-F1'}]}
+        text = 'prose\n```json\n%s\n```' % json.dumps(body)
+        self.assertEqual([f['id'] for f in derive.findings_of(text)], ['F1'])
+
+
+def cr(rid, pbi, findings, kind='changes', start=0, has_block=True):
+    return {'id': rid, 'lane': 'cr', 'pbis': [pbi], 'kind': kind, 'start': ts(start), 'findings': findings,
+            'hasFindingsBlock': has_block}
+
+
+class FindingsDoc(unittest.TestCase):
+    def test_ac77_two_rounds_one_finding_still_open(self):
+        f1, f2, f3 = {'id': 'F1'}, {'id': 'F2'}, {'id': 'F3'}
+        rows = [cr('r1', '001', [f1, f2, f3]), cr('r2', '001', [f2])]
+        doc = derive.findings_doc(rows)
+        item = doc['PBI-001']
+        self.assertEqual(sorted(f['id'] for f in item['open']), ['F2'])
+        self.assertEqual(sorted(f['id'] for f in item['resolved']), ['F1', 'F3'])
+        self.assertEqual(item['rounds'], 2)
+        self.assertNotIn('roundsToGo', item)
+
+    def test_rounds_to_go_is_the_first_round_that_reached_go(self):
+        rows = [cr('r1', '001', [{'id': 'F1'}], kind='changes'), cr('r2', '001', [], kind='go')]
+        item = derive.findings_doc(rows)['PBI-001']
+        self.assertEqual(item['roundsToGo'], 2)
+        self.assertEqual(item['open'], [])
+        self.assertEqual([f['id'] for f in item['resolved']], ['F1'])
+
+    def test_rows_without_a_pbi_or_outside_the_cr_lane_are_ignored(self):
+        rows = [cr('r1', '001', [{'id': 'F1'}]), {'id': 'p', 'lane': 'plan', 'pbis': ['001'], 'kind': 'go', 'findings': [{'id': 'ignored'}]},
+                {'id': 'r2', 'lane': 'cr', 'pbis': [], 'kind': 'changes', 'start': ts(1), 'findings': [{'id': 'nowhere'}]}]
+        doc = derive.findings_doc(rows)
+        self.assertEqual(list(doc), ['PBI-001'])
+        self.assertEqual(doc['PBI-001']['rounds'], 1)
+
+    def test_no_cr_rows_yields_no_items(self):
+        self.assertEqual(derive.findings_doc([{'id': 'c', 'lane': 'cw', 'pbis': ['001'], 'kind': 'done'}]), {})
+
+    def test_a_review_still_running_or_cut_off_is_not_yet_a_round(self):
+        for kind in ('running', 'killed'):
+            rows = [{'id': 'r', 'lane': 'cr', 'pbis': ['001'], 'kind': kind, 'start': ts(0), 'findings': [{'id': 'F1'}]}]
+            self.assertEqual(derive.findings_doc(rows), {}, kind)
+
+    def test_a_nogo_round_with_no_findings_block_does_not_resolve_earlier_findings(self):
+        # This repo's own reviewers write findings to a file and reply in prose, so a real round can be
+        # NO-GO (nothing fixed) yet carry no findings JSON. It must count as a round, but not empty the ledger.
+        f1, f2, f3 = {'id': 'F1'}, {'id': 'F2'}, {'id': 'F3'}
+        rows = [cr('r1', '001', [f1, f2, f3]), cr('r2', '001', [], kind='nogo', start=1, has_block=False)]
+        item = derive.findings_doc(rows)['PBI-001']
+        self.assertEqual(sorted(f['id'] for f in item['open']), ['F1', 'F2', 'F3'])
+        self.assertEqual(item['resolved'], [])
+        self.assertEqual(item['rounds'], 2)
+
+    def test_findings_carry_the_round_they_were_first_and_last_seen(self):
+        rows = [cr('r1', '001', [{'id': 'F1'}, {'id': 'F2'}], start=0), cr('r2', '001', [{'id': 'F2'}], start=1),
+                cr('r3', '001', [{'id': 'F2'}], start=2)]
+        item = derive.findings_doc(rows)['PBI-001']
+        f1 = next(f for f in item['resolved'] if f['id'] == 'F1')
+        f2 = next(f for f in item['open'] if f['id'] == 'F2')
+        self.assertEqual((f1['round'], f1['lastSeen']), (1, 1))
+        self.assertEqual((f2['round'], f2['lastSeen']), (1, 3))
+
+
 SPEC = '''---
 revision: 3
 ---
