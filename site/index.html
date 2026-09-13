@@ -126,6 +126,9 @@
   .linkbtn { font: 500 12.5px/1 inherit; font-family: inherit; color: var(--ink-2); background: var(--raised); border: 1px solid var(--rule-2); border-radius: 6px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
   .linkbtn:hover { color: var(--ink); background: var(--hover); }
   a.linkbtn { display: inline-block; text-decoration: none; }
+  /* A control that reads as the cell's own text: a real button, so it takes focus and the keyboard. */
+  .rowbtn { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-align: left; cursor: pointer; text-decoration: underline; text-decoration-color: var(--rule-2); text-underline-offset: 3px; }
+  .rowbtn:hover { text-decoration-color: var(--ink-2); }
 
   /* tables */
   table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
@@ -133,6 +136,7 @@
   th { font-size: 12px; font-weight: 500; color: var(--ink-3); background: var(--raised); border-bottom-color: var(--rule-2); white-space: nowrap; }
   tr:last-child td { border-bottom: 0; }
   tbody tr:hover td { background: color-mix(in srgb, var(--hover) 55%, transparent); }
+  tbody tr.sel td { background: color-mix(in srgb, var(--live) 10%, transparent); }
   td.num, th.num { text-align: right; }
   td.wide { min-width: 240px; }
   .sub { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
@@ -270,6 +274,11 @@
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   // Text lifted from the repo's docs carries code spans and bold; nothing else is rendered.
   const md = s => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  // A review finding's id, severity, title with its location, and remediation: the one place agent-written finding
+  // text meets markup, shared by the findings ledger and the run detail, which each add only their own columns.
+  const findingCells = f => `<td><span class="id">${esc(f.id)}</span></td><td class="muted">${esc(f.severity) || '—'}</td>`
+    + `<td class="wide">${md(f.title)}${f.location ? `<div class="sub id">${esc(f.location)}</div>` : ''}</td>`
+    + `<td class="wide muted">${md(f.remediation)}</td>`;
   const when = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString(undefined, { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }); };
   const ago = iso => {
     const d = new Date(iso); if (isNaN(d)) return '';
@@ -297,8 +306,9 @@
     ? `<a${cls ? ` class="${cls}"` : ''} href="${esc(url)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : null;
   const prState = { OPEN: ['open', 'Open'], MERGED: ['merged', 'Merged'], CLOSED: ['closed', 'Closed'] };
 
-  // view is "p:<projectId>" or "other"; sel is the session filter ('' = all of the project's sessions).
-  let allRuns = [], runs = [], sessions = [], projects = [], tabDocs = {}, statuses = {}, view = null, sel = '';
+  // view is "p:<projectId>" or "other"; sel is the session filter ('' = all of the project's sessions);
+  // selRun is the run whose detail is shown (null until one is picked, and whenever the pick leaves the view).
+  let allRuns = [], runs = [], sessions = [], projects = [], tabDocs = {}, statuses = {}, view = null, sel = '', selRun = null;
   let gotSessions = false, gotProjects = false, gotRuns = false, gotCatalogue = false, loaded = false, offline = false, status = null, catalogue = null;
   let lastRefresh = null;
   // Where this copy of the board gets its data, named in the connecting and out-of-reach states so a board with
@@ -371,7 +381,13 @@
       else if (e.key === 'End') { e.preventDefault(); select(vis[vis.length - 1].dataset.tab, true); }
     });
   });
-  document.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) { select(b.dataset.go); window.scrollTo({ top: 0 }); } });
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-go]');
+    if (b) { select(b.dataset.go); window.scrollTo({ top: 0 }); return; }
+    // Picking a run redraws the board once, through the same single pass every other change goes through.
+    const r = e.target.closest('[data-run]');
+    if (r) { selRun = r.dataset.run; renderAll(); }
+  });
   let saved = 'overview';
   try { saved = localStorage.getItem('board-tab') || 'overview'; } catch (e) {}
   select(tabs.some(t => t.dataset.tab === saved) ? saved : 'overview');
@@ -559,6 +575,52 @@
   }
 
   // ---------------- dispatch ----------------
+  // The run detailed is the one the owner picked, while it is still among the runs shown;
+  // a pick that the session filter, the project picker or the store has taken away falls back to the latest run
+  // there, so the panel always details a run the viewer can see.
+  const detailed = R => R.find(r => r.id === selRun) || R[R.length - 1] || null;
+  // The findings a review round reported: an array, possibly empty, when its result carried a readable findings
+  // block, and nothing at all otherwise. The two are different answers and the panel says so separately.
+  const runFindings = r => Array.isArray(r.findings) ? r.findings.filter(f => f && typeof f === 'object') : null;
+  function runDetail(r, R) {
+    const fs = runFindings(r), tone = own(toneOf, r.kind) || 'var(--ink-3)';
+    // The files the run edited come from its edit and write tool calls. A run that edited none may still have
+    // findings that name files, which are said as exactly that, never as files the run changed.
+    const edited = [...new Set((Array.isArray(r.files) ? r.files : []).filter(f => typeof f === 'string' && f))];
+    // A location is free text: "path:line", several files split by ";" or ",", line lists such as "a.js:4, 9-12",
+    // or a Windows path whose drive letter has a colon of its own, so only a trailing line suffix is cut.
+    const locationFiles = loc => typeof loc !== 'string' ? [] : loc.split(/[;,]/)
+      .map(s => s.trim().replace(/(?::\d+(?:-\d+)?)+$/, '').trim()).filter(s => s && !/^\d+(?:-\d+)?$/.test(s));
+    const named = [...new Set((fs || []).flatMap(f => locationFiles(f.location)))];
+    const limit = ' The board reads the files a run writes with its edit tools; changes made through shell commands are not recorded.';
+    const filesText = edited.length
+      ? `Files it edited: ${edited.map(esc).join(', ')}.`
+        + (edited.some(f => f.startsWith('…/')) ? " A name after …/ is a file the board could not place inside the project's repository, such as one edited in a git worktree of it, or one genuinely outside it; its folders are withheld." : '')
+      : 'No file edits were recorded for this run.' + (named.length ? ` Files its findings name: ${named.map(esc).join(', ')}.` : '');
+    const row = f => `<tr>${findingCells(f)}</tr>`;
+    const findingsPart = fs
+      ? `<div class="pb flush scroll"><table><thead><tr><th>Finding</th><th>Severity</th><th>What's wrong</th><th>Remediation</th></tr></thead><tbody>
+          ${fs.map(row).join('') || '<tr><td colspan="4" class="muted">This round listed no findings.</td></tr>'}
+        </tbody></table></div>`
+      : `<p class="pb muted" style="border-top:1px solid var(--rule);margin:0">No findings were reported in this run's result.</p>`;
+    return `<div class="panel" data-detail style="margin-bottom:16px">
+      <div class="ph"><h3>Run detail</h3><span class="faint">run ${R.indexOf(r) + 1} of ${R.length} in ${esc(scopeName())}</span></div>
+      <div class="pb">
+        <p style="margin:0"><b>${esc(r.label || r.id)}</b></p>
+        <div class="sub" style="margin:0 0 14px">${esc(agentName(r))}${r.agentType ? ' · ' + esc(r.agentType) : ''}</div>
+        <div class="tiles" style="margin:0">
+          ${tile('Outcome', esc(own(kindLabel, r.kind) || r.kind), esc(r.verdict || '—'), tone)}
+          ${tile('Duration', r.min ? `${esc(r.min)}<small> min</small>` : '—', r.start && when(r.start) ? 'started ' + esc(when(r.start)) : 'start time not recorded')}
+          ${tile('Reported tokens', r.tok ? esc(Number(r.tok).toLocaleString()) : '—', 'context size at finish')}
+          ${tile('Findings', fs ? fs.length : '—', fs ? (fs.length ? 'raised by this round' : 'this round reported none') : 'none readable in its result',
+            fs && fs.length ? 'var(--changes)' : undefined)}
+        </div>
+      </div>
+      ${findingsPart}
+      <p class="faint" data-files style="border-top:1px solid var(--rule);margin:0;padding:12px 18px">${filesText}${limit}</p>
+    </div><!--/detail-->`;
+  }
+
   function renderDispatch() {
     const R = sorted(), p = $('panel-dispatch');
     if (!R.length) { p.innerHTML = '<div class="empty">No runs recorded yet. The board fills as agents are dispatched.</div>'; return; }
@@ -600,7 +662,7 @@
       s += `<text x="${x + lw / 2}" y="${y + 34}" text-anchor="middle" font-size="10.5" fill="var(--ink-2)">${esc(label.length > 30 ? label.slice(0, 29) + '…' : label)}</text>`;
     });
     s += '</g></svg>';
-    const tokens = agentRuns().reduce((a, r) => a + (Number(r.tok) || 0), 0);
+    const tokens = agentRuns().reduce((a, r) => a + (Number(r.tok) || 0), 0), det = detailed(R);
     p.innerHTML = `
       <div class="tiles">
         ${tile('Agent runs', agentRuns().length, `dispatched in ${esc(scopeName())}`, 'var(--live)')}
@@ -612,9 +674,10 @@
       <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Swimlane</h3><div class="legend"><span><i style="background:var(--live)"></i>Running</span><span><i style="background:var(--ink-3)"></i>Done</span><span><i style="background:var(--go)"></i>Approved</span><span><i style="background:var(--changes)"></i>Changes required</span><span><i style="background:var(--nogo)"></i>Rejected or cut off</span></div></div>
         <div class="pb scroll">${s}</div>
         <div class="pb faint" style="border-top:1px solid var(--rule)">Box width is proportional to reported tokens. Arrows show hand-offs and the verdicts that sent work back; a bracket marks runs dispatched in parallel. Gate-review rounds ran on the harness's built-in Plan agent following the catalogue's pbi-review runbook.</div></div>
-      <div class="panel"><div class="ph"><h3>Run log</h3><span class="faint">newest first</span></div>
+      ${det ? runDetail(det, R) : ''}
+      <div class="panel"><div class="ph"><h3>Run log</h3><span class="faint">pick a run for its detail · newest first</span></div>
         <div class="pb flush scroll"><table><thead><tr><th>#</th><th>Agent</th><th>Run</th><th>Outcome</th><th>Detail</th><th style="min-width:120px">Reported tokens</th><th class="num">Minutes</th></tr></thead><tbody>
-        ${R.slice().reverse().map(r => `<tr><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(agentName(r))}</td><td class="wide">${esc(r.label)}</td><td><span class="tag ${esc(r.kind)}">${esc(own(kindLabel, r.kind) || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td>${r.tok ? `<div class="bar"><i style="width:${Math.max(2, (Number(r.tok) || 0) / maxTok * 100)}%"></i></div><div class="sub">${esc(Number(r.tok).toLocaleString())}</div>` : '<span class="faint">—</span>'}</td><td class="num muted">${esc(r.min || '—')}</td></tr>`).join('')}
+        ${R.slice().reverse().map(r => `<tr${r === det ? ' class="sel"' : ''}><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(agentName(r))}</td><td class="wide"><button type="button" class="rowbtn" data-run="${esc(r.id)}" aria-pressed="${r === det}">${esc(r.label)}</button></td><td><span class="tag ${esc(r.kind)}">${esc(own(kindLabel, r.kind) || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td>${r.tok ? `<div class="bar"><i style="width:${Math.max(2, (Number(r.tok) || 0) / maxTok * 100)}%"></i></div><div class="sub">${esc(Number(r.tok).toLocaleString())}</div>` : '<span class="faint">—</span>'}</td><td class="num muted">${esc(r.min || '—')}</td></tr>`).join('')}
         </tbody></table></div></div>`;
   }
 
@@ -913,9 +976,7 @@
       const last = Number(f.lastSeen) || first;
       return last > first ? `Round ${first}-${last}` : `Round ${first}`;
     };
-    const findingRow = (f, open) => `<tr><td><span class="id">${esc(f.id)}</span></td><td class="muted">${esc(f.severity) || '—'}</td>`
-      + `<td class="wide">${md(f.title)}${f.location ? `<div class="sub id">${esc(f.location)}</div>` : ''}</td>`
-      + `<td class="wide muted">${md(f.remediation)}</td><td class="muted">${esc(roundLabel(f))}</td>`
+    const findingRow = (f, open) => `<tr>${findingCells(f)}<td class="muted">${esc(roundLabel(f))}</td>`
       + `<td><span class="tag ${open ? 'changes' : 'go'}">${open ? 'Open' : 'Resolved'}</span></td></tr>`;
     const itemPanel = id => {
       const it = items[id] || {}, open = Array.isArray(it.open) ? it.open : [], resolved = Array.isArray(it.resolved) ? it.resolved : [];

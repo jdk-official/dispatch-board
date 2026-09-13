@@ -57,7 +57,7 @@ from derive import (  # noqa: F401
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(HERE, 'board.config.json')
-PARSER_VERSION = 6  # bump when parsing changes, to drop cached results
+PARSER_VERSION = 7  # bump when parsing changes, to drop cached results
 
 
 # (block, key, check, what the value must be) for each typed value under sessions and runs; board_config.manual
@@ -277,11 +277,13 @@ def main(config=None, out_dir=None, projects_root=None, now=None):
         shutil.rmtree(os.path.join(out, d), ignore_errors=True)
         os.makedirs(os.path.join(out, d))
     running, counts = {}, {}
+    repo_of = {p['id']: p['repoPath'] for p in st['projects']}
     for sid in results:
         mine = [r for r in rows if r['session'] == sid]
         link(mine)
+        pid = st['project_of'].get(sid)
         for i, r in enumerate(mine, 1):
-            write_json(os.path.join(out, 'runs', r['id'] + '.json'), derive.run_doc(r, i, st['project_of'].get(sid)))
+            write_json(os.path.join(out, 'runs', r['id'] + '.json'), derive.run_doc(r, i, pid, repo_of.get(pid)))
         running[sid], counts[sid] = sum(r['kind'] == 'running' for r in mine), len(mine)
         write_json(os.path.join(out, 'sessions', sid + '.json'), session_doc(results[sid], sid, st, len(mine), running[sid]))
     for order, p in enumerate(st['projects']):

@@ -243,6 +243,102 @@ class Sessions(unittest.TestCase):
         self.assertEqual(derive.run_doc(rows[0], 1, 'proj')['agentType'], 'x:code-writer')
         self.assertNotIn('start', derive.run_doc(rows[1], 2, None))
 
+    def test_run_doc_publishes_a_review_round_findings(self):
+        # Run detail (FR-121) reads each run's own findings, which the per-project ledger cannot give it:
+        # the ledger is keyed by work item, and leaves out a review that named no PBI id.
+        row = {'id': 'a', 'session': 's', 'lane': 'cr', 'label': 'l', 'kind': 'changes', 'verdict': 'CHANGES-REQUIRED',
+               'tok': 1, 'min': 2, 'findings': [{'id': 'F1', 'severity': 'HIGH', 'title': 't', 'location': 'app.py:1',
+                                                 'remediation': 'fix'}], 'hasFindingsBlock': True}
+        self.assertEqual(derive.run_doc(row, 1, 'proj')['findings'], row['findings'])
+
+    def test_run_doc_publishes_an_empty_list_for_a_round_that_reported_none(self):
+        row = {'id': 'a', 'session': 's', 'lane': 'cr', 'label': 'l', 'kind': 'go', 'verdict': 'GO', 'tok': 1, 'min': 2,
+               'findings': [], 'hasFindingsBlock': True}
+        self.assertEqual(derive.run_doc(row, 1, 'proj')['findings'], [])
+
+    def test_run_doc_leaves_findings_out_when_no_block_was_read(self):
+        # No key at all, so the page can tell "this round listed nothing" from "nothing readable was reported".
+        row = {'id': 'a', 'session': 's', 'lane': 'cr', 'label': 'l', 'kind': 'nogo', 'verdict': 'NO-GO', 'tok': 1,
+               'min': 2, 'findings': [], 'hasFindingsBlock': False}
+        self.assertNotIn('findings', derive.run_doc(row, 1, 'proj'))
+        build = {'id': 'b', 'session': 's', 'lane': 'cw', 'label': 'l', 'kind': 'done', 'verdict': 'DONE', 'tok': 1, 'min': 2}
+        self.assertNotIn('findings', derive.run_doc(build, 2, 'proj'))
+
+    def test_an_agents_edited_files_are_read_from_its_tool_inputs(self):
+        # Run detail (FR-121) names the files a run touched. The paths are in the tool inputs of the agent's own
+        # transcript; only the four tools that write a file count, and a streamed repeat is not a second file.
+        def use(tid, name, inp):
+            return {'type': 'tool_use', 'id': tid, 'name': name, 'input': inp}
+        sub = derive.read_agent([
+            assistant(1, 'a1', tools=[use('t1', 'Read', {'file_path': 'C:/work/app/read-only.py'}),
+                                      use('t2', 'Edit', {'file_path': 'C:/work/app/a.py'})]),
+            assistant(1, 'a1', tools=[use('t2', 'Edit', {'file_path': 'C:/work/app/a.py'})]),  # the streamed repeat
+            assistant(2, 'a2', tools=[use('t3', 'Write', {'file_path': 'C:/work/app/b.py'}),
+                                      use('t4', 'MultiEdit', {'file_path': 'C:/work/app/a.py'}),
+                                      use('t5', 'NotebookEdit', {'notebook_path': 'C:/work/app/c.ipynb'}),
+                                      use('t6', 'Edit', {'file_path': 42}),
+                                      use('t7', 'Edit', 'not an object')]),
+            assistant(3, 'a3', text='done'),
+        ])
+        row = derive.agent_row(feed([]), 'acw', META, sub, 0, 600)
+        self.assertEqual(row['files'], ['C:/work/app/a.py', 'C:/work/app/b.py', 'C:/work/app/c.ipynb'])
+
+    def test_a_refused_or_failed_edit_call_is_not_counted_as_edited(self):
+        # CR-014-9: the tool_use record alone cannot say whether an Edit wrote the file; its tool_result can.
+        def use(tid, name, inp):
+            return {'type': 'tool_use', 'id': tid, 'name': name, 'input': inp}
+
+        def result(tid, is_error):
+            return {'type': 'user', 'timestamp': ts(2), 'message': {'role': 'user', 'content': [
+                {'type': 'tool_result', 'tool_use_id': tid, 'is_error': is_error, 'content': 'x'}]}}
+        sub = derive.read_agent([
+            assistant(1, 'a1', tools=[use('t1', 'Edit', {'file_path': 'C:/work/app/blocked.py'}),
+                                      use('t2', 'Edit', {'file_path': 'C:/work/app/a.py'})]),
+            result('t1', True),   # refused or failed: the file was never written
+            result('t2', False),  # succeeded: still counts
+        ])
+        row = derive.agent_row(feed([]), 'acw', META, sub, 0, 600)
+        self.assertEqual(row['files'], ['C:/work/app/a.py'])
+
+    def test_run_doc_publishes_edited_files_relative_to_the_repository(self):
+        row = {'id': 'a', 'session': 's', 'lane': 'cw', 'label': 'l', 'kind': 'done', 'verdict': 'DONE', 'tok': 1, 'min': 2,
+               'files': ['C:\\work\\app\\site\\index.html', 'C:/WORK/APP/exporters/derive.py', 'tests/test_derive.py']}
+        # The repository root is stripped so the board publishes no absolute local path; a path that was already
+        # relative is published as the agent wrote it, there being no root in it to strip.
+        self.assertEqual(derive.run_doc(row, 1, 'proj', repo='C:/work/app')['files'],
+                         ['site/index.html', 'exporters/derive.py', 'tests/test_derive.py'])
+
+    def test_run_doc_names_a_file_outside_the_repository_without_its_folder(self):
+        # Decision: a path outside the project's repository is published as "…/" and its file name, its folders
+        # withheld. The prefix keeps it from reading as a file at the repository's root, which a bare name would.
+        row = {'id': 'a', 'session': 's', 'lane': 'cw', 'label': 'l', 'kind': 'done', 'verdict': 'DONE', 'tok': 1, 'min': 2,
+               'files': ['C:/Users/jdk/.claude/settings.json', '/etc/hosts', 'C:/work/app']}
+        self.assertEqual(derive.run_doc(row, 1, 'proj', repo='C:/work/app')['files'], ['…/settings.json', '…/hosts'])
+        # Without a repository to relativise against, every absolute path is treated the same way.
+        self.assertEqual(derive.run_doc(row, 1, 'proj')['files'], ['…/settings.json', '…/hosts', '…/app'])
+
+    def test_run_doc_treats_a_home_or_drive_relative_path_as_unplaceable(self):
+        # CR-014-9: the Edit and Write tools refuse both forms, but a value that reached here regardless must
+        # not publish a folder the repository test cannot see, so each is withheld like a path outside it.
+        row = {'id': 'a', 'session': 's', 'lane': 'cw', 'label': 'l', 'kind': 'done', 'verdict': 'DONE', 'tok': 1, 'min': 2,
+               'files': ['~/.ssh/id_rsa', 'C:foo/bar/baz.txt']}
+        self.assertEqual(derive.run_doc(row, 1, 'proj', repo='C:/work/app')['files'], ['…/id_rsa', '…/baz.txt'])
+
+    def test_run_doc_does_not_let_a_parent_step_pass_for_a_file_inside_the_repository(self):
+        # A path that starts at the repository but climbs out of it, or a relative one that climbs, is outside it.
+        row = {'id': 'a', 'session': 's', 'lane': 'cw', 'label': 'l', 'kind': 'done', 'verdict': 'DONE', 'tok': 1, 'min': 2,
+               'files': ['C:/work/app/../private/key.txt', '../up/notes.md', 'C:/work/app/site/../README.md',
+                         'C:/work/application/x.py']}
+        self.assertEqual(derive.run_doc(row, 1, 'proj', repo='C:/work/app/')['files'],
+                         ['…/key.txt', '…/notes.md', 'README.md', '…/x.py'])
+
+    def test_run_doc_leaves_files_out_when_the_run_edited_none(self):
+        row = {'id': 'a', 'session': 's', 'lane': 'cr', 'label': 'l', 'kind': 'go', 'verdict': 'GO', 'tok': 1, 'min': 2,
+               'files': []}
+        self.assertNotIn('files', derive.run_doc(row, 1, 'proj', repo='C:/work/app'))
+        manual = {'id': 'm', 'session': 's', 'lane': 'orch', 'label': 'l', 'kind': 'done', 'verdict': '', 'tok': 0, 'min': 0}
+        self.assertNotIn('files', derive.run_doc(manual, 2, 'proj', repo='C:/work/app'))
+
     def test_aggregated_limits_that_share_a_reset_are_one(self):
         def usage(first, refused):
             return {'limits': [{'firstAt': first, 'refused': refused, 'type': 'five_hour', 'resetsAt': 'R'}]}

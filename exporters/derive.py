@@ -13,12 +13,18 @@ and kind classification, run linking, redaction, usage aggregation and skill-use
 Project tabs (export_board.py): spec sections, tables, bullets, the Later list and build state.
 Catalogue (export_catalogue.py): frontmatter and a plugin's one-line purpose.
 """
-import fnmatch, json, math, os, re  # os only for os.path's name handling, never to touch a file
+import fnmatch, json, math, os, posixpath, re  # os only for os.path's name handling, never to touch a file
 from datetime import datetime, timezone, timedelta
 
 HOURS = 168  # hourly usage series covers the last week of a session's activity
 # Skill ids become keys in session documents and are matched against catalogue ids, so they are kept to a safe set.
 SKILL_ID = re.compile(r'^[A-Za-z0-9_.:-]{1,100}$')
+# The tools that write a file, and the input key each names its path in. A tool that only reads is not an edit.
+EDIT_TOOLS = {'Edit': 'file_path', 'Write': 'file_path', 'MultiEdit': 'file_path', 'NotebookEdit': 'notebook_path'}
+ABSOLUTE = re.compile(r'^(?:[A-Za-z]:/|/)')
+# A home-relative ("~/…") or drive-relative ("C:foo", no slash after the drive letter) path: the repository
+# test below cannot place either against a normalised root, so both are withheld like a path outside it.
+UNPLACEABLE = re.compile(r'^~(?:/|$)|^[A-Za-z]:(?!/)')
 
 LANE = {'requirements-author': 'req', 'Plan': 'plan', 'code-writer': 'cw', 'test-writer': 'tw',
         'code-reviewer': 'cr', 'verifier': 'ver'}
@@ -277,11 +283,29 @@ def response(by, o):
     # A count that is not a number would break every sum over the session, so the record is skipped instead.
     if not all(m['usage'].get(k) is None or is_number(m['usage'][k]) for k in TOKEN_FIELDS):
         return
-    r = by.setdefault(m.get('id') or o.get('uuid'), {'model': m.get('model'), 'ts': stamp(o), 'tools': [], 'usage': None})
+    r = by.setdefault(m.get('id') or o.get('uuid'),
+                      {'model': m.get('model'), 'ts': stamp(o), 'tools': [], 'files': [], 'usage': None})
     r['usage'] = m['usage']
     for c in m.get('content') or []:
         if isinstance(c, dict) and c.get('type') == 'tool_use':
             r['tools'].append(c.get('name', ''))
+            key = EDIT_TOOLS.get(c.get('name'))
+            path = (c.get('input') if isinstance(c.get('input'), dict) else {}).get(key) if key else None
+            if isinstance(path, str) and path.strip():
+                # Kept with the call's own id, not yet known to have written anything: a later tool_result may
+                # mark the id failed, and agent_summary() drops it then, rather than trusting the call alone.
+                r['files'].append((c.get('id'), path.strip()))
+
+
+def failed_edit(failed, o):
+    """Note the tool_use id of a tool call whose result came back an error, so a refused or failed edit is not
+    published as one the run made."""
+    m = o.get('message')
+    if o.get('type') != 'user' or not isinstance(m, dict):
+        return
+    for c in m.get('content') or []:
+        if isinstance(c, dict) and c.get('type') == 'tool_result' and c.get('is_error') and c.get('tool_use_id'):
+            failed.add(c['tool_use_id'])
 
 
 def reject(rejects, o):
@@ -298,7 +322,7 @@ def excluded(patterns, folder, cwd):
 
 def new_agent():
     """The running state of one agent's own transcript, fed record by record with add_agent()."""
-    return {'by': {}, 'rejects': [], 'first': None, 'last': None, 'text': ''}
+    return {'by': {}, 'rejects': [], 'first': None, 'last': None, 'text': '', 'failed': set()}
 
 
 def add_agent(state, o):
@@ -307,6 +331,7 @@ def add_agent(state, o):
         state['last'] = o['timestamp']
     reject(state['rejects'], o)
     response(state['by'], o)
+    failed_edit(state['failed'], o)
     if o.get('type') == 'assistant':
         t = text_of((o.get('message') or {}).get('content'))
         if t.strip():
@@ -315,8 +340,11 @@ def add_agent(state, o):
 
 def agent_summary(state):
     """An agent transcript's responses, refusals, first and last times, last reply and final context size. It is a
-    copy, so records fed after it leave it as it is (a streamed response keeps adding tools to its entry in state)."""
-    resps = [dict(r, tools=list(r['tools'])) for r in state['by'].values()]
+    copy, so records fed after it leave it as it is (a streamed response keeps adding tools to its entry in state).
+    A response's files drop any edit call whose id ended up in state['failed'], so a refused or failed Edit,
+    Write, MultiEdit or NotebookEdit is not published as a file the run touched."""
+    resps = [dict(r, tools=list(r['tools']), files=[p for tid, p in r['files'] if tid not in state['failed']])
+             for r in state['by'].values()]
     last = resps[-1]['usage'] if resps else {}
     ctx = sum(last.get(k) or 0 for k in TOKEN_FIELDS)
     return {'resps': resps, 'rejects': list(state['rejects']), 'first': state['first'], 'last': state['last'],
@@ -472,6 +500,17 @@ def add_record(state, o, raw=None, warn=None):
                                            'tokens': tag(block, 'subagent_tokens'), 'ms': tag(block, 'duration_ms')}
 
 
+def edited(resps):
+    """The files the responses wrote, first write first and each named once. A streamed response is recorded
+    again as it grows, so the same path arrives several times and only the first occurrence is kept."""
+    out = []
+    for r in resps:
+        for path in r.get('files') or []:
+            if path not in out:
+                out.append(path)
+    return out
+
+
 def agent_row(state, aid, meta, sub, age, window):
     """The run row for agent aid: meta is its meta.json object, sub its agent_summary(), age seconds since its
     transcript was written. sub gains the agent's id, agentType and description, as usage_doc() reads them."""
@@ -487,13 +526,14 @@ def agent_row(state, aid, meta, sub, age, window):
     label = re.sub(r'\s+under TDD$', '', sub['description'])
     row = {'id': aid, 'start': begin, 'end': end, 'lane': lane, 'label': label, 'kind': kind, 'verdict': verdict,
            'tok': num((fin or {}).get('tokens')) or sub['ctx'], 'min': minutes, 'pbis': pbis(label),
-           'fix': lane in BUILD_LANES and bool(FIX.search(label)), 'agentType': sub['agentType']}
+           'fix': lane in BUILD_LANES and bool(FIX.search(label)), 'agentType': sub['agentType'],
+           'files': edited(sub['resps'])}
     if lane == 'other':
         row['agent'] = short or 'agent'
     if lane == 'cr':
-        # Kept only for findings_doc(), never published on the run document: run_doc() copies an explicit key list.
         # found is None when the result carried no parseable findings block; hasFindingsBlock lets findings_doc()
-        # tell that apart from a round that reported an empty findings list.
+        # and run_doc() tell that apart from a round that reported an empty findings list. hasFindingsBlock itself
+        # stays off the run document: run_doc() copies an explicit key list, and an absent findings key says the same.
         found = findings_of((fin or {}).get('result') or '')
         row['findings'] = found or []
         row['hasFindingsBlock'] = found is not None
@@ -724,8 +764,47 @@ def place_manual(rows, manual):
         rows.insert(anchor + 1, row)
 
 
-def run_doc(r, seq, project):
-    """The published run document for row r, seq-th in its session, whose session belongs to project (or None)."""
+def publishable_files(paths, repo):
+    """The paths a run edited, in the form the board may publish, given the project's repository root (or None).
+
+    An absolute path under the repository is published relative to it, so the board says which file was touched
+    without publishing where the repository sits on this machine. A path outside it is published as "…/" and its
+    file name, its folders withheld: which file was touched is the fact the board is after, the folders of a file
+    outside the project are not the board's to publish, and the prefix stops it reading as a file at the
+    repository's root. A git worktree of the repository is outside it too, since nothing in a transcript ties
+    the two. A relative path the agent wrote is published as written unless it climbs out with "..". A
+    home-relative ("~/…") or drive-relative ("C:foo") path is withheld the same way: the Edit and Write tools
+    refuse both, but nothing here should trust that upstream refusal to publish one that reached this far as
+    written, folders included. Parent steps are resolved before the repository test, so "<repo>/../elsewhere"
+    is outside. The repository root itself is not a file. Order is kept, each file named once.
+    """
+    root = posixpath.normpath(str(repo).replace('\\', '/')).rstrip('/') if repo else ''
+    out = []
+    for path in paths:
+        if not isinstance(path, str) or not path.strip():
+            continue
+        p = posixpath.normpath(path.strip().replace('\\', '/'))
+        if root and (p + '/').lower().startswith(root.lower() + '/'):
+            name = p[len(root):].lstrip('/')
+        elif ABSOLUTE.match(p) or p == '..' or p.startswith('../') or UNPLACEABLE.match(p):
+            name = '…/' + p.rsplit('/', 1)[-1]
+        else:
+            name = p
+        if name and name not in out:
+            out.append(name)
+    return out
+
+
+def run_doc(r, seq, project, repo=None):
+    """The published run document for row r, seq-th in its session, whose session belongs to project (or None).
+    repo is that project's repoPath, which the files the run edited are published relative to; without one every
+    absolute path is published as "…/" and its file name, as publishable_files() does for a path outside it.
+
+    A review round also publishes its own findings, which the per-project ledger cannot stand in for: that ledger
+    is keyed by work item, so it holds nothing for a review that named no PBI id and cannot say which round a
+    finding was read from. An empty list means the round read a findings block and listed nothing; no findings
+    key at all means nothing readable was reported, which is every run outside a finished review round.
+    """
     doc = {k: r[k] for k in ('session', 'lane', 'label', 'kind', 'verdict', 'tok', 'min')}
     doc['seq'] = seq
     doc['project'] = project
@@ -736,6 +815,11 @@ def run_doc(r, seq, project):
         for k in ('agentType', 'start'):
             if r.get(k):
                 doc[k] = r[k]
+    if r.get('hasFindingsBlock'):
+        doc['findings'] = r['findings']
+    files = publishable_files(r.get('files') or [], repo)
+    if files:
+        doc['files'] = files
     return doc
 
 
