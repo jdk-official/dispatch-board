@@ -57,8 +57,11 @@ function env(storage = {}, { offline = false, claude, local } = {}) {
     doc: path => ({ onSnapshot(cb) { subs['d:' + path] = cb; everySub.add('d:' + path); } }),
   };
   const store = new Map(Object.entries(storage));
+  // The page delegates the clicks inside a panel it drew to the document, so its listeners are kept, not dropped.
+  const docListeners = {};
   Object.assign(doc, {
-    getElementById: el, querySelectorAll: () => tabs, addEventListener() {},
+    getElementById: el, querySelectorAll: () => tabs,
+    addEventListener(t, f) { (docListeners[t] = docListeners[t] || []).push(f); },
     createElement: tag => ({ tagName: tag.toUpperCase() }), head: { appendChild: n => { doc.appended.push(n); return n; } },
   });
   globalThis.document = doc;
@@ -81,8 +84,12 @@ function env(storage = {}, { offline = false, claude, local } = {}) {
   const fire = (key, docs) => subs[key](key.startsWith('d:') ? { exists: !!docs, data: () => docs } :
     { docs: docs.map(d => ({ id: d.id, exists: true, data: () => { const { id, ...rest } = d; return rest; } })) });
   const change = (id, value) => { const e = el(id); e.value = value; e.listeners.change.forEach(f => f({ target: e })); };
+  // A delegated click on an element the page drew carrying data-<attr>="<value>". The handlers read only
+  // e.target.closest(selector), so the target answers for that one attribute and for nothing else.
+  const click = (attr, value) => (docListeners.click || []).forEach(f =>
+    f({ target: { closest: s => s === `[data-${attr}]` ? { dataset: { [attr]: value } } : null } }));
   const selected = () => tabs.find(t => t.attrs['aria-selected'] === 'true').dataset.tab;
-  return { el, subs, fire, change, selected, store, doc, timers };
+  return { el, subs, fire, change, click, selected, store, doc, timers };
 }
 const tick = () => new Promise(r => setTimeout(r, 0));
 
@@ -1377,7 +1384,12 @@ const snapshotOf = (records, version = 7) => ({ version, generatedAt: now, skipp
 // like, and would otherwise turn on how each side happens to break a tie.
 const step = (iso, i, n) => new Date(Date.parse(iso) - (n - i) * 1000).toISOString();
 const EQ_SESSIONS = SESSIONS.map((s, i) => ({ ...s, last: step(s.last, i, SESSIONS.length) }));
-const EQ_RUNS = RUNS.map((r, i) => ({ ...r, seq: i + 1 }));
+// The compared board's newest run is a finished review round, so the run detail panel is compared with a verdict,
+// a duration and findings on it rather than with the emptiest run either side happens to hold.
+const EQ_REVIEW = { id: 'r5', session: 's2', project: 'dispatch-board', lane: 'cr', kind: 'changes', label: 'DB review',
+  verdict: 'CHANGES-REQUIRED', tok: 120000, min: 7, start: old, agentType: 'review-agents:code-reviewer',
+  findings: [{ id: 'F9', severity: 'HIGH', title: 'A run-detail finding', location: 'site/index.html:42', remediation: 'Guard it' }] };
+const EQ_RUNS = [...RUNS, EQ_REVIEW].map((r, i) => ({ ...r, seq: i + 1 }));
 // Every project tab of the compared view carries real content, so no panel is compared empty to empty. It covers
 // what the renderers branch on and walk: a nested array (pull requests, findings rounds), an optional field
 // (carriedSince), work items in each of the four states, and assumptions still waiting on a human.
@@ -1465,7 +1477,7 @@ const overStore = async () => {
   assert.deepEqual(emptyPanels(l), [], 'every panel of the local side carries real content');
   const seen = rendered(l);
   for (const [what, re] of [['a pull request', /pbi\/the-open-one/], ['a carried tab', /data-carried/],
-    ['an open finding', /Still open/], ['a running agent', /class="flow"/],
+    ['an open finding', /Still open/], ['a running agent', /class="flow"/], ['a detailed run\'s findings', /A run-detail finding/],
     ['an assumption awaiting a human', /Which port\?/], ['work items in four states', /class="cell partial"/]]) {
     assert.ok(Object.values(seen).some(h => re.test(h)), `the compared board shows ${what}`);
   }
@@ -1630,6 +1642,135 @@ const overStore = async () => {
   assert.equal(good.streams.length, 1);
   assert.deepEqual(Object.keys(e.subs), [], 'and no store subscription');
   ok('adapter choice: the marker the local server injects, whose URLs are relative to the page, is taken as the local server');
+}
+
+// ---- 22. run detail (feature 8, FR-121, AC-82): the picked run's verdict summary, findings, files and duration
+{
+  const DET = [
+    { id: 'd0', session: 's1', project: 'platform-catalogue', seq: 1, lane: 'cw', kind: 'done', label: 'PC only',
+      verdict: 'DONE', tok: 10, min: 1, start: old, agentType: 'engineering-agents:code-writer' },
+    { id: 'd1', session: 's2', project: 'dispatch-board', seq: 1, lane: 'cw', kind: 'done', label: 'Build PBI-014',
+      verdict: 'DONE', tok: 90000, min: 12, start: old, agentType: 'engineering-agents:code-writer' },
+    { id: 'd2', session: 's2', project: 'dispatch-board', seq: 2, lane: 'cr', kind: 'changes', label: 'Review PBI-014',
+      verdict: 'CHANGES-REQUIRED', tok: 120000, min: 7, start: old, agentType: 'review-agents:code-reviewer',
+      findings: [
+        { id: 'F1', severity: 'HIGH', title: 'A **bold** gap <img src=x onerror=alert(1)>', location: 'site/index.html:42', remediation: 'Guard `label`' },
+        { id: 'F2', severity: 'LOW', title: 'A small one', location: 'exporters/derive.py:7', remediation: 'Tidy it' },
+      ] },
+  ];
+  // The panel the detail is drawn in, from its marker to the comment that closes it: the run log below repeats
+  // every run's label and verdict, so a check on the whole tab could pass on the log alone.
+  const detailOf = e => {
+    const h = e.el('panel-dispatch').innerHTML, i = h.indexOf('data-detail'), j = h.indexOf('<!--/detail-->');
+    assert.ok(i >= 0 && j > i, 'the run detail panel is drawn:\n' + h);
+    return h.slice(i, j);
+  };
+  const load = async runs => {
+    const e = env({ 'board-view': 'p:dispatch-board' });
+    await tick();
+    e.fire('c:projects', PROJECTS); e.fire('c:sessions', SESSIONS); e.fire('c:runs', runs); e.fire('c:projectTabs', TABS);
+    return e;
+  };
+
+  const e = await load(DET);
+  let D = detailOf(e);
+  assert.match(text(D), /Review PBI-014/);
+  assert.deepEqual(tileOf(D, 'Duration'), ['7 min', 'started ' + whenStr(old)]);
+  assert.match(e.el('panel-dispatch').innerHTML, /data-run="d2" aria-pressed="true"/);
+  assert.match(e.el('panel-dispatch').innerHTML, /data-run="d1" aria-pressed="false"/);
+  ok('run detail: the latest run of the shown scope is detailed until the owner picks another, and the run log marks it');
+
+  e.click('run', 'd1');
+  D = detailOf(e);
+  assert.match(text(D), /Build PBI-014/);
+  assert.doesNotMatch(text(D), /Review PBI-014/);
+  assert.deepEqual(tileOf(D, 'Duration'), ['12 min', 'started ' + whenStr(old)]);
+  assert.deepEqual(tileOf(D, 'Findings')[0], '—');
+  assert.match(text(D), /No findings were reported/);
+  assert.match(text(D), /No file edits were recorded for this run/);
+  assert.match(text(D), /shell commands are not recorded/, 'the limit that genuinely remains is stated');
+  assert.match(e.el('panel-dispatch').innerHTML, /data-run="d1" aria-pressed="true"/);
+  ok('run detail: picking a run details it; a run whose result reported no readable findings says so, and says no file edit is recorded for it');
+
+  e.click('run', 'd2');
+  D = detailOf(e);
+  assert.deepEqual(tileOf(D, 'Outcome'), ['Changes required', 'CHANGES-REQUIRED']);
+  assert.deepEqual(tileOf(D, 'Duration'), ['7 min', 'started ' + whenStr(old)]);
+  assert.deepEqual(tileOf(D, 'Findings')[0], '2');
+  assert.deepEqual(tileOf(D, 'Reported tokens')[0], '120,000');
+  const T = text(D);
+  for (const v of ['F1', 'HIGH', 'A bold gap', 'site/index.html:42', 'Guard label', 'F2', 'LOW', 'A small one', 'exporters/derive.py:7', 'Tidy it']) {
+    assert.ok(T.includes(v), v + ' is in the run detail:\n' + T);
+  }
+  const filesLine = D.match(/<p [^>]*data-files[^>]*>([\s\S]*?)<\/p>/);
+  assert.ok(filesLine && text(filesLine[1]).includes('site/index.html, exporters/derive.py'), 'the files line names both:\n' + D);
+  assert.doesNotMatch(text(filesLine[1]), /outside the project/, 'no outside-the-repository note without such a file');
+  ok('AC-82: a picked code-reviewer run shows its verdict summary, each of its findings, the files they name and its duration');
+
+  assert.ok(D.includes('<b>bold</b>') && !D.includes('<img'), 'findings text is escaped, with only bold and code spans rendered');
+  assert.ok(D.includes('<code>label</code>'), 'a remediation code span is rendered');
+  ok('run detail: findings text goes through the page\'s only markup path, so an agent-written finding cannot inject markup');
+
+  // NFR-22 for this new view: its figures are status tiles (NFR-13), its colours come only through tokens (NFR-9),
+  // and it never takes --human, which is kept for things awaiting a human (NFR-10). NFR-14 is the check above.
+  const literal = /#[0-9a-fA-F]{3,8}\b|\b(?:rgb|hsl)a?\(/;
+  assert.equal((D.match(/<div class="tile[" ]/g) || []).length, 4, 'the run detail\'s four figures are status tiles');
+  assert.doesNotMatch(D, literal, 'the run detail panel carries no colour literal');
+  assert.ok(!D.includes('--human'), 'the run detail panel never uses --human');
+  const pickRules = css.match(/[^{}]*(?:\.rowbtn|tr\.sel)[^{}]*\{[^}]*\}/g) || [];
+  assert.equal(pickRules.length, 3, 'the run log\'s pick styles: .rowbtn, its hover and the selected row:\n' + pickRules.join('\n'));
+  for (const rule of pickRules) assert.doesNotMatch(rule, new RegExp(literal.source + '|--human'), rule);
+  ok('NFR-22: the run detail uses status tiles, colours only through tokens, and never --human');
+
+  // The findings ledger and the run detail draw a finding's cells from one helper, so escaping cannot drift apart.
+  assert.equal((html.match(/<div class="sub id">\$\{esc\(f\.location\)\}/g) || []).length, 1, 'one place in the page draws a finding\'s cells');
+  assert.match(D, /<tr><td><span class="id">F1<\/span><\/td><td class="muted">HIGH<\/td>/);
+  ok('run detail: a finding row is drawn by the same cells helper as the findings ledger');
+
+  // The pick is a run id, and the session filter, the project picker and the store can all take that run away.
+  e.change('session', 's2');
+  assert.match(text(detailOf(e)), /Review PBI-014/, 'still in scope after the filter');
+  e.change('project', 'p:platform-catalogue');
+  assert.match(text(detailOf(e)), /PC only/, 'the picked run is not in this project');
+  e.change('project', 'p:dispatch-board');
+  e.fire('c:runs', DET.filter(r => r.id !== 'd2'));
+  assert.match(text(detailOf(e)), /Build PBI-014/, 'a picked run deleted from the store falls back to the latest');
+  ok('run detail: a pick that leaves the shown scope, or the store, falls back to the latest run there');
+
+  // A round that read a findings block and listed nothing is a real all-clear, not an unreadable result.
+  // Last in the section: env() takes over the globals, so the page above stops being the one that draws.
+  const clear = await load(DET.map(r => r.id === 'd2' ? { ...r, kind: 'go', verdict: 'GO', findings: [] } : r));
+  assert.deepEqual(tileOf(detailOf(clear), 'Findings'), ['0', 'this round reported none']);
+  assert.doesNotMatch(text(detailOf(clear)), /No findings were reported/);
+  ok('run detail: a review round that listed no findings reads as none reported, not as an unreadable result');
+
+  const filesOf = e => text((detailOf(e).match(/<p [^>]*data-files[^>]*>([\s\S]*?)<\/p>/) || [])[1] || '');
+
+  // AC-82's files touched: the files the run itself edited, as the exporter published them relative to the
+  // repository, with "…/" marking a file the board could not place inside it (genuinely outside it, or edited
+  // in a git worktree the board cannot map back to the repository).
+  const edits = await load(DET.map(r => r.id === 'd1'
+    ? { ...r, files: ['site/index.html', 42, null, 'exporters/derive.py', '…/settings.json', 'a<img src=x>.js'] } : r));
+  edits.click('run', 'd1');
+  const E = detailOf(edits);
+  assert.ok(filesOf(edits).includes('Files it edited: site/index.html, exporters/derive.py, …/settings.json, a&lt;img src=x&gt;.js.'), filesOf(edits));
+  assert.match(filesOf(edits), /could not place inside the project's repository/);
+  assert.doesNotMatch(filesOf(edits), /is a file outside the project's repository/, 'the old, false-for-worktrees wording is gone');
+  assert.ok(!E.includes('<img'), 'an edited file name is escaped');
+  assert.doesNotMatch(filesOf(edits), /No file edits were recorded/);
+  ok('AC-82: a picked run names the files it edited, escaped, and says what a "…/" name means');
+
+  // A finding's location is free text an agent wrote: a Windows drive letter, several files, line lists, or no string.
+  const locs = await load(DET.map(r => r.id === 'd2' ? { ...r, findings: [
+    { id: 'L1', severity: 'LOW', title: 't', location: 'C:/Users/jdk/app/x.py:12', remediation: 'r' },
+    { id: 'L2', severity: 'LOW', title: 't', location: 'exporters/export_board.py:395; tests/test_export_board.py:19', remediation: 'r' },
+    { id: 'L3', severity: 'LOW', title: 't', location: 'site/index.html:470, 879-880, 958', remediation: 'r' },
+    { id: 'L4', severity: 'LOW', title: 't', location: { file: 'obj.py' }, remediation: 'r' },
+    { id: 'L5', severity: 'LOW', title: 't', location: 'site/index.html:12', remediation: 'r' },
+  ] } : r));
+  assert.ok(filesOf(locs).includes('Files its findings name: C:/Users/jdk/app/x.py, exporters/export_board.py, tests/test_export_board.py, site/index.html.'), filesOf(locs));
+  assert.doesNotMatch(filesOf(locs), /object Object|\b958\b/);
+  ok('run detail: file names are read from a finding location\'s drive letter, several files and line lists, skipping one that is not text');
 }
 
 assert.deepEqual([...everySub].filter(k => k === 'c:tabs' || k.startsWith('d:tabs/')), [], 'a retired tabs/* subscription');

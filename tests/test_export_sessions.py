@@ -886,6 +886,50 @@ class Projects(TreeCase):
         self.assertEqual(runs['acw11']['project'], 'app')
         self.assertIsNone(runs['acw22']['project'])
 
+    def edits(self, repo_path, *paths, sid=SID):
+        """One session whose code-writer edited paths, exported with the project's repoPath as repo_path."""
+        tools = [('toolu_e%d' % i, 'Edit', {'file_path': p}) for i, p in enumerate(paths)]
+        self.t.session(sid, [user(0, 'go'), launch(1, 'toolu_cw'), notify(30, 'acw', result='DONE', tokens='5000', ms='60000')])
+        self.t.agent(sid, 'acw', [user(1, 'task'), reply(2, 'm-a1', text='DONE', tools=tools)], CW_META)
+        self.assertEqual(self.t.run(pconfig(proj('app', sid, repoPath=repo_path))), 0)
+        return self.t.docs('runs')['acw']
+
+    def test_a_run_document_names_the_files_the_run_edited_relative_to_the_repository(self):
+        # AC-82's fourth element: the files a run touched, read from the write tools of its own transcript and
+        # published relative to the project's repository, so no absolute local path is published for them.
+        doc = self.edits(CWD, CWD + '\\site\\index.html', 'C:/work/app/exporters/derive.py')
+        self.assertEqual(doc['files'], ['site/index.html', 'exporters/derive.py'])
+
+    def test_a_run_document_names_a_file_edited_outside_the_repository_without_its_folder(self):
+        doc = self.edits(CWD, CWD + '\\a.py', 'C:\\Users\\jdk\\.claude\\settings.json')
+        self.assertEqual(doc['files'], ['a.py', '…/settings.json'])
+
+    def test_a_run_document_that_edited_nothing_carries_no_files_key(self):
+        self.t.basic()
+        self.assertEqual(self.t.run(pconfig(proj('app', SID, repoPath=CWD))), 0)
+        self.assertNotIn('files', self.t.docs('runs')['acw11'])
+
+    def test_a_cache_from_before_edited_files_were_parsed_is_not_reused(self):
+        # Edited paths are parsed from the transcript and cached with the row, so a cache signed by an earlier
+        # parser holds rows with no "files" key and must not be replayed as a run that edited nothing.
+        cfg = pconfig(proj('app', SID, repoPath=CWD))
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_cw'), notify(30, 'acw', result='DONE', tokens='5000', ms='60000')])
+        self.t.agent(SID, 'acw', [user(1, 'task'), reply(2, 'm-a1', text='DONE',
+                                                         tools=[('toolu_e0', 'Edit', {'file_path': CWD + '\\a.py'})])], CW_META)
+        self.assertEqual(self.t.run(cfg), 0)
+        cache_path = os.path.join(self.t.out, '.cache', 'sessions.json')
+        with io.open(cache_path, encoding='utf-8') as f:
+            cache = json.load(f)
+        # Signed as parser 6 signed it: the last parser that did not read edited files. Signing it
+        # PARSER_VERSION - 1 would pass whether or not the version was bumped for them.
+        cache[SID]['sig'][0] = 6
+        for row in cache[SID]['result']['rows']:
+            row.pop('files', None)
+        with io.open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump(cache, f)
+        self.assertEqual(self.t.run(cfg), 0)
+        self.assertEqual(self.t.docs('runs')['acw']['files'], ['a.py'])
+
     def test_build_flag_marks_only_the_meta_status_project(self):
         # Older copies of the page show "build" sessions with the single set of tabs, which are that project's.
         self.t.basic()
@@ -1014,15 +1058,28 @@ class Findings(TreeCase):
         self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
         self.assertNotIn('app.findings', self.t.docs('projectTabs'))
 
-    def test_run_documents_carry_no_findings_field(self):
+    def test_a_review_run_document_carries_its_own_findings(self):
+        # Run detail (FR-121) shows the findings of the run the owner picked, so each round publishes its own
+        # list beside the per-work-item ledger. A run outside the review lane reports none, so it has no key.
         self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_r1'), notify(10, 'acr1', result=review_result('NO-GO', 'F1'))])
+        self.t.agent(SID, 'acr1', [reply(2, 'a', text='reviewing')], self.review_meta('toolu_r1'))
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        doc = self.t.docs('runs')['acr1']
+        self.assertEqual(doc['findings'],
+                         [{'id': 'F1', 'severity': 'HIGH', 'title': 't-F1', 'location': 'app.py:1', 'remediation': 'fix-F1'}])
+        # The row's other review-only fields are derivation state, never published beside the findings.
+        self.assertNotIn('hasFindingsBlock', doc)
+        self.assertNotIn('pbis', doc)
+
+    def test_a_review_round_with_no_readable_block_publishes_no_findings_key(self):
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_r1'), notify(10, 'acr1', result=review_result_no_block('NO-GO'))])
         self.t.agent(SID, 'acr1', [reply(2, 'a', text='reviewing')], self.review_meta('toolu_r1'))
         self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
         self.assertNotIn('findings', self.t.docs('runs')['acr1'])
 
     def test_a_cache_from_the_previous_parser_version_is_not_reused(self):
-        # A cache written before PARSER_VERSION's bump has cr-lane rows with no "findings" key at all (the
-        # field parser 5 never wrote). Its signature must not match, so the session is re-parsed rather than
+        # A cache written before PARSER_VERSION's bump has cr-lane rows with no "findings" key at all (a field
+        # an earlier parser never wrote). Its signature must not match, so the session is re-parsed rather than
         # replaying a findings-free round that would publish F1 as resolved.
         self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_r1'), notify(10, 'acr1', result=review_result('NO-GO', 'F1'))])
         self.t.agent(SID, 'acr1', [reply(2, 'a', text='reviewing')], self.review_meta('toolu_r1'))
