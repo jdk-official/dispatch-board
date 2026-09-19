@@ -1326,6 +1326,131 @@ class Ownership(TreeCase):
         self.assertEqual(found, ['app.findings.json'])
 
 
+# The 2026-09-12 fixture is defined once, in test_derive.py, and read from there rather than copied.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from test_derive import STALE_2026_09_12, STALE_DONE  # noqa: E402
+
+AGENT_TYPE = {'cw': 'engineering-agents:code-writer', 'tw': 'engineering-agents:test-writer',
+              'cr': 'review-agents:code-reviewer', 'plan': 'Plan', 'other': 'general-purpose'}
+
+
+def agents_session(t, sid, runs):
+    """One session that launched each of runs, (agent id, lane, verdict, label), in turn; each finished by
+    notification with its verdict."""
+    recs = [user(0, 'go')]
+    for i, (aid, lane, verdict, label) in enumerate(runs):
+        m = 1 + 2 * i
+        recs += [launch(m, 'toolu_' + aid), notify(m + 1, aid, result='Verdict: ' + verdict, tokens='100', ms='60000')]
+        t.agent(sid, aid, [reply(m, 'm-' + aid, text='Verdict: ' + verdict)],
+                {'agentType': AGENT_TYPE[lane], 'description': label, 'toolUseId': 'toolu_' + aid})
+    t.session(sid, recs)
+
+
+def read_bytes(path):
+    with io.open(path, 'rb') as f:
+        return f.read()
+
+
+class WorkItems(TreeCase):
+    """The work-item state derived from a project's linked sessions, written on its project document."""
+
+    def review_session(self, sid=SID):
+        agents_session(self.t, sid, [('acw1', 'cw', 'DONE', 'Build PBI-001'), ('acr1', 'cr', 'GO', 'Code-review PBI-001')])
+
+    def files(self):
+        return {os.path.relpath(os.path.join(folder, n), self.t.out): read_bytes(os.path.join(folder, n))
+                for folder, _, names in os.walk(self.t.out) for n in names}
+
+    def test_project_document_carries_work_items(self):
+        self.review_session()
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        doc = self.t.docs('projects')['app']
+        item = doc['workItems']['PBI-001']
+        self.assertEqual((item['state'], item['rounds'], item['verdict'], item['latestRound'], item['builds'], item['runs']),
+                         ('done', 1, 'GO', 'acr1', 1, ['acw1', 'acr1']))
+        self.assertEqual((doc['unattributedRounds'], doc['workItemStatus']), (0, 'shadow'))
+
+    def test_rounds_in_an_unlinked_session_reach_no_project(self):
+        self.review_session()
+        self.assertEqual(self.t.run(pconfig(proj('app'), proj('other'))), 0)
+        self.assertEqual(self.t.docs('runs')['acr1']['kind'], 'go')
+        for pid, doc in self.t.docs('projects').items():
+            self.assertEqual((doc['workItems'], doc['unattributedRounds']), ({}, 0), pid)
+
+    def test_work_items_are_identical_when_the_parse_is_reused_from_the_cache(self):
+        self.review_session()
+        cfg = pconfig(proj('app', SID))
+        self.assertEqual(self.t.run(cfg), 0)
+        path = os.path.join(self.t.out, 'projects', 'app.json')
+        first = read_bytes(path)
+        real, calls = es.parse_session, []
+
+        def spy(*a, **kw):
+            calls.append(a[1])
+            return real(*a, **kw)
+        with mock.patch.object(es, 'parse_session', spy):
+            self.assertEqual(self.t.run(cfg), 0)
+        self.assertEqual(calls, [], 'the second export reused every cached parse')
+        self.assertEqual(read_bytes(path), first)
+        self.assertEqual(json.loads(first)['workItems']['PBI-001']['state'], 'done')
+
+    def test_the_2026_09_12_scenario_end_to_end(self):
+        agents_session(self.t, SID, [(rid, lane, verdict, label) for rid, _, lane, _, verdict, label in STALE_2026_09_12])
+        self.assertEqual(self.t.run(pconfig(proj('dispatch-board', SID))), 0)
+        runs = self.t.docs('runs')
+        for rid, _, lane, kind, verdict, _ in STALE_2026_09_12:
+            self.assertEqual((runs[rid]['lane'], runs[rid]['kind'], runs[rid]['verdict']), (lane, kind, verdict), rid)
+        doc = self.t.docs('projects')['dispatch-board']
+        items = doc['workItems']
+        for pbi, rounds in STALE_DONE.items():
+            self.assertEqual((items[pbi]['state'], items[pbi]['rounds']), ('done', rounds), pbi)
+        self.assertEqual((items['PBI-003']['state'], items['PBI-017']['state']), ('done', 'conditions'))
+        self.assertEqual(set(items), set(STALE_DONE) | {'PBI-003', 'PBI-017'})
+        self.assertEqual(doc['unattributedRounds'], 1)
+
+    def test_export_sessions_writes_no_board_tab_and_export_board_writes_no_project_document(self):
+        import export_board as eb
+        import test_export_board as teb
+        root = os.path.join(self.t.tmp, 'repo')
+        for rel, text in teb.FULL.items():
+            os.makedirs(os.path.dirname(os.path.join(root, rel)), exist_ok=True)
+            with io.open(os.path.join(root, rel), 'w', encoding='utf-8', newline='\n') as f:
+                f.write(text)
+        if teb.HAS_GIT:
+            teb.git(root, 'init')
+            teb.git(root, 'add', '-A')
+            teb.git(root, 'commit', '-m', 'first')
+        data = os.path.join(self.t.tmp, 'data')
+        os.makedirs(data)
+        with io.open(os.path.join(data, 'app.json'), 'w', encoding='utf-8') as f:
+            json.dump(teb.DATA, f)
+        self.review_session()
+        cfg = pconfig(proj('app', SID, repoPath=root, docs=dict(teb.DOCS)))
+        alone = os.path.join(self.t.tmp, 'alone')
+        # refresh.py's order in self.t.out: export_board.py first, export_sessions.py second.
+        with contextlib.redirect_stdout(io.StringIO()):
+            for out in (alone, self.t.out):
+                self.assertEqual(eb.main(config=cfg, out_dir=out, data_dir=data, now=teb.NOW, run=teb.refuse_gh), 0)
+        self.assertFalse(os.path.exists(os.path.join(alone, 'projects')), 'export_board.py writes no project document')
+        self.assertEqual(self.t.run(cfg), 0)
+        tabs = lambda out: {n: read_bytes(os.path.join(out, 'projectTabs', n)) for n in os.listdir(os.path.join(out, 'projectTabs'))}
+        mine, theirs = tabs(self.t.out), tabs(alone)
+        expected = {'app.%s.json' % t for t in ('spec', 'assumptions', 'decisions', 'backlog')} | ({'app.git.json'} if teb.HAS_GIT else set())
+        self.assertEqual(set(theirs), expected)
+        self.assertEqual(set(mine), expected | {'app.findings.json'})
+        for name in expected:
+            self.assertEqual(mine[name], theirs[name], name)
+        self.assertIn('workItems', self.t.docs('projects')['app'])
+
+    def test_an_unusable_work_item_status_exits_2_and_exports_nothing(self):
+        self.review_session()
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        before = self.files()
+        self.assertEqual(self.t.run(pconfig(proj('app', SID, workItemStatus='retired'))), 2)
+        self.assertIn('workItemStatus', self.t.err)
+        self.assertEqual(self.files(), before)
+
+
 class LegacyProjects(TreeCase):
     def test_build_block_is_one_project(self):
         self.t.basic()

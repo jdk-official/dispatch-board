@@ -247,6 +247,35 @@ class ExportProject(ReposCase):
         self.assertEqual(self.r.run([project('app', root)]), 0)
         self.assertEqual(self.r.tabs()['app.assumptions']['humanList'], [])
 
+    def test_export_board_exits_2_on_an_unusable_work_item_status_and_leaves_out_as_it_was(self):
+        root = self.r.repo('app', FULL)
+        self.r.data('app', DATA)
+        def written():
+            found = {}
+            for f in glob.glob(os.path.join(self.r.out, '**', '*'), recursive=True):
+                if os.path.isfile(f):
+                    with io.open(f, 'rb') as fh:
+                        found[f] = fh.read()
+            return found
+        self.assertEqual(self.r.run([project('app', root)]), 0)
+        before = written()
+        self.assertEqual(self.r.run([project('app', root), project('b', root, workItemStatus='Derived')]), 2)
+        self.assertIn('workItemStatus', self.r.err)
+        self.assertEqual(written(), before)
+
+    def test_the_switch_does_not_reach_the_board_tabs(self):
+        root = self.r.repo('app', FULL, with_git=False)
+        self.r.data('app', DATA)
+        written = {}
+        for mode in ('shadow', 'derived'):
+            shutil.rmtree(self.r.out, ignore_errors=True)
+            self.assertEqual(self.r.run([project('app', root, workItemStatus=mode)]), 0)
+            written[mode] = {}
+            for tab in ('spec', 'assumptions', 'decisions', 'backlog'):
+                with io.open(os.path.join(self.r.out, 'projectTabs', 'app.%s.json' % tab), 'rb') as f:
+                    written[mode][tab] = f.read()
+        self.assertEqual(written['shadow'], written['derived'])
+
 
 # ---------------------------------------------------------------- future iterations (the Backlog's Later group)
 
@@ -935,6 +964,25 @@ class ProjectList(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             bc.projects({'projects': [{'id': 'a', 'repoPath': 'C:/a', 'statusDoc': 'meta/lastRefresh'}]})
         self.assertIn('meta/lastRefresh', str(cm.exception))
+
+    def test_work_item_status_defaults_to_shadow(self):
+        [p] = bc.projects({'projects': [{'id': 'a', 'repoPath': 'C:/a'}]})
+        self.assertEqual(p['workItemStatus'], 'shadow')
+        [legacy] = bc.projects({'build': {'repoPath': 'C:/x/platform-catalogue', 'sessions': ['s1']}})
+        self.assertEqual(legacy['workItemStatus'], 'shadow')
+
+    def test_work_item_status_derived_is_kept(self):
+        [p] = bc.projects({'projects': [{'id': 'a', 'repoPath': 'C:/a', 'workItemStatus': 'derived'}]})
+        self.assertEqual(p['workItemStatus'], 'derived')
+        [p] = bc.projects({'projects': [{'id': 'a', 'repoPath': 'C:/a', 'workItemStatus': 'shadow'}]})
+        self.assertEqual(p['workItemStatus'], 'shadow')
+
+    def test_unusable_work_item_status_is_refused(self):
+        for bad in (None, True, 1, '', 'Derived', 'retired', ['shadow']):
+            with self.assertRaises(ValueError, msg=repr(bad)) as cm:
+                bc.projects({'projects': [{'id': 'a', 'repoPath': 'C:/a'}, {'id': 'b', 'repoPath': 'C:/b', 'workItemStatus': bad}]})
+            self.assertIn('project b', str(cm.exception))
+            self.assertIn('workItemStatus', str(cm.exception))
 
 
 class ManualRows(unittest.TestCase):

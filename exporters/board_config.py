@@ -1,10 +1,11 @@
 """The tracked projects listed in board.config.json, read the same way by every exporter.
 
-Each project is {id, name, repoPath, branch, sessions, statusDoc, docs}: sessions are the Claude Code
-session ids that build it, statusDoc is the store document its live flag and updatedAt go to, and docs
-are paths relative to repoPath. A config without a "projects" list (the shape used before projects
-existed) is read as one project made from build.* and usage.sessions, with the document paths
-export_board.py always read for it.
+Each project is {id, name, repoPath, branch, sessions, statusDoc, docs, workItemStatus}: sessions are the
+Claude Code session ids that build it, statusDoc is the store document its live flag and updatedAt go to, docs
+are paths relative to repoPath, and workItemStatus ("shadow" unless the owner set "derived") says whether its
+work-item state derived from runs is shown beside the hand-kept state or in place of it. A config without a
+"projects" list (the shape used before projects existed) is read as one project made from build.* and
+usage.sessions, with the document paths export_board.py always read for it.
 
 catalogue() reads the "catalogue" block: where export_catalogue.py finds the agent-catalog marketplace clone
 and the installed-plugins file. manual() reads runs.manual: the rows for work the orchestrator did in-line.
@@ -32,6 +33,9 @@ RUN_ID = re.compile(r'(?!\.\.?\Z)[^/\\\x00-\x1f\x7f-\x9f]+')
 # a leading dot hides the file from the *.json glob refresh.py pushes, Windows strips a trailing dot or space, and
 # a device name (with or without an extension) opens the device. Kept separate so RUN_ID stays the local form;
 # refusing more than the local form is safe, because every id the exporter writes still passes local to_row.
+# A project's work-item state during the shadow period is derived from runs and shown beside the hand-kept state;
+# "derived" retires the hand-kept state for that project. Only the owner sets it, in board.config.json.
+WORK_ITEM_STATUS = ('shadow', 'derived')
 UNSAFE_FILE_NAME = re.compile(r'[:*?<>|"]|\A\.|[. ]\Z|\A(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?\Z', re.I | re.S)
 LEGACY_DOCS = {
     'spec': 'docs/backlog/specs/platform-catalogue.md',
@@ -124,12 +128,15 @@ def projects(cfg):
             raise ValueError('project id %s is listed twice' % pid)
         if status in docs:
             raise ValueError('statusDoc %s is used by two projects' % status)
+        mode = p.get('workItemStatus', 'shadow')
+        if not isinstance(mode, str) or mode not in WORK_ITEM_STATUS:
+            raise ValueError('project %s: workItemStatus %r must be "shadow" or "derived"' % (pid, mode))
         ids.add(pid)
         docs.add(status)
         # A session listed twice would count its runs and usage twice in the project's totals.
         out.append({'id': pid, 'name': p.get('name') or pid, 'repoPath': p.get('repoPath') or '',
                     'branch': p.get('branch') or '', 'sessions': list(dict.fromkeys(p.get('sessions') or [])),
-                    'statusDoc': status, 'docs': dict(p.get('docs') or {})})
+                    'statusDoc': status, 'docs': dict(p.get('docs') or {}), 'workItemStatus': mode})
     return out
 
 

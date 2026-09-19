@@ -3,7 +3,7 @@
 Importing it must touch no files, print nothing and need nothing beyond the standard library, so a collector
 can import it and feed it records as it reads them.
 """
-import copy, io, json, os, subprocess, sys, tempfile, unittest
+import copy, importlib.util, io, itertools, json, os, subprocess, sys, tempfile, unittest
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXPORTERS = os.path.join(HERE, 'exporters')
@@ -492,6 +492,202 @@ class FindingsDoc(unittest.TestCase):
         f2 = next(f for f in item['open'] if f['id'] == 'F2')
         self.assertEqual((f1['round'], f1['lastSeen']), (1, 1))
         self.assertEqual((f2['round'], f2['lastSeen']), (1, 3))
+
+
+def run(rid, lane, kind, label, start=0, verdict=None):
+    """An agent row as agent_row() builds it, with only the fields work_items() reads."""
+    return {'id': rid, 'start': ts(start), 'lane': lane, 'kind': kind, 'verdict': verdict or kind.upper(),
+            'label': label, 'pbis': derive.pbis(label)}
+
+
+def stale_ts(minute):
+    return '2026-09-12T%02d:%02d:00Z' % (10 + minute // 60, minute % 60)
+
+
+# One linked session's runs on 2026-09-12, labelled as the real ones were: five work items merged and reviewed while
+# the hand-kept state still called them Not started (PBI-005, 006, 011, 025 and 026), one agreeing item (PBI-003), one
+# closed on GO-WITH-CONDITIONS (PBI-017), a review round that names no work item, and spec-gate (plan) and spec-author
+# (other) runs that name a work item but are not evidence that it was built. PBI-010 is in the backlog and named by
+# no run. (id, minute, lane, kind, verdict, label).
+STALE_2026_09_12 = [
+    ('s05p1', 0, 'plan', 'changes', 'CHANGES-REQUIRED', 'Spec gate review PBI-005'),
+    ('s05p2', 1, 'plan', 'go', 'APPROVE-WITH-NOTES', 'Spec gate review PBI-005 round 2'),
+    ('s25a', 2, 'other', 'done', 'DONE', 'Author PBI-025 spec'),
+    ('s05b', 3, 'cw', 'done', 'DONE', 'Build PBI-005 local server'),
+    ('s05r1', 4, 'cr', 'nogo', 'NO-GO', 'Code-review PBI-005'),
+    ('s05f', 5, 'cw', 'done', 'DONE-WITH-CONDITIONS', 'Fix PBI-005 review findings'),
+    ('s05r2', 6, 'cr', 'go', 'GO', 'Code-review PBI-005 round 2'),
+    ('s06b', 7, 'cw', 'done', 'DONE', 'Build PBI-006 data adapter'),
+    ('s06r1', 8, 'cr', 'go', 'GO-WITH-CONDITIONS', 'Code-review PBI-006'),
+    ('s06f', 9, 'cw', 'done', 'DONE', 'Fix PBI-006 review conditions'),
+    ('s06r2', 10, 'cr', 'go', 'GO', 'Code-review PBI-006 round 2'),
+    ('s11b', 11, 'cw', 'done', 'DONE-WITH-CONDITIONS', 'Build PBI-011 findings ledger'),
+    ('s11r1', 12, 'cr', 'nogo', 'NO-GO', 'Code-review PBI-011'),
+    ('s11f', 13, 'cw', 'done', 'DONE', 'Fix PBI-011 review findings'),
+    ('s11r2', 14, 'cr', 'go', 'GO', 'Code-review PBI-011 round 2'),
+    ('s25b', 15, 'cw', 'done', 'DONE', 'Build PBI-025 local tabs'),
+    ('s25r1', 16, 'cr', 'go', 'GO-WITH-CONDITIONS', 'Code-review PBI-025'),
+    ('s25f', 17, 'cw', 'done', 'DONE', 'Fix PBI-025 review conditions'),
+    ('s25r2', 18, 'cr', 'go', 'GO', 'Code-review PBI-025 round 2'),
+    ('s26b', 19, 'cw', 'done', 'DONE', 'Build PBI-026 local shapes'),
+    ('s26r1', 20, 'cr', 'go', 'GO', 'Code-review PBI-026'),
+    ('s03r1', 21, 'cr', 'go', 'GO', 'Code-review PBI-003'),
+    ('s17b', 22, 'cw', 'done', 'DONE', 'Build PBI-017 page'),
+    ('s17r1', 23, 'cr', 'go', 'GO-WITH-CONDITIONS', 'Code-review PBI-017'),
+    ('sr2', 24, 'cr', 'go', 'GO', 'Code review round 2'),
+]
+STALE_DONE = {'PBI-005': 2, 'PBI-006': 2, 'PBI-011': 2, 'PBI-025': 2, 'PBI-026': 1}  # work item -> review rounds
+
+
+def stale_rows():
+    return [{'id': rid, 'start': stale_ts(m), 'end': stale_ts(m), 'lane': lane, 'kind': kind, 'verdict': verdict,
+             'label': label, 'pbis': derive.pbis(label)} for rid, m, lane, kind, verdict, label in STALE_2026_09_12]
+
+
+class WorkItems(unittest.TestCase):
+    """Work-item state derived from the code-writer, test-writer and code-reviewer runs that name a work item."""
+
+    def test_work_items_latest_round_go_is_done(self):
+        out = derive.work_items([run('r1', 'cr', 'nogo', 'Review PBI-001', 1, 'NO-GO'), run('r2', 'cr', 'go', 'Review PBI-001', 2, 'GO')])
+        self.assertEqual(out['items']['PBI-001'], {'state': 'done', 'rounds': 2, 'verdict': 'GO', 'latestRound': 'r2',
+                                                   'builds': 0, 'runs': ['r1', 'r2']})
+        self.assertEqual(out['unattributedRounds'], 0)
+
+    def test_work_items_conditions_tokens_are_conditions(self):
+        for token in ('GO-WITH-CONDITIONS', 'APPROVE-WITH-CONDITIONS'):
+            item = derive.work_items([run('r1', 'cr', 'go', 'Review PBI-001', 1, token)])['items']['PBI-001']
+            self.assertEqual((item['state'], item['verdict']), ('conditions', token))
+
+    def test_work_items_go_with_notes_and_approve_are_done(self):
+        for token in ('GO', 'GO-WITH-NOTES', 'APPROVE', 'APPROVED', 'APPROVE-WITH-NOTES'):
+            item = derive.work_items([run('r1', 'cr', 'go', 'Review PBI-001', 1, token)])['items']['PBI-001']
+            self.assertEqual(item['state'], 'done', token)
+
+    def test_work_items_latest_nogo_or_changes_is_partial(self):
+        for kind, token in (('nogo', 'NO-GO'), ('nogo', 'REJECT'), ('changes', 'CHANGES-REQUIRED')):
+            rows = [run('r1', 'cr', 'go', 'Review PBI-001', 1, 'GO'), run('r2', 'cr', kind, 'Review PBI-001', 2, token)]
+            item = derive.work_items(rows)['items']['PBI-001']
+            self.assertEqual((item['state'], item['rounds'], item['verdict']), ('partial', 2, token))
+
+    def test_work_items_activity_without_a_round_is_partial(self):
+        for lane, kind in (('cw', 'done'), ('cw', 'killed'), ('tw', 'done'), ('cr', 'running'), ('cr', 'killed')):
+            item = derive.work_items([run('r1', lane, kind, 'Work on PBI-001')])['items']['PBI-001']
+            self.assertEqual((item['state'], item['rounds'], item['verdict'], item['latestRound']), ('partial', 0, None, None), (lane, kind))
+            self.assertEqual(item['builds'], 1 if lane in ('cw', 'tw') else 0)
+
+    def test_work_items_a_build_after_a_go_does_not_downgrade_it(self):
+        rows = [run('r1', 'cr', 'go', 'Review PBI-001', 1, 'GO'), run('b1', 'cw', 'done', 'Apply PBI-001 conditions', 2)]
+        item = derive.work_items(rows)['items']['PBI-001']
+        self.assertEqual((item['state'], item['builds'], item['runs']), ('done', 1, ['r1', 'b1']))
+        rows = [run('r1', 'cr', 'nogo', 'Review PBI-001', 1, 'NO-GO'), run('b1', 'cw', 'done', 'Fix PBI-001', 2)]
+        self.assertEqual(derive.work_items(rows)['items']['PBI-001']['state'], 'partial')
+
+    def test_work_items_an_unfinished_review_after_a_go_does_not_downgrade_it(self):
+        for kind in ('running', 'killed'):
+            rows = [run('r1', 'cr', 'go', 'Review PBI-001', 1, 'GO'), run('r2', 'cr', kind, 'Review PBI-001', 2)]
+            item = derive.work_items(rows)['items']['PBI-001']
+            self.assertEqual((item['state'], item['rounds'], item['latestRound']), ('done', 1, 'r1'), kind)
+
+    def test_work_items_a_run_naming_three_pbis_credits_all_three(self):
+        out = derive.work_items([run('r1', 'cr', 'nogo', 'Code-review gate PBI-003/004/005', 1, 'NO-GO')])
+        self.assertEqual(sorted(out['items']), ['PBI-003', 'PBI-004', 'PBI-005'])
+        for pbi, item in out['items'].items():
+            self.assertEqual((item['rounds'], item['state']), (1, 'partial'), pbi)
+
+    def test_work_items_a_round_naming_no_pbi_credits_none_and_is_counted(self):
+        out = derive.work_items([run('r1', 'cr', 'go', 'Code review round 2', 1, 'GO'), run('b1', 'cw', 'done', 'Tidy the page', 2)])
+        self.assertEqual(out, {'items': {}, 'unattributedRounds': 1})
+
+    def test_work_items_plan_ver_req_other_and_orch_lanes_are_never_evidence(self):
+        rows = [run('p1', 'plan', 'go', 'Spec gate PBI-009', 1, 'APPROVE'), run('v1', 'ver', 'done', 'Verify PBI-009', 2, 'exercised'),
+                run('o1', 'other', 'done', 'Author PBI-009 spec', 3), run('q1', 'req', 'done', 'PRD for PBI-009', 4),
+                run('m1', 'orch', 'done', 'Merge PBI-009', 5)]
+        self.assertEqual(derive.work_items(rows), {'items': {}, 'unattributedRounds': 0})
+
+    def test_work_items_order_is_start_then_id(self):
+        go, nogo = run('r1', 'cr', 'go', 'Review PBI-001', 1, 'GO'), run('r2', 'cr', 'nogo', 'Review PBI-001', 2, 'NO-GO')
+        self.assertEqual(derive.work_items([go, nogo]), derive.work_items([nogo, go]))
+        self.assertEqual(derive.work_items([nogo, go])['items']['PBI-001']['state'], 'partial')
+        # With identical start times the larger id is the latest.
+        a, b = dict(go, id='a'), dict(nogo, id='b', start=go['start'])
+        self.assertEqual(derive.work_items([b, a])['items']['PBI-001']['latestRound'], 'b')
+        rows = [run('x1', 'cw', 'done', 'Build PBI-001', 1), run('x2', 'cr', 'nogo', 'Review PBI-001/002', 2, 'NO-GO'),
+                run('x3', 'cw', 'done', 'Fix PBI-001', 3), run('x4', 'cr', 'go', 'Review PBI-001', 3, 'GO'),
+                run('x5', 'cr', 'go', 'Code review round 2', 4, 'GO'), dict(run('x6', 'tw', 'done', 'Tests PBI-002'), start=None)]
+        want = derive.work_items(rows)
+        for perm in itertools.permutations(rows):
+            self.assertEqual(derive.work_items(list(perm)), want)
+        self.assertEqual(json.dumps(want, sort_keys=False), json.dumps(derive.work_items(list(reversed(rows))), sort_keys=False))
+
+    def test_work_items_rounds_equal_findings_doc_rounds(self):
+        rows = stale_rows() + [dict(run('f1', 'cr', 'changes', 'Code-review PBI-017 round 2', 30, 'CHANGES-REQUIRED'),
+                                    findings=[{'id': 'F1'}], hasFindingsBlock=True)]
+        items, ledger = derive.work_items(rows)['items'], derive.findings_doc(rows)
+        both = set(items) & set(ledger)
+        self.assertEqual(both, {p for p, i in items.items() if i['rounds']})
+        for pbi in both:
+            self.assertEqual(items[pbi]['rounds'], ledger[pbi]['rounds'], pbi)
+
+    def test_work_items_output_round_trips_through_json(self):
+        out = derive.work_items(stale_rows())
+        self.assertEqual(json.loads(json.dumps(out)), out)
+
+    def test_the_2026_09_12_fixture_derives_done_for_the_five(self):
+        out = derive.work_items(stale_rows())
+        for pbi, rounds in STALE_DONE.items():
+            self.assertEqual((out['items'][pbi]['state'], out['items'][pbi]['rounds']), ('done', rounds), pbi)
+        self.assertEqual(out['items']['PBI-003']['state'], 'done')
+        self.assertEqual(out['items']['PBI-017']['state'], 'conditions')
+        self.assertEqual(out['unattributedRounds'], 1)
+        self.assertEqual(set(out['items']), set(STALE_DONE) | {'PBI-003', 'PBI-017'})
+        self.assertNotIn('todo', {i['state'] for i in out['items'].values()})
+
+
+def project(pid='app', sessions=('s1',), **over):
+    return dict({'id': pid, 'name': pid, 'repoPath': 'C:/' + pid, 'branch': 'main', 'statusDoc': 'status/' + pid,
+                 'sessions': list(sessions)}, **over)
+
+
+def exported(*rows, last=None):
+    return {'doc': {'last': last, 'usage': None}, 'rows': list(rows)}
+
+
+class ProjectWorkItems(unittest.TestCase):
+    def test_project_doc_carries_work_items_from_its_linked_sessions_only(self):
+        mine = run('m1', 'cr', 'go', 'Review PBI-001', 1, 'GO')
+        results = {'s1': exported(mine), 'theirs': exported(run('t1', 'cr', 'go', 'Review PBI-002', 2, 'GO')),
+                   'loose': exported(run('u1', 'cr', 'go', 'Review PBI-003', 3, 'GO')),
+                   'twice': exported(run('w1', 'cr', 'go', 'Review PBI-004', 4, 'GO'))}
+        # "twice" is listed under this project and an earlier one; "gone" is linked but was not exported.
+        project_of = {'s1': 'app', 'theirs': 'other', 'twice': 'first', 'gone': 'app'}
+        counts = dict.fromkeys(results, 1)
+        doc = derive.project_doc(project(sessions=('s1', 'twice', 'gone')), 0, results, counts, counts, project_of)
+        self.assertEqual(list(doc['workItems']), ['PBI-001'])
+        self.assertEqual(doc['workItems']['PBI-001']['runs'], ['m1'])
+        first = derive.project_doc(project('first', sessions=('twice',)), 0, results, counts, counts, project_of)
+        self.assertEqual(list(first['workItems']), ['PBI-004'])
+
+    def test_project_doc_always_writes_the_three_keys(self):
+        doc = derive.project_doc(project(sessions=()), 0, {}, {}, {}, {})
+        self.assertEqual((doc['workItems'], doc['unattributedRounds'], doc['workItemStatus']), ({}, 0, 'shadow'))
+        hand_built = {k: v for k, v in project().items()}
+        self.assertNotIn('workItemStatus', hand_built)
+        doc = derive.project_doc(hand_built, 0, {'s1': exported(run('r', 'cr', 'go', 'Code review', 1, 'GO'))}, {'s1': 1}, {'s1': 0}, {'s1': 'app'})
+        self.assertEqual((doc['workItems'], doc['unattributedRounds'], doc['workItemStatus']), ({}, 1, 'shadow'))
+
+    def test_project_doc_passes_work_item_status_through(self):
+        self.assertEqual(derive.project_doc(project(workItemStatus='derived'), 0, {}, {}, {}, {})['workItemStatus'], 'derived')
+        self.assertEqual(derive.project_doc(project(workItemStatus='shadow'), 0, {}, {}, {}, {})['workItemStatus'], 'shadow')
+
+    def test_a_project_doc_with_work_items_is_a_valid_local_record(self):
+        spec = importlib.util.spec_from_file_location('local_records', os.path.join(HERE, 'local', 'records.py'))
+        records = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(records)
+        results = {'s1': exported(*stale_rows(), last=stale_ts(24))}
+        doc = derive.project_doc(project('dispatch-board'), 1, results, {'s1': len(STALE_2026_09_12)}, {'s1': 0}, {'s1': 'dispatch-board'})
+        self.assertEqual(len(doc['workItems']), 7)
+        self.assertEqual(records.validate('project', doc), [])
+        self.assertEqual(records.from_row('project', records.to_row('project', 'dispatch-board', doc)), doc)
 
 
 SPEC = '''---
