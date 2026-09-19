@@ -115,18 +115,36 @@
       "commit": "4bbbad8"
     },
     "PBI-027": {
-      "state": "partial",
-      "review": "In build",
-      "open": "Building 2026-09-19: the local collector passes the repository, so the local app shows the same file paths as the board. PBI-007's deployment waits on it.",
-      "commit": ""
+      "state": "done",
+      "review": "Accounted code-review-r1 GO, 0 findings",
+      "open": "Done: PR #27 squash-merged (941ac4b). The local collector passes the repository, so the local app shows the same file paths as the board.",
+      "commit": "941ac4b"
     },
     "PBI-009": {
+      "state": "done",
+      "review": "Accounted r1 GO-WITH-CONDITIONS (CR-009-1 applied), r2 GO; W-14 approved by the owner",
+      "open": "Done: PR #29 squash-merged (25156c9). The Overview's Waiting on you panel lists questions left for the owner and refused actions, per session.",
+      "commit": "25156c9"
+    },
+    "PBI-007": {
+      "state": "conditions",
+      "review": "Accounted code-review-r1 GO, 0 findings",
+      "open": "Merged: PR #28 (7c6bcb6); tasks installed and AC-68 demonstrated. Waits on the owner's log-on demonstration (AC-65); AC-72 deferred to PBI-016.",
+      "commit": "7c6bcb6"
+    },
+    "PBI-012": {
       "state": "partial",
-      "review": "Spec gate passed (revision 3); owner answered rows 1a, 1b and 2 on 2026-09-19",
-      "open": "Building 2026-09-19: the 'Waiting on you' panel (pending questions, idle-after-asking, refusals). Holds the page group's slot.",
+      "review": "In build",
+      "open": "Building 2026-09-19: test trend and cost per work item and per agent type.",
+      "commit": ""
+    },
+    "PBI-028": {
+      "state": "partial",
+      "review": "In build",
+      "open": "Building 2026-09-19: the local record shapes name the session's waiting list and check a run's files are strings.",
       "commit": ""
     }
   },
   "notWorkedOut": [],
-  "boardNote": "The plan was approved on 2026-09-11 (spec revision 5). Done: **PBI-017**, **PBI-018**, **PBI-022**, **PBI-023**, **PBI-003**, **PBI-021** (the six leftover store documents are deleted, with copies in snapshot/tabs/), **PBI-013** (the usage limit forecast is live), **PBI-001** (exporter hardening), **PBI-024** (the carried-tab marker), **PBI-004** (the shared derivation module), **PBI-002** (page fixes; its 20-load check stays active), **PBI-019** (the collector), **PBI-008** (the 'data as of' stale-board warning), and on 2026-09-12 **PBI-011** (the review findings ledger), **PBI-005** (the local server), **PBI-026** (local shapes accept the findings tab), **PBI-006** (the page data-adapter seam) and **PBI-025** (local tab and status records). **PBI-016** (Unraid) was moved to Later by the owner.\n\n**The local-first path is complete**: collector to SQLite to server to page, with every document the published board shows now derivable locally from one shared implementation. The one deliberate gap is `pulls` — listing pull requests needs `gh`, which contacts GitHub, and the collector never touches a network host, so the local GitHub tab carries no pull requests.\n\nNothing is in flight. **PBI-007** (log-on start through Task Scheduler, the on-PC deployment end to end) now has all three dependencies Done and is the natural next item; it also owns AC-68's in-browser demonstration leg, which PBI-005 deliberately did not claim. PBI-009, PBI-010, PBI-012, PBI-014 and PBI-020 are all dependency-clear. On 2026-09-19 **PBI-014** (run detail) closed once the owner approved its screenshots; **PBI-027** and **PBI-009** are building."
+  "boardNote": "Building PBI-012 (test trend and cost) in the page slot, and PBI-028 (local record shapes) beside it. Next in the page slot: PBI-010 (owner-approved), then PBI-020. PBI-007 waits on the owner's log-on demonstration. PBI-016 (Unraid) is deferred."
 }

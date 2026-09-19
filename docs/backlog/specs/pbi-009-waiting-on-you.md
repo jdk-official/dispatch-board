@@ -341,6 +341,17 @@ tests pass unchanged (T-12). `is_owner_message()` is called only from the new fo
 tests no longer conflict: **T-4** pins the new predicate's wider behaviour, **T-12** pins that
 `firstPrompt` did not move, and **T-25** pins the difference itself.
 
+**Amendment (2026-09-19, code review finding CR-009-1).** `is_owner_message()` also excludes two
+record shapes that would otherwise pass the string/list rules above:
+
+- a record with `isCompactSummary: true` — Claude Code's own synthetic carry-over of context across a
+  compaction, often written while the owner is away for hours, not something they typed;
+- a record whose whole text is exactly the fixed string `[Request interrupted by user for tool use]` —
+  Claude Code's own interruption marker, not a reply.
+
+Counting either as the owner would clear every pending item in the session at once, the false-positive
+direction §1.1 calls worse.
+
 **W-b. New state keys** in `new_session()` (`exporters/derive.py:419-422`), all additive:
 
 | Key | Holds |
@@ -769,7 +780,7 @@ transcripts in temporary directories and never read the real `~/.claude` (`CLAUD
 | T-1 | An `AskUserQuestion` with no `tool_result` yields one `questions` item with `source: "ask"` and the question text. |
 | T-2 | The same call **with** a matching `tool_result` yields nothing. (No double-count of an answered question.) |
 | T-3 | An unanswered call **followed by an owner message** yields nothing (§7.1 rule 2). |
-| T-4 | **The new predicate.** `is_owner_message()` accepts a plain-string user record; rejects an `isMeta` duplicate, a `<command-message>` block, a `<system-reminder>`, and a `tool_result`-bearing list; **accepts** a list carrying a `text` block and no `tool_result` (§4.1, the pasted-attachment reply); **rejects** the same list shape when its `text` block begins with `<` (round-2 N-3), the same prefix rule the string branch already applies. |
+| T-4 | **The new predicate.** `is_owner_message()` accepts a plain-string user record; rejects an `isMeta` duplicate, a `<command-message>` block, a `<system-reminder>`, and a `tool_result`-bearing list; **accepts** a list carrying a `text` block and no `tool_result` (§4.1, the pasted-attachment reply); **rejects** the same list shape when its `text` block begins with `<` (round-2 N-3), the same prefix rule the string branch already applies; **rejects** a record with `isCompactSummary: true` and a record whose whole text is exactly `[Request interrupted by user for tool use]` (amendment 2026-09-19, CR-009-1). |
 | T-5 | A final assistant turn ending `"…which would you prefer?"` with no owner reply yields one `prose` question; the same text **followed by** an owner message yields nothing. |
 | T-6 | A final assistant turn with `stop_reason: "tool_use"` yields nothing (§3.3). |
 | T-7 | A transcript whose last line is a `type: "attachment"` record is judged on the last **conversation** record, not the attachment (§3.1 fact 2). |

@@ -1,0 +1,68 @@
+{
+ "schema_version": "1",
+ "evidence_binding": {"pbi": "PBI-009", "round": 1},
+ "report": {
+  "agent": "test-writer",
+  "as_of_date": "2026-09-19",
+  "mode": "change",
+  "scope_class": "standard",
+  "scope": "PBI-009 'Waiting on you' panel: assessed the builder's 30 Python tests + 10 page checks against spec rev 3 (T-1..T-29, W-1..W-15, AC-75, AC-76) and filled one demonstrated gap - per-item (not per-session) owner-message clearing when an earlier and a later item of the same kind straddle one owner message; grounding: ran-suite (all three canonical commands, worktree C:/Users/jdk/dispatch-board-worktrees/PBI-009).",
+  "verdict": "DONE",
+  "summary": "1 test file modified (tests/test_derive.py): 2 cases added (test_an_owner_message_clears_only_the_ask_before_it, test_an_owner_message_clears_only_the_refusal_before_it). tests/test_export_sessions.py and tests/page.test.mjs left unchanged - existing coverage (T-14..T-29) already maps cleanly to every spec requirement checked, including the 48h bound, the panel-level cap and drop order, the per-session cap of 5 with 'more', D2's idleness gate, and the panel ignoring the session filter. Suites: python -m unittest discover -s tests: 392 passed / 0 failed (was 390, +2 new, both pass on first run against the unmodified code - no defect surfaced); node tests/page.test.mjs: 131 passed / 0 failed (unchanged); python -m unittest discover -s local/tests: 304 passed / 0 failed (unchanged). Nothing committed, staged, or pushed; exporters/** and site/** untouched by this pass.",
+  "sensitivity": "sensitive"
+ },
+ "tests_authored": [
+  {
+   "path": "C:/Users/jdk/dispatch-board-worktrees/PBI-009/tests/test_derive.py",
+   "kind": "added",
+   "layer": "unit",
+   "cases": ["test_an_owner_message_clears_only_the_ask_before_it", "test_an_owner_message_clears_only_the_refusal_before_it"],
+   "covers": "Clearing rule (spec S7.1 rule 2, S7.3): a later owner message clears only items that occurred before it; an item of the same kind occurring after that owner message still lists. Untested branch of the shared later()/lastOwnerAt comparison - all existing clearing tests used exactly one item per session, so a session-wide 'owner ever spoke' bug would not have been caught.",
+   "status": "pass"
+  },
+  {
+   "path": "C:/Users/jdk/dispatch-board-worktrees/PBI-009/tests/test_derive.py",
+   "kind": "existing",
+   "layer": "unit",
+   "cases": "T-1..T-13, T-25 (26 cases in the Waiting class before this pass)",
+   "covers": "D1 unanswered/answered/single-clear, is_owner_message (string, isMeta, <command-message>, <system-reminder>, tool_result list, pasted-attachment list, list text beginning with '<'), D2 prose ? / solicitation-without-'?' / anchored-to-final-paragraph / stop_reason tool_use / bookkeeping-tail / streamed-text-continuation, D3 all three listed kinds + unresolved tool + automode-unavailable excluded + plain-string toolUseResult, ask-beats-prose, per-session cap of 5 with 'more', no waiting key when nothing, new_session key set, firstPrompt unchanged (incl. list-content opener), 20 ordinary is_error + boilerplate phrase -> zero refusals",
+   "status": "pass"
+  },
+  {
+   "path": "C:/Users/jdk/dispatch-board-worktrees/PBI-009/tests/test_export_sessions.py",
+   "kind": "existing",
+   "layer": "integration",
+   "cases": "T-14..T-17 (5 cases)",
+   "covers": "waiting exported for a blocked session and absent/unchanged for an unaffected one; a subagent's AskUserQuestion not listed; byte-identical re-export at a later clock (W-9, no time-dependent value); PARSER_VERSION exactly one above base and a base-version cache not reused (T-16, amended form); refresh.py's plan carries no new collection and no projectTabs write (W-8)",
+   "status": "pass"
+  },
+  {
+   "path": "C:/Users/jdk/dispatch-board-worktrees/PBI-009/tests/page.test.mjs",
+   "kind": "existing",
+   "layer": "unit",
+   "cases": "T-18..T-24, T-26..T-29 (13 checks) plus the ten-panel equivalence extension",
+   "covers": "four tags in a project view, rendering in Other sessions, the S8.3 empty sentence in both views with no .empty class (T-26), idle wording vs a live session (D2's idleness gate), escaping with no md(), the removed 'Plan gate approval' duplicate, the panel ignoring the session filter, the 48-hour age bound with its footer (T-27), the 20-item panel-level cap with the stated drop order - inferred first, oldest within a kind, D4 rows never dropped (T-28), the store/local equivalence fixture's two item-content probes anchored to seen['panel-overview'] (T-23, round-2 N-1), and the negative control proving the probes are not vacuous (T-29)",
+   "status": "pass"
+  }
+ ],
+ "coverage": [
+  {"target": "D1 - unanswered AskUserQuestion (AC-75, W-2)", "covered": "yes", "how": "test_an_unanswered_ask_is_a_question_waiting, test_an_answered_ask_is_not_waiting, test_an_owner_message_after_an_ask_clears_it, test_only_the_latest_pending_ask_is_listed"},
+  {"target": "Clearing rule applies per-item, not per-session (S7.1 rule 2, S7.3)", "covered": "yes", "how": "new: test_an_owner_message_clears_only_the_ask_before_it, test_an_owner_message_clears_only_the_refusal_before_it"},
+  {"target": "D2 - idle-after-asking in prose, condition 4's anchored final paragraph, and the page-side idleness gate (FR-108, W-3)", "covered": "yes", "how": "test_a_closing_question_in_prose_is_waiting_until_the_owner_replies, test_a_closing_solicitation_without_a_question_mark_is_waiting, test_a_question_mark_before_the_closing_paragraph_is_not_waiting, test_a_reply_cut_off_mid_tool_call_is_not_a_question, test_the_last_turn_ignores_bookkeeping_records, test_a_streamed_reply_keeps_its_text_across_its_lines; page: 'a prose question is listed once its session is quiet past its running window, and not while it is live'"},
+  {"target": "D3 - permission refusals, the three listed kinds, automode-unavailable excluded, no string matching (FR-109, AC-76, W-4)", "covered": "yes", "how": "test_listed_refusals_name_the_refused_tool, test_a_classifier_outage_is_not_a_refusal, test_a_refusal_whose_tool_cannot_be_resolved_still_lists, test_a_string_tool_use_result_is_read_without_raising, test_ordinary_tool_failures_and_permission_boilerplate_are_not_refusals"},
+  {"target": "D4 - needsYou / notWorkedOut rows (FR-110, W-5)", "covered": "yes", "how": "page: 'AC-75, AC-76: a project's panel lists...' asserts the 'Needs you' tag and the notWorkedOut row"},
+  {"target": "Per-session cap of 5 with 'more' (S7.3, W-6)", "covered": "yes", "how": "test_a_session_lists_at_most_five_items_and_counts_the_rest, test_the_cap_keeps_the_question; page: Other-sessions fixture renders a precomputed 'more'"},
+  {"target": "48-hour age bound, render-time only (S7.6, W-15)", "covered": "yes", "how": "page: 'items older than 48 hours are not listed, and the panel says something was left out' (47h renders, 49h does not, footer appears on a minute-tick redraw with injected time)"},
+  {"target": "20-item panel-level cap and drop order: inferred first, oldest-within-kind first, D4 never dropped (S7.6, W-15, round-2 N-4)", "covered": "yes", "how": "page: '25 items render 20 and +5 more waiting; inferred items go first, oldest first, and assumption rows are never dropped'"},
+  {"target": "No waiting key / byte-identical export when nothing is waiting, no time-dependent value (W-9)", "covered": "yes", "how": "test_a_session_with_nothing_waiting_has_no_waiting_key, test_the_session_document_carries_a_copy_of_waiting; test_export_sessions: test_waiting_holds_nothing_that_depends_on_the_export_time"},
+  {"target": "PARSER_VERSION bumped by exactly one from the build base; old cache not reused (S4.4, W-7)", "covered": "yes", "how": "test_parser_version_was_bumped_for_waiting, test_a_cache_from_before_waiting_was_parsed_is_not_reused"},
+  {"target": "No new store collection or projectTabs suffix (S5.2, W-8)", "covered": "yes", "how": "test_waiting_adds_no_collection_and_no_project_tab"},
+  {"target": "Subagent questions excluded, main transcript only (S7.1, S9 row 9)", "covered": "yes", "how": "test_a_question_asked_inside_an_agent_transcript_is_not_listed"},
+  {"target": "toolDenialKind absent degrades to zero refusal items, never string matching (S9 row 4)", "covered": "yes", "how": "implicitly exercised by every fixture without a denial record (test_ordinary_tool_failures_and_permission_boilerplate_are_not_refusals and the MAIN fixture used across the suite); the code path is 'kind in REFUSAL_KINDS', so an absent or unrecognised field falls through to no denial with no special-cased branch to test separately"},
+  {"target": "Panel ignores the session filter (S9 row 7)", "covered": "yes", "how": "page: 'the panel shows every session in the project whatever the session filter is set to'"},
+  {"target": "Store/local adapter equivalence exercises the panel, with content probes anchored to panel-overview and a negative control (S8.4, W-11)", "covered": "yes", "how": "the ten-panel equivalence extension (WAITING_PROBES against seen['panel-overview']) and the negative-control block"},
+  {"target": "Escaping only, no md(), no wide monospace (W-12)", "covered": "yes", "how": "page: 'transcript text is escaped and not rendered through md()'"},
+  {"target": "Empty state sentence and no .empty class (S8.3, W-10)", "covered": "yes", "how": "page: the QUIET_TABS loop over both project and Other-sessions views"}
+ ],
+ "follow_ups": []
+}

@@ -1,0 +1,117 @@
+.................................................................................................................................................................................................................server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 503 -
+..server: 127.0.0.1 - 'GET / HTTP/1.1' 200 -
+..server: 127.0.0.1 - 'PATCH / HTTP/1.1' 501 -
+.server: rejected a request with Host 'evil.test:62108'
+server: 127.0.0.1 - 'GET / HTTP/1.1' 403 -
+server: rejected a request with no Host header
+server: 127.0.0.1 - 'GET / HTTP/1.1' 403 -
+server: rejected a request with Origin 'http://evil.test'
+server: 127.0.0.1 - 'POST / HTTP/1.1' 403 -
+server: 127.0.0.1 - 'GET /nope HTTP/1.1' 404 -
+server: 127.0.0.1 - 'POST / HTTP/1.1' 405 -
+server: 127.0.0.1 - 'GET /a b HTTP/1.1' 400 -
+server: 127.0.0.1 - '' 414 -
+server: 127.0.0.1 - 'GET / HTTP/1.1' 431 -
+server: 127.0.0.1 - 'PATCH / HTTP/1.1' 501 -
+server: 127.0.0.1 - 'GET / HTTP/2.5' 505 -
+.server: rejected a request with Host 'evil.test'
+server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 403 -
+.server: 127.0.0.1 - 'GET /a b HTTP/1.1' 400 -
+.server: 127.0.0.1 - '' 414 -
+..server: 127.0.0.1 - 'GET / HTTP/1.1' 431 -
+.server: 127.0.0.1 - 'GET / HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET / HTTP/1.1' 200 -
+.server: rejected a request with Host 'evil.test:59018'
+server: 127.0.0.1 - 'GET / HTTP/1.1' 403 -
+server: rejected a request with Host 'board.example.com'
+server: 127.0.0.1 - 'GET / HTTP/1.1' 403 -
+server: rejected a request with Host '127.0.0.1:1'
+server: 127.0.0.1 - 'GET / HTTP/1.1' 403 -
+server: rejected a request with no Host header
+server: 127.0.0.1 - 'GET / HTTP/1.1' 403 -
+.server: 127.0.0.1 - 'GET / HTTP/1.1' 200 -
+.server: rejected a request with Origin 'http://evil.test'
+server: 127.0.0.1 - 'GET / HTTP/1.1' 403 -
+.server: 127.0.0.1 - 'GET / HTTP/1.1' 200 -
+server: 127.0.0.1 - 'OPTIONS / HTTP/1.1' 405 -
+.server: rejected a POST request with no Origin header
+server: 127.0.0.1 - 'POST / HTTP/1.1' 403 -
+server: rejected a request with Origin 'http://evil.test'
+server: 127.0.0.1 - 'POST / HTTP/1.1' 403 -
+server: rejected a PUT request with no Origin header
+server: 127.0.0.1 - 'PUT / HTTP/1.1' 403 -
+server: rejected a request with Origin 'http://evil.test'
+server: 127.0.0.1 - 'PUT / HTTP/1.1' 403 -
+server: rejected a DELETE request with no Origin header
+server: 127.0.0.1 - 'DELETE / HTTP/1.1' 403 -
+server: rejected a request with Origin 'http://evil.test'
+server: 127.0.0.1 - 'DELETE / HTTP/1.1' 403 -
+server: rejected a OPTIONS request with no Origin header
+server: 127.0.0.1 - 'OPTIONS / HTTP/1.1' 403 -
+server: rejected a request with Origin 'http://evil.test'
+server: 127.0.0.1 - 'OPTIONS / HTTP/1.1' 403 -
+.server: 127.0.0.1 - 'POST / HTTP/1.1' 405 -
+server: 127.0.0.1 - 'PUT / HTTP/1.1' 405 -
+server: 127.0.0.1 - 'DELETE / HTTP/1.1' 405 -
+server: 127.0.0.1 - 'OPTIONS / HTTP/1.1' 405 -
+.server: 127.0.0.1 - 'GET / HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET / HTTP/1.1' 200 -
+...server: 127.0.0.1 - 'GET / HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET / HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 503 -
+.server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 503 -
+server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 503 -
+.server: 127.0.0.1 - 'HEAD / HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET / HTTP/1.1' 500 -
+server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 503 -
+.server: 127.0.0.1 - 'GET / HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET / HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET / HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /nope HTTP/1.1' 404 -
+...server: session s2 skipped: Expecting value: line 1 column 1 (char 0)
+server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 200 -
+...server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+export_catalogue: marketplace C:\Users\jdk\AppData\Local\Temp\server-test-59d7s6uu\no-market does not exist; keeping the last catalogue export
+server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 200 -
+...server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events?since=1 HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events?since=1 HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events?since=1000000 HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events?since=1 HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events?since=1 HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 503 -
+.server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/events?since=1 HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/snapshot HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+.server: 127.0.0.1 - 'GET /api/events HTTP/1.1' 200 -
+........................................
+----------------------------------------------------------------------
+Ran 304 tests in 57.003s
+
+OK

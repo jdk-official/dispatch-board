@@ -1,0 +1,95 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-19",
+    "mode": "pbi",
+    "change_class": "standard",
+    "scope": "PBI-027 (worktree C:/Users/jdk/dispatch-board-worktrees/PBI-027, branch pbi/PBI-027-collector-repo): local/collector.py must pass the run's project repoPath to derive.run_doc, exactly as exporters/export_sessions.py does, so the local database's run 'files' equals the board's for the same run; the local shapes must name the optional files/findings run fields PBI-014 publishes; a new local test must prove the equivalence bites (fails before the fix, passes after). Grounding path: ran-suite (all three configured suites run from the worktree root).",
+    "verdict": "DONE",
+    "summary": "3 files modified for the fix (local/collector.py, local/records.py, local/records.shapes.json) and 2 test files updated (local/tests/test_collector_equivalence.py: 1 new test; local/tests/test_records.py: pinned shape literal extended to match). Suites: tests 360 passed/0 failed (baseline 360), node tests/page.test.mjs 121/121 checks (baseline 121), local/tests 305 passed/0 failed (baseline 304 + 1 new). Nothing staged, committed or pushed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "local/collector.py",
+      "change_kind": "modify",
+      "why": "assemble() built a project->repoPath map the same way export_sessions.py does (repo_of = {p['id']: p['repoPath'] for p in st['projects']}) and passed the run's project's repoPath as run_doc's fourth argument, so the local database's 'files' field is published relative to the repository exactly as the board's is, instead of always withholding folders.",
+      "acceptance_refs": ["L-1"]
+    },
+    {
+      "path": "local/records.py",
+      "change_kind": "modify",
+      "why": "SHAPES['run']['optional'] named the two fields PBI-014 already publishes but the shape never declared: 'files' (a list) and 'findings' (a list of id/severity/title/location/remediation objects), so the conformance check accepts real run documents that carry them.",
+      "acceptance_refs": ["L-3"]
+    },
+    {
+      "path": "local/records.shapes.json",
+      "change_kind": "modify",
+      "why": "Regenerated with `python local/records.py --write-shapes` so the JSON mirror non-Python readers use stays byte-identical to SHAPES.",
+      "acceptance_refs": ["L-3"]
+    },
+    {
+      "path": "local/tests/test_collector_equivalence.py",
+      "change_kind": "modify",
+      "why": "Added a test that drives a transcript with an Edit tool call inside the project's repository and one outside it, then asserts the collector's run document's 'files' equals the exporter's for the same input -- the scenario the shared fixtures never exercised, which is why the field's equivalence coverage was vacuous.",
+      "acceptance_refs": ["L-2"]
+    },
+    {
+      "path": "local/tests/test_records.py",
+      "change_kind": "modify",
+      "why": "test_shapes_is_the_spec_table hand-pins the full SHAPES literal independently of records.py so a stray widening or narrowing in SHAPES is caught here too; it needed the same two optional run fields added to stay a true pin of the changed shape.",
+      "acceptance_refs": ["L-3"]
+    }
+  ],
+  "tests": [
+    {
+      "path": "local/tests/test_collector_equivalence.py::FilesRelativeToTheRepository::test_run_files_match_the_exporter_for_edits_inside_and_outside_the_repo",
+      "kind": "added",
+      "status": "pass",
+      "covers": "the collector's run document's files field equals the exporter's, for a run whose transcript edits one file inside the project's repository and one outside it"
+    },
+    {
+      "path": "tests (python -m unittest discover -s tests)",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "the exporter side is untouched; 360/360 unchanged from baseline"
+    },
+    {
+      "path": "node tests/page.test.mjs",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "the page is untouched; 121/121 checks unchanged from baseline"
+    },
+    {
+      "path": "local/tests (python -m unittest discover -s local/tests)",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "the local app's shapes, schema, collector and server, plus the conformance check that drives the real exporters against records.py's shapes; 304 pre-existing + 1 new = 305/305"
+    }
+  ],
+  "acceptance": [
+    {
+      "criterion": "L-1: the collector passes the run's project repoPath to derive.run_doc exactly as the exporter does, using the same project->repoPath map, so files in the local DB equals the board's for the same run.",
+      "met": "yes",
+      "evidence": "local/collector.py's assemble() builds repo_of = {p['id']: p['repoPath'] for p in st['projects']} (the exporter's own line) and calls derive.run_doc(r, i, pid, repo_of.get(pid)); FilesRelativeToTheRepository's new test asserts the stored run's files equal the exporter's ['site/index.html', '\u2026/settings.json']."
+    },
+    {
+      "criterion": "L-2: a new local test drives a fixture with an edit inside and one outside the repository, asserts the collector's files equals the exporter's, and fails before the L-1 fix.",
+      "met": "yes",
+      "evidence": "The test was run red first with local/collector.py's fix stashed (git stash push -- local/collector.py): it failed with ['\u2026/index.html', '\u2026/settings.json'] != ['site/index.html', '\u2026/settings.json'] -- the exact CR-014-7 gap. After popping the stash it passes."
+    },
+    {
+      "criterion": "L-3: SHAPES['run'] and records.shapes.json name the optional files and findings fields; the conformance check still passes; no other record kind's shape changes.",
+      "met": "yes",
+      "evidence": "records.py's run shape gained 'files': 'list' and a 'findings' list_of spec matching derive.findings_of()'s keys; records.shapes.json regenerated via --write-shapes (git diff shows only the run kind's optional block changed); local/tests (which includes the conformance check and test_records.py's SHAPES==shapes.json equality guard) is 305/305 green."
+    },
+    {
+      "criterion": "L-4: every existing local test passes unchanged; new cases are added, not substituted.",
+      "met": "yes",
+      "evidence": "local/tests: 305 passed / 0 failed (304 baseline + 1 new test); tests: 360/360 (baseline 360); node tests/page.test.mjs: 121/121 (baseline 121). test_records.py's pinned SHAPES literal was extended (not weakened) to match the intentional shape change it exists to catch."
+    }
+  ],
+  "not_done": [],
+  "follow_ups": []
+}

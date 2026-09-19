@@ -1,0 +1,131 @@
+{
+  "schema_version": "1",
+  "report": {
+    "pbi_id": "PBI-027",
+    "head_sha": "5ad02c86c815bea81dcd9d8a9e57ddf52003d945",
+    "command": "backend: python -m unittest discover -s tests; frontend: node tests/page.test.mjs; local: python -m unittest discover -s local/tests",
+    "exit_code": 0,
+    "verdict": "PASS",
+    "counts": {
+      "passed": 666,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "as_of": "2026-09-19T11:05:50Z",
+    "provenance": {
+      "version": "1",
+      "complete": true,
+      "gate_scope": "full",
+      "started_at": "2026-09-19T11:04:15Z",
+      "finished_at": "2026-09-19T11:05:50Z",
+      "candidate_start": {
+        "version": "1",
+        "repository_id": "sha256:8ce49c4aa5f1fd908fe8cc2c948fb557d568ce9c53404fc113bc229f03de045a",
+        "head_sha": "5ad02c86c815bea81dcd9d8a9e57ddf52003d945",
+        "comparison_base": "e43e6b10857cefa75101b11cbeffd7c46f356035",
+        "content_digest": "sha256:9f46096acd7480ce7783ec51e84c03e7ac3a835514b052d6952e10990f3e0d00",
+        "index_digest": "sha256:6fcc7aaf5dea8ed7b37bc0c36d9771ffe5c6fca85c4f1906861117436029693a",
+        "config_digest": "sha256:971d6999055ea972d0e9ac2c4eb2b649e09497f452ac62563871a64fdeb80ce5",
+        "runtime": {
+          "python": "3.14.5",
+          "implementation": "CPython",
+          "executable": "sha256:adba6f592e798f560d18b8eec84134d1e2924f6d13695feff1aa472a477143da",
+          "provenance_helper": "sha256:05a83c90a879f09dbaa63387b929c9a405ff55a5201582cf247751bffa0a6bf0",
+          "platform": "windows",
+          "installed_distributions": "sha256:992cbb2ebe274788841a8bc6db2cece7270daa9ccabe2e7e74ca56e4cd70a2a3"
+        },
+        "environment": [
+          [
+            "PYTEST_ADDOPTS",
+            "sha256:b4e7e078d7627535168ed4376b625ee5bc2e260410015d4a80d4783dbed8ec5f"
+          ],
+          [
+            "PYTEST_PLUGINS",
+            "sha256:b4e7e078d7627535168ed4376b625ee5bc2e260410015d4a80d4783dbed8ec5f"
+          ]
+        ],
+        "declared_inputs": [],
+        "excluded_outputs": [
+          "docs/backlog/reviews/PBI-027/runs/20260919T110415Z-e109671d"
+        ]
+      },
+      "candidate_end": {
+        "version": "1",
+        "repository_id": "sha256:8ce49c4aa5f1fd908fe8cc2c948fb557d568ce9c53404fc113bc229f03de045a",
+        "head_sha": "5ad02c86c815bea81dcd9d8a9e57ddf52003d945",
+        "comparison_base": "e43e6b10857cefa75101b11cbeffd7c46f356035",
+        "content_digest": "sha256:9f46096acd7480ce7783ec51e84c03e7ac3a835514b052d6952e10990f3e0d00",
+        "index_digest": "sha256:6fcc7aaf5dea8ed7b37bc0c36d9771ffe5c6fca85c4f1906861117436029693a",
+        "config_digest": "sha256:971d6999055ea972d0e9ac2c4eb2b649e09497f452ac62563871a64fdeb80ce5",
+        "runtime": {
+          "python": "3.14.5",
+          "implementation": "CPython",
+          "executable": "sha256:adba6f592e798f560d18b8eec84134d1e2924f6d13695feff1aa472a477143da",
+          "provenance_helper": "sha256:05a83c90a879f09dbaa63387b929c9a405ff55a5201582cf247751bffa0a6bf0",
+          "platform": "windows",
+          "installed_distributions": "sha256:992cbb2ebe274788841a8bc6db2cece7270daa9ccabe2e7e74ca56e4cd70a2a3"
+        },
+        "environment": [
+          [
+            "PYTEST_ADDOPTS",
+            "sha256:b4e7e078d7627535168ed4376b625ee5bc2e260410015d4a80d4783dbed8ec5f"
+          ],
+          [
+            "PYTEST_PLUGINS",
+            "sha256:b4e7e078d7627535168ed4376b625ee5bc2e260410015d4a80d4783dbed8ec5f"
+          ]
+        ],
+        "declared_inputs": [],
+        "excluded_outputs": [
+          "docs/backlog/reviews/PBI-027/runs/20260919T110415Z-e109671d"
+        ]
+      },
+      "candidate_stable": true,
+      "reuse_enabled": false,
+      "hermetic": false,
+      "metadata_sensitive": false,
+      "phases": [
+        {
+          "key": "backend",
+          "returncode": 0,
+          "ran": 360,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "counted": true,
+          "started_at": "2026-09-19T11:04:16Z",
+          "finished_at": "2026-09-19T11:04:48Z",
+          "log_ref": "docs/backlog/reviews/PBI-027/runs/20260919T110415Z-e109671d/backend.log",
+          "log_digest": "sha256:2c581f9359af68305fd44863cffacd7afc78131a73f55511e9012b92ccab0862"
+        },
+        {
+          "key": "frontend",
+          "returncode": 0,
+          "ran": 0,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "counted": false,
+          "started_at": "2026-09-19T11:04:48Z",
+          "finished_at": "2026-09-19T11:04:49Z",
+          "log_ref": "docs/backlog/reviews/PBI-027/runs/20260919T110415Z-e109671d/frontend.log",
+          "log_digest": "sha256:df42bdd54103ae7473943b13160bc766df1cbd4fcb7b310fcac5c7cc3616644b"
+        },
+        {
+          "key": "local",
+          "returncode": 0,
+          "ran": 306,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "counted": true,
+          "started_at": "2026-09-19T11:04:49Z",
+          "finished_at": "2026-09-19T11:05:50Z",
+          "log_ref": "docs/backlog/reviews/PBI-027/runs/20260919T110415Z-e109671d/local.log",
+          "log_digest": "sha256:1f7cb44060b0560d291223ba711cf5e445defef38f21ab29113795a2d84d4474"
+        }
+      ]
+    }
+  }
+}

@@ -11,7 +11,7 @@ conflict_risk: High
 requires_spec: true
 requires_external_review: true
 pr_required: true
-merge_allowed_by_agent: false
+merge_allowed_by_agent: true
 ---
 
 # PBI-010 — Work-item status derived from runs, shown beside the hand-kept state during a shadow period (feature 4, FR-113)
@@ -49,6 +49,8 @@ allowed `exporters/**`, `tests/test_*.py`, `site/**`, `tests/page.test.mjs`, `pr
 ---
 
 ## Notes
+
+**External-review gate — approved by the owner 2026-09-19**, answering "Approve the build?" with "Approve the build" (spec revision 3; the build ships in shadow mode, and the switch to derived status stays the owner's, row Q-3). **Row Q-2 — the owner chose option (b)**, "Docs chore after merge": the build leaves `CLAUDE.md` alone and a docs chore corrects it straight after the merge. `merge_allowed_by_agent` set true under the owner's standing merge authorisation of 2026-09-12.
 
 Build per owner decision D-9: `engineering-agents:code-writer` under TDD, then `review-agents:code-reviewer` until GO. `requires_spec: true`: refine a per-PBI spec from the parent spec and have it independently reviewed before any code is written. `requires_external_review: true`: the owner must explicitly approve ("approve" / "proceed" / "go ahead") before implementation begins.
 

@@ -1,0 +1,172 @@
+{
+ "schema_version": "1",
+ "report": {
+  "agent": "code-writer",
+  "as_of_date": "2026-09-19",
+  "mode": "pbi",
+  "change_class": "standard",
+  "scope": "PBI-009 'Waiting on you' panel per approved spec rev 3 (docs/backlog/specs/pbi-009-waiting-on-you.md) with owner answers 2026-09-19 (rows 1a/1b list automode-blocked and user-rejected tagged Refused; D2 enabled tagged Inferred). Worktree C:/Users/jdk/dispatch-board-worktrees/PBI-009, branch pbi/PBI-009-waiting-on-you, base 47f8c13. Acceptance: AC-75, AC-76, W-1..W-13, W-15 (W-14 is an owner close-out step). Grounding path: ran-suite (all three canonical test commands on the final tree). Verification tier required: 3 (executable code in exporters/ and site/); the repo has no AGENTS.md Verification Gate table, and the three backlog-delivery test_commands were run in full.",
+  "verdict": "DONE-WITH-CONDITIONS",
+  "summary": "6 files modified (exporters/derive.py, exporters/export_sessions.py, site/index.html, tests/test_derive.py, tests/test_export_sessions.py, tests/page.test.mjs); 30 Python tests and 10 page checks added. Suites on the final tree: tests 390 passed / 0 failed (baseline 360); page 131 passed / 0 failed (baseline 121); local/tests 304 passed / 0 failed (baseline 304). PARSER_VERSION 7 -> 8. Nothing staged, committed, pushed or deployed.",
+  "sensitivity": "sensitive"
+ },
+ "changes": [
+  {
+   "path": "C:/Users/jdk/dispatch-board-worktrees/PBI-009/exporters/derive.py",
+   "change_kind": "modify",
+   "why": "D1/D2/D3 derivation: is_owner_message() (new, wider than the untouched firstPrompt test), later(), six additive new_session keys (tools, asks, answered, denials, lastOwnerAt, lastTurn), add_waiting() fold called from add_record, prose_question(), waiting_of() with per-session cap 5 + more, session_result() adds 'waiting' only when non-empty. Refusals read only toolDenialKind; automode-unavailable excluded.",
+   "acceptance_refs": [
+    "AC-75",
+    "AC-76",
+    "W-2",
+    "W-4",
+    "W-6",
+    "W-7",
+    "W-9"
+   ]
+  },
+  {
+   "path": "C:/Users/jdk/dispatch-board-worktrees/PBI-009/exporters/export_sessions.py",
+   "change_kind": "modify",
+   "why": "PARSER_VERSION 7 -> 8 (exactly one above base) so cached parses without 'waiting' are dropped and the collector's stored state (new key set) resets once. No other exporter change.",
+   "acceptance_refs": [
+    "W-7",
+    "W-9"
+   ]
+  },
+  {
+   "path": "C:/Users/jdk/dispatch-board-worktrees/PBI-009/site/index.html",
+   "change_kind": "modify",
+   "why": "'Waiting on you' panel (--human) + summary tile in both renderOverview() and renderSessionOverview(); ignores the session filter; D2 gated on page-side idleness; 48 h age bound and 20-item panel cap (drop prose, then refused, then ask, oldest first; D4 never) with '+N more waiting' and the bounds footer; muted empty-state sentence with no .empty class; esc() for transcript text; minute timer redraws when the listed set changes; duplicate 'Plan gate approval' Needs-attention line removed.",
+   "acceptance_refs": [
+    "AC-75",
+    "AC-76",
+    "W-1",
+    "W-3",
+    "W-5",
+    "W-10",
+    "W-11",
+    "W-12",
+    "W-15"
+   ]
+  },
+  {
+   "path": "C:/Users/jdk/dispatch-board-worktrees/PBI-009/tests/test_derive.py",
+   "change_kind": "modify",
+   "why": "Waiting class: T-1..T-13, T-25 plus clearing, cap and copy cases.",
+   "acceptance_refs": [
+    "AC-75",
+    "AC-76",
+    "W-2",
+    "W-4",
+    "W-6",
+    "W-9"
+   ]
+  },
+  {
+   "path": "C:/Users/jdk/dispatch-board-worktrees/PBI-009/tests/test_export_sessions.py",
+   "change_kind": "modify",
+   "why": "Waiting class: T-14..T-17 and main-transcript-only.",
+   "acceptance_refs": [
+    "W-7",
+    "W-8",
+    "W-9"
+   ]
+  },
+  {
+   "path": "C:/Users/jdk/dispatch-board-worktrees/PBI-009/tests/page.test.mjs",
+   "change_kind": "modify",
+   "why": "Section 23 (T-18..T-22, T-24, T-26..T-28), equivalence fixture waiting block with probes on seen['panel-overview'] (T-23), negative control (T-29).",
+   "acceptance_refs": [
+    "W-1",
+    "W-3",
+    "W-5",
+    "W-10",
+    "W-11",
+    "W-12",
+    "W-15"
+   ]
+  }
+ ],
+ "tests": [
+  {
+   "path": "C:/Users/jdk/dispatch-board-worktrees/PBI-009/tests/test_derive.py",
+   "kind": "added",
+   "status": "pass",
+   "covers": "24 tests: D1 unanswered/answered/cleared, is_owner_message incl. list and '<' forms, D2 prose ?/solicitation/anchored/stop tool_use/bookkeeping tail/streamed, D3 three listed kinds + unresolved tool + outage excluded + string toolUseResult + cleared, 20 is_error + boilerplate -> 0 refusals, cap 5/more, ask beats prose, no waiting key, copy semantics, new_session keys, firstPrompt unchanged"
+  },
+  {
+   "path": "C:/Users/jdk/dispatch-board-worktrees/PBI-009/tests/test_export_sessions.py",
+   "kind": "added",
+   "status": "pass",
+   "covers": "6 tests: waiting exported / absent, subagent ask not listed, byte-identical re-export at a later clock, PARSER_VERSION > 7, parser-7 cache not reused, no new collection or projectTabs doc in refresh.plan"
+  },
+  {
+   "path": "C:/Users/jdk/dispatch-board-worktrees/PBI-009/tests/page.test.mjs",
+   "kind": "added",
+   "status": "pass",
+   "covers": "10 checks: four tags in project view, idle wording and live exclusion, escaping/no md(), Plan gate line gone, filter ignored, Other sessions render + '—' tool + more, empty sentence without .empty (both views), 48 h bound via minute tick + footer, 20-cap drop order, probe negative control"
+  },
+  {
+   "path": "C:/Users/jdk/dispatch-board-worktrees/PBI-009/tests/page.test.mjs",
+   "kind": "modified",
+   "status": "pass",
+   "covers": "ten-panel equivalence: EQ_SESSIONS s2 carries a question and a refusal; two item-content probes on panel-overview; emptyPanels still [] both sides"
+  }
+ ],
+ "acceptance": [
+  {
+   "criterion": "AC-75 unanswered question listed",
+   "met": "yes",
+   "evidence": "test_an_unanswered_ask_is_a_question_waiting, test_a_closing_question_in_prose_is_waiting_until_the_owner_replies; page check 'AC-75, AC-76: a project's panel lists...'"
+  },
+  {
+   "criterion": "AC-76 permission refusal listed with its session",
+   "met": "yes",
+   "evidence": "test_listed_refusals_name_the_refused_tool; export test_a_session_with_a_pending_question_and_a_refusal_carries_waiting; page checks show 'Bash refused by a permission rule' with session title and id"
+  },
+  {
+   "criterion": "W-1..W-13 and W-15 (spec rev 3)",
+   "met": "yes",
+   "evidence": "tests listed above; W-7/W-8: export_sessions.py changes only PARSER_VERSION, refresh.py untouched, plan writes only sessions/projects/meta"
+  },
+  {
+   "criterion": "W-14 owner visual confirmation in both themes",
+   "met": "no",
+   "evidence": "Owner close-out step; no browser smoke test was run by code-writer (stub-DOM page checks only)"
+  },
+  {
+   "criterion": "Worker close-out: suites green on head commit + code-reviewer GO",
+   "met": "partial",
+   "evidence": "All three suites green on the uncommitted working tree (390/131/304); no commit exists and review has not run"
+  }
+ ],
+ "not_done": [
+  {
+   "ref": "W-14",
+   "reason": "Visual confirmation in dark and light themes is the owner's close-out step; not performed here."
+  },
+  {
+   "ref": "close-out",
+   "reason": "Suites must be re-run on the head commit after the orchestrator commits; code-reviewer GO pending."
+  }
+ ],
+ "follow_ups": [
+  {
+   "ref": "code-reviewer",
+   "reason": "Spec-interpretation points: (1) question text and refusal detail pass through derive.redact() and are cut to 300 characters, an addition the spec does not state; (2) lastTurn carries an extra 'mid' key so a streamed reply's text survives a text-less final line; (3) T-16 pinned as PARSER_VERSION > 7 plus a parser-7 cache test, not == 8, so a later bump does not break it; (4) cap keeps the question first then the newest refusals (spec silent on which five); (5) per-session 'more' is folded into the panel's '+N more waiting' line, counted only when that session has a listed item; (6) an item with an unreadable 'at' is not listed and counts as bound-suppressed; (7) the summary tile sits in the Overview tile strip; D4 rows render repo text via md(); (8) clockState includes the listed-item set so the age bound and idleness redraw on the minute tick."
+  },
+  {
+   "ref": "pbi-intake",
+   "reason": "Follow-up PBI (spec row 3): add 'waiting' to the session shape's optional block in local/records.shapes.json."
+  },
+  {
+   "ref": "docs",
+   "reason": "CLAUDE.md: add 'waiting' to the sessions/<id> row and the spec section 12 known limits (docs writer / orchestrator)."
+  },
+  {
+   "ref": "known-limit",
+   "reason": "Known limit not in the spec: a compaction-summary user record would count as an owner message and clear items (under-report direction)."
+  }
+ ]
+}

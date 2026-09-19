@@ -1,0 +1,20 @@
+{
+  "schema_version": "1",
+  "pbi": "PBI-009",
+  "round": 1,
+  "assumptions": [
+    "The approved per-PBI spec, revision 3, is the contract; \u00a79's recommended defaults hold except where the owner answered.",
+    "Owner answers 2026-09-19 (recorded in the PBI's Notes): rows 1a and 1b list both refusal kinds tagged Refused; row 2 ships D2 enabled, tagged Inferred.",
+    "Row 3: the local record shapes are out of scope; `waiting` is a follow-up."
+  ],
+  "intent_source": [
+    {
+      "ref": "docs/backlog/specs/pbi-009-waiting-on-you.md",
+      "digest": "sha256:9e5d3452f3b21ffbc82faa84d9e8a83703831f32e6a99d909f1eea66418a7434"
+    },
+    {
+      "ref": "docs/backlog/pbi/PBI-009-waiting-on-you.md",
+      "digest": "sha256:ce05536b262002b437cdf2e8bf725f801b0bd67190d0252d78a688b0168ec48f"
+    }
+  ]
+}

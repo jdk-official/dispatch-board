@@ -1,0 +1,30 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "build-cell",
+    "as_of_date": "2026-09-19",
+    "pbi": "PBI-009",
+    "effective_tier": "assisted",
+    "gates": {
+      "code_review": "agent",
+      "external_review": "human",
+      "merge": "human",
+      "plan": "human",
+      "spec": "agent"
+    },
+    "overrides": [],
+    "sensitivity": "sensitive",
+    "verdict": "CELL-PAUSED",
+    "summary": "The 'Waiting on you' panel: a structured question, a prose question left idle, permission refusals and the plan-gate approval, listed per session in the --human colour."
+  },
+  "events": [
+    {
+      "kind": "tier-resolved",
+      "detail": "standard, ceiling assisted -> assisted; ratified earned lift supervised"
+    },
+    {
+      "kind": "owner-answers",
+      "detail": "Spec \u00a79 rows 1a, 1b and 2 answered by the owner 2026-09-19: list both refusal kinds; ship D2 enabled."
+    }
+  ]
+}

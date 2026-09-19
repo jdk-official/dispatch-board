@@ -1,0 +1,25 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-19",
+    "mode": "changeset",
+    "scope": "PBI-027 committed branch in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-027, HEAD 5ad02c8 (tree clean) vs main e43e6b1; 5 files: local/collector.py, local/records.py, local/records.shapes.json, local/tests/test_collector_equivalence.py, local/tests/test_records.py. Intent rung 2 (work-item AC: docs/backlog/pbi/PBI-027-collector-repo.md L-1..L-4 + out-of-scope line). Grounding: reasoning + repo tests run read-only (local/tests on the worktree; a scratch git-archive copy of 5ad02c8 with main's local/collector.py restored to prove the new equivalence test bites). Touchstone SARIF not provided.",
+    "summary": "0 CRITICAL / 0 HIGH / 0 MEDIUM / 0 LOW. Change class: standard. Dimensions: correctness, security, maintainability, test-adequacy. AC: L-1 met (collector builds repo_of = {p['id']: p['repoPath'] for p in st['projects']} from the same export_sessions.settings() state the exporter uses, and passes repo_of.get(pid) exactly as export_sessions.py:280-286). L-2 met (new test drives Edit calls inside and outside repoPath, compares real collector.run_pass output with real es.main output, and also pins the exporter's value ['site/index.html', '.../settings.json']; with main's collector.py restored in a scratch copy it fails ['.../index.html', ...] != ['site/index.html', ...], and passes with the fix). L-3 met (run optional gains files:list and findings:list_of{id,severity,title,location,remediation} matching derive.findings_of's keys; probes: findings [] -> accepted, non-list / non-object item / non-str severity / missing key -> rejected; shapes.json diff confined to run.optional). L-4 met in substance: 304 pre-existing tests still pass; the only edited existing test is the hand-typed SHAPES pin, extended by exactly the two new optional run fields (a mirror, not a weakening; L-3 cannot be met without it). Out-of-scope line respected (no page/exporter/server/schema/CLAUDE.md edits). Comments: no PBI ids, task or finding references. Verification: tier 3; canonical run on 5ad02c8 reported by dispatch (backend 360, local 306, page suite exit 0); reviewer re-ran local/tests: Ran 306 tests, OK. Flag-only: nothing changed, committed or deployed except this findings file. Verdict GO.",
+    "sensitivity": "sensitive",
+    "verdict": "GO"
+  },
+  "findings": [],
+  "not_audited": [
+    {"ref": "security dimension", "reason": "Touchstone SARIF not provided; security is reasoning-only. Change adds no new input boundary: repoPath comes from board.config.json via the existing board_config.projects() validation, and path rendering is the unchanged derive.publishable_files."},
+    {"ref": "python -m unittest discover -s tests; node tests/page.test.mjs", "reason": "Not re-run by the reviewer; the tier-3 canonical counts (backend 360, page exit 0) are taken from the dispatch. No exporter or page file changed."}
+  ],
+  "follow_ups": [
+    {"ref": "CLAUDE.md:38", "note": "Stale sentence 'Known gap until PBI-027: the local collector does not yet pass the repository...' becomes false once this merges; remove it in a docs change (CLAUDE.md is out of this PBI's areas)."},
+    {"ref": "local/tests/test_collector_equivalence.py:161-164", "note": "Optional: the class docstring has one line well past the file's usual width, and its 'was equal ... only because both left it out' wording leans on past state; could be restated as the present-tense reason the scenario exists."},
+    {"ref": "local/tests/test_collector_equivalence.py:171", "note": "Optional: the outside-repo fixture path embeds a real user profile path (C:\\Users\\jdk\\.claude\\settings.json); a neutral path such as C:\\elsewhere\\settings.json would test the same thing."},
+    {"ref": "local/records.py:42", "note": "Optional: 'files' is typed 'list' without element type; derive.publishable_files only emits str, so no current gap. A list-of-str type would need a new TYPE form, out of scope here."},
+    {"ref": "docs/backlog/pbi/PBI-027-collector-repo.md L-4", "note": "Criterion wording 'every existing local test passes unchanged' literally conflicts with L-3, since test_shapes_is_the_spec_table pins SHAPES by hand; future criteria could name pinned-literal mirrors as an allowed edit."}
+  ],
+  "evidence_binding": {"pbi": "PBI-027", "round": 1, "gate_id": "code-review", "dispatch_id": "code-review-r1"}
+}

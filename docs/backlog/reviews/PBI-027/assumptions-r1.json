@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "pbi": "PBI-027",
+  "round": 1,
+  "assumptions": [
+    "The work item file is the intent source; no per-PBI spec (requires_spec: false).",
+    "The exporter's run documents are the reference the collector must equal (parent spec's shared-derivation rule)."
+  ],
+  "intent_source": {
+    "ref": "docs/backlog/pbi/PBI-027-collector-repo.md",
+    "digest": "sha256:a8654a39dae564842dedfa1ffd9a7eda1a21c34c6ad8c7a78b6d0c14b99155ce"
+  }
+}
