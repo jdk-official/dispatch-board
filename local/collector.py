@@ -425,6 +425,10 @@ class _Pass:
     def assemble(self):
         """The session, run and project documents: the tail of export_sessions.main, line for line."""
         st, results = self.st, self.results
+        # The exporter's link decision, rebound for every document below; self.st keeps the config-only build set,
+        # so windows, pruning and the missing-transcript check still treat an auto-linked session as unlisted.
+        project_of, linked_by = derive.link_sessions(results, st['projects'], st['project_of'])
+        st = dict(st, project_of=project_of, linked_by=linked_by)
         rows = sorted((dict(r, session=sid) for sid, res in results.items() for r in res['rows']), key=lambda r: r['start'] or '')
         derive.place_manual(rows, st['manual'])
         docs = {k: {} for k in KINDS}

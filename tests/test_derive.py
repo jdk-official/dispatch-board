@@ -4,10 +4,12 @@ Importing it must touch no files, print nothing and need nothing beyond the stan
 can import it and feed it records as it reads them.
 """
 import copy, importlib.util, io, itertools, json, os, subprocess, sys, tempfile, unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXPORTERS = os.path.join(HERE, 'exporters')
 sys.path.insert(0, EXPORTERS)
+import board_config  # noqa: E402
 import derive  # noqa: E402
 
 # Imports the module at argv[1] in a fresh interpreter and reports, as JSON, the modules it imports, every file,
@@ -202,7 +204,8 @@ class Sessions(unittest.TestCase):
                           'sessions': ['s1', 's2', 's3'], 'runs': 7, 'running': 1, 'last': ts(20)})
         self.assertEqual(doc['usage']['totals'], {'requests': 5, 'effective': 50})
         self.assertEqual(doc['usage']['span'], {'first': ts(1), 'last': ts(20)})
-        empty = derive.project_doc(dict(p, sessions=['gone']), 0, results, {}, {}, project_of)
+        # A project listing only a session that was not exported; the exported sessions belong elsewhere.
+        empty = derive.project_doc(dict(p, sessions=['gone']), 0, results, {}, {}, {'gone': 'app', 's1': 'first'})
         self.assertEqual((empty['sessions'], empty['runs'], empty['last'], empty['usage']), ([], 0, None, None))
 
     def test_raw_lines_and_bare_records_derive_the_same(self):
@@ -352,6 +355,185 @@ class Sessions(unittest.TestCase):
         self.assertEqual(doc['title'], 'abcdefgh')
         self.assertNotIn('firstPrompt', doc)
         self.assertEqual(derive.session_doc(result, 'abcdefgh-1234', dict(st, show_first_prompt=True), 0, 0)['title'], 'hello there')
+
+
+def edit(minute, tid, path, name='Edit'):
+    key = derive.EDIT_TOOLS.get(name, 'file_path')
+    return assistant(minute, 'm-' + tid, tools=[{'type': 'tool_use', 'id': tid, 'name': name, 'input': {key: path}}])
+
+
+class MainFailedEdits(unittest.TestCase):
+    """The main transcript's own successful edits, cached on the parse as doc['edits'] for the link rule."""
+
+    def test_the_main_transcripts_successful_edits_are_cached_first_edit_first_each_once(self):
+        state = feed([user(0, 'go'), edit(1, 't1', 'C:/work/app/b.py'), edit(2, 't2', 'C:/work/app/a.py', 'Write'),
+                      edit(3, 't3', 'C:/work/app/b.py'), edit(4, 't4', 'C:/work/app/n.ipynb', 'NotebookEdit'),
+                      result(5, 't1'), result(5, 't2')])
+        doc = derive.session_result(state, [], [], [])['doc']
+        self.assertEqual(doc['edits'], ['C:/work/app/b.py', 'C:/work/app/a.py', 'C:/work/app/n.ipynb'])
+
+    def test_a_failed_main_edit_is_noted_and_left_out(self):
+        state = feed([user(0, 'go'), edit(1, 't1', 'C:/work/app/refused.py'), result(2, 't1', 'denied', is_error=True),
+                      edit(3, 't2', 'C:/work/app/ok.py'), result(4, 't2')])
+        self.assertEqual(state['failed'], {'t1'})
+        self.assertEqual(derive.session_result(state, [], [], [])['doc']['edits'], ['C:/work/app/ok.py'])
+
+    def test_reads_searches_and_shell_commands_are_not_edits(self):
+        tools = [{'type': 'tool_use', 'id': 'r%d' % i, 'name': n, 'input': {'file_path': 'C:/work/app/x.py',
+                                                                             'command': 'echo > C:/work/app/x.py'}}
+                 for i, n in enumerate(('Read', 'Grep', 'Glob', 'Bash', 'PowerShell'))]
+        state = feed([user(0, 'go'), assistant(1, 'm1', tools=tools)])
+        self.assertEqual(derive.session_result(state, [], [], [])['doc']['edits'], [])
+
+
+def projects(*ps):
+    """Project dicts as board_config reads them, so worktreeRoots carries its default."""
+    return board_config.projects({'projects': [dict({'id': p[0], 'repoPath': p[1]}, **(p[2] if len(p) > 2 else {}))
+                                               for p in ps]})
+
+
+def parse(edits=(), files=(), no_edits=False):
+    """A cached parse: main-transcript edits on the document, subagent edits on one run row."""
+    doc = {} if no_edits else {'edits': list(edits)}
+    return {'doc': doc, 'rows': [{'id': 'a1', 'files': list(files)}] if files else [], 'skipped': []}
+
+
+class LinkSessions(unittest.TestCase):
+    """derive.link_sessions: which project an exported session belongs to, and why."""
+
+    def link(self, ps, edits=(), files=(), listed=None, sid='s1'):
+        project_of, linked_by = derive.link_sessions({sid: parse(edits, files)}, ps, listed or {})
+        return project_of[sid], linked_by.get(sid)
+
+    def test_one_successful_edit_under_a_repo_path_links_the_session(self):
+        self.assertEqual(self.link(projects(('p', 'C:/work/app')), ['C:/work/app/a.py']), ('p', 'edits'))
+
+    def test_an_edit_in_a_subagent_transcript_links_the_session(self):
+        self.assertEqual(self.link(projects(('p', 'C:/work/app')), files=['C:/work/app/a.py']), ('p', 'edits'))
+
+    def test_a_session_that_edited_nothing_under_a_root_is_unlinked(self):
+        self.assertEqual(self.link(projects(('p', 'C:/work/app')), ['C:/elsewhere/a.py']), (None, None))
+
+    def test_either_slash_direction_and_any_case_links_but_a_sibling_prefix_does_not(self):
+        ps = projects(('p', 'C:/Work/App'))
+        for path in ('C:\\work\\app\\a.py', 'c:/WORK/APP/a.py', 'C:\\Work/app\\sub/a.py'):
+            with self.subTest(path=path):
+                self.assertEqual(self.link(ps, [path]), ('p', 'edits'))
+        self.assertEqual(self.link(ps, ['C:/work/app-other/a.py']), (None, None))
+
+    def test_a_listed_session_keeps_its_project_whatever_it_edited(self):
+        ps = projects(('a', 'C:/a'), ('b', 'C:/b'))
+        self.assertEqual(self.link(ps, ['C:/b/1.py', 'C:/b/2.py'], listed={'s1': 'a'}), ('a', 'config'))
+
+    def test_most_distinct_files_wins_and_a_tie_goes_to_the_project_listed_first(self):
+        ps = projects(('a', 'C:/a'), ('b', 'C:/b'))
+        self.assertEqual(self.link(ps, ['C:/b/1', 'C:/b/2', 'C:/b/3', 'C:/a/1', 'C:/a/2']), ('b', 'edits'))
+        self.assertEqual(self.link(ps, ['C:/b/1', 'C:/b/2', 'C:/a/1', 'C:/a/2']), ('a', 'edits'))
+        self.assertEqual(self.link(list(reversed(ps)), ['C:/b/1', 'C:/b/2', 'C:/a/1', 'C:/a/2']), ('b', 'edits'))
+
+    def test_a_file_edited_many_times_or_written_differently_counts_once(self):
+        ps = projects(('b', 'C:/y'), ('a', 'C:/x'))
+        edits = ['C:\\X\\a.py', 'c:/x/A.py'] + ['C:/x/a.py'] * 5
+        self.assertEqual(self.link(ps, ['C:/y/1.py'] + edits), ('b', 'edits'))
+
+    def test_a_nested_project_takes_its_own_files(self):
+        ps = projects(('outer', 'C:/work'), ('inner', 'C:/work/inner'))
+        self.assertEqual(self.link(ps, ['C:/work/inner/1', 'C:/work/inner/2', 'C:/work/a']), ('inner', 'edits'))
+        self.assertEqual(self.link(ps, ['C:/work/inner/1', 'C:/work/a', 'C:/work/b']), ('outer', 'edits'))
+
+    def test_two_projects_declaring_the_same_root_give_the_file_to_the_one_listed_first(self):
+        ps = projects(('a', 'C:/shared'), ('b', 'C:/shared'))
+        self.assertEqual(self.link(ps, ['C:/shared/x.py']), ('a', 'edits'))
+        self.assertEqual(self.link(list(reversed(ps)), ['C:/shared/x.py']), ('b', 'edits'))
+
+    def test_unplaceable_paths_and_an_empty_repo_path_link_nothing(self):
+        ps = projects(('p', 'C:/work/app'), ('none', ''))
+        for path in ('app/a.py', 'work/app/a.py', '../app/a.py', '~/app/a.py', 'C:work/app/a.py',
+                     'C:/work/app/../other/a.py', 'C:/../work/app/a.py'):
+            with self.subTest(path=path):
+                self.assertEqual(self.link(ps, [path]), (None, None))
+        self.assertEqual(self.link(projects(('none', '')), ['C:/anything/a.py', '/a.py']), (None, None))
+
+    def test_the_default_worktree_root_is_the_repo_path_plus_worktrees(self):
+        for repo in ('C:/r', 'C:/r/', 'C:\\r\\', 'c:\\R'):
+            ps = projects(('p', repo))
+            with self.subTest(repo=repo):
+                self.assertEqual(ps[0]['worktreeRoots'], [derive.normal_path(repo).rstrip('/') + '-worktrees'])
+                self.assertEqual(self.link(ps, ['C:\\r-worktrees\\PBI-1\\a.py']), ('p', 'edits'))
+                self.assertEqual(self.link(ps, ['C:/r-worktrees/a.py']), ('p', 'edits'))
+                self.assertEqual(self.link(ps, ['C:/r-worktrees-old/x/f']), (None, None))
+                self.assertEqual(self.link(ps, ['C:/r/-worktrees/x/f']), ('p', 'edits'))  # inside the repository itself
+
+    def test_an_explicit_worktree_root_list_replaces_the_default(self):
+        ps = projects(('p', 'C:/r', {'worktreeRoots': ['D:\\wt']}))
+        self.assertEqual(self.link(ps, ['D:/wt/x/f']), ('p', 'edits'))
+        self.assertEqual(self.link(ps, ['C:/r-worktrees/x/f']), (None, None))
+        off = projects(('p', 'C:/r', {'worktreeRoots': []}))
+        self.assertEqual(self.link(off, ['D:/wt/x/f', 'C:/r-worktrees/x/f']), (None, None))
+
+    def test_an_explicit_worktree_root_applies_with_an_empty_repo_path(self):
+        self.assertEqual(self.link(projects(('p', '', {'worktreeRoots': ['C:/wt']})), ['C:/wt/x/f']), ('p', 'edits'))
+
+    def test_a_root_that_would_match_too_much_is_no_root(self):
+        for repo in ('/', '\\', 'C:/', 'C:\\', 'C:', '\\\\server\\share', '//server', '//server/share', 'C:/x ',
+                     '.', ' ', '~/x', 'relative/x', ''):
+            with self.subTest(repo=repo):
+                self.assertIsNone(derive.link_root(repo))
+                ps = projects(('p', repo))
+                self.assertEqual(ps[0]['worktreeRoots'], [])
+                self.assertEqual(self.link(ps, ['C:/x /f', 'C:/a.py', '//server/share/a.py', '/a.py', 'C:/x/f']),
+                                 (None, None))
+
+    def test_an_extended_length_root_matches_only_extended_length_paths(self):
+        ps = projects(('p', '\\\\?\\C:\\'))
+        self.assertEqual(self.link(ps, ['C:/a.py']), (None, None))
+        self.assertEqual(self.link(ps, ['\\\\?\\C:\\a.py']), ('p', 'edits'))
+
+    def test_a_parse_without_cached_edits_links_on_its_subagent_files(self):
+        ps = projects(('p', 'C:/work/app'))
+        got = derive.link_sessions({'s1': parse(files=['C:/work/app/a.py'], no_edits=True), 's2': parse(no_edits=True)},
+                                   ps, {})
+        self.assertEqual(got, ({'s1': 'p', 's2': None}, {'s1': 'edits'}))
+
+    def test_an_edit_counts_until_its_error_result_arrives(self):
+        ps = projects(('p', 'C:/work/app'))
+        state = feed([user(0, 'go'), edit(1, 't1', 'C:/work/app/a.py')])
+        first = derive.link_sessions({'s1': derive.session_result(state, [], [], [])}, ps, {})
+        derive.add_record(state, result(2, 't1', 'refused', is_error=True))
+        second = derive.link_sessions({'s1': derive.session_result(state, [], [], [])}, ps, {})
+        self.assertEqual((first, second), (({'s1': 'p'}, {'s1': 'edits'}), ({'s1': None}, {})))
+
+    def test_every_session_is_keyed_and_the_answer_does_not_depend_on_order(self):
+        ps = projects(('a', 'C:/a'), ('b', 'C:/b'))
+        results = {'s1': parse(['C:/a/1']), 's2': parse(['C:/b/1', 'C:/a/1']), 's3': parse(), 's4': parse(['C:/b/1'])}
+        want = ({'s1': 'a', 's2': 'a', 's3': None, 's4': 'b'}, {'s1': 'edits', 's2': 'edits', 's4': 'config'})
+        self.assertEqual(derive.link_sessions(results, ps, {'s4': 'b'}), want)
+        self.assertEqual(derive.link_sessions(dict(reversed(list(results.items()))), ps, {'s4': 'b'}), want)
+
+    def test_the_link_rule_launches_no_process(self):
+        with mock.patch.object(subprocess, 'run', side_effect=AssertionError('no process may be launched')), \
+                mock.patch.object(subprocess, 'Popen', side_effect=AssertionError('no process may be launched')):
+            ps = projects(('p', 'C:/r'))
+            self.assertEqual(self.link(ps, ['C:/r-worktrees/x/f']), ('p', 'edits'))
+
+    def test_session_doc_records_why_and_never_publishes_the_cached_edits(self):
+        result = {'doc': {'title': 't', 'last': ts(0), 'edits': ['C:/work/app/a.py']}}
+        st = {'show_first_prompt': False, 'legacy_build': set(), 'project_of': {'s1': 'p'}, 'days': 7, 'window_minutes': 10}
+        doc = derive.session_doc(result, 's1', st, 0, 0)
+        self.assertNotIn('edits', doc)
+        self.assertNotIn('linkedBy', doc)  # a hand-built st with no linked_by
+        self.assertEqual(derive.session_doc(result, 's1', dict(st, linked_by={'s1': 'edits'}), 0, 0)['linkedBy'], 'edits')
+        self.assertIn('edits', result['doc'])  # the cached parse is left as it was
+        unlinked = derive.session_doc(result, 's2', dict(st, linked_by={'s1': 'edits'}), 0, 0)
+        self.assertEqual((unlinked['project'], 'linkedBy' in unlinked), (None, False))
+
+    def test_project_doc_lists_listed_sessions_then_auto_linked_ones_by_id(self):
+        p = {'id': 'p', 'name': 'P', 'repoPath': 'C:/p', 'branch': 'main', 'statusDoc': 'status/p', 'sessions': ['s9', 's5']}
+        results = {sid: {'doc': {'last': ts(i), 'usage': None}} for i, sid in enumerate(('s3', 's9', 's1', 's5', 's7'))}
+        project_of = {'s3': 'p', 's9': 'p', 's1': 'p', 's5': 'p', 's7': None}
+        counts = {sid: 1 for sid in results}
+        doc = derive.project_doc(p, 0, results, counts, {sid: 0 for sid in results}, project_of)
+        self.assertEqual((doc['sessions'], doc['runs'], doc['last']), (['s9', 's5', 's1', 's3'], 4, ts(3)))
 
 
 def report(*findings, verdict='NO-GO'):
@@ -993,7 +1175,7 @@ class Waiting(unittest.TestCase):
     def test_new_session_gains_only_the_waiting_keys(self):
         self.assertEqual(set(derive.new_session('s')), {
             'sid', 'title', 'aiTitle', 'cwd', 'first', 'start', 'last', 'by', 'rejects', 'launched', 'stopped', 'notes',
-            'sync', 'uses', 'skillCalls', 'tools', 'asks', 'answered', 'denials', 'lastOwnerAt', 'lastTurn'})
+            'sync', 'uses', 'skillCalls', 'tools', 'asks', 'answered', 'denials', 'lastOwnerAt', 'lastTurn', 'failed'})
 
     def test_a_list_content_opener_is_an_owner_message_but_not_the_first_prompt(self):
         opener = user(0, [{'type': 'image', 'source': {}}, {'type': 'text', 'text': 'look at this'}])

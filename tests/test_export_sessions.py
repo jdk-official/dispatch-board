@@ -630,6 +630,29 @@ class ConfigTypes(TreeCase):
         self.assert_refused(cfg, 'orch-typo')
         self.assertIn('lane', self.t.err)
 
+    def test_an_unusable_worktree_roots_value_is_refused_naming_the_project(self):
+        self.t.basic()
+        for value in ('x', None, [1], [''], ['/'], ['\\'], ['C:/'], ['C:\\'], ['C:'], ['relative/x'], ['.'], [' '],
+                      ['~/x'], ['\\\\server\\share'], ['//server'], ['//server/share'], ['C:/x ']):
+            with self.subTest(value=value):
+                self.assert_refused(pconfig(proj('app', SID, repoPath=REPO, worktreeRoots=value)), 'worktreeRoots')
+                self.assertIn('project app', self.t.err)
+
+    def test_a_repo_path_that_is_not_a_string_or_null_is_refused(self):
+        self.t.basic()
+        for value in (5, False, ['C:/x']):
+            with self.subTest(value=value):
+                self.assert_refused(pconfig(proj('app', SID, repoPath=value)), 'repoPath')
+                self.assertIn('project app', self.t.err)
+
+    def test_a_null_or_root_repo_path_is_accepted_and_links_nothing(self):
+        edit_session(self.t, SID, 'C:/a.py', '//server/share/b.py', 'C:/x/c.py')
+        for value in (None, 'C:/', '\\\\server\\share'):
+            with self.subTest(value=value):
+                self.assertEqual(self.t.run(pconfig(proj('app', repoPath=value))), 0)
+                self.assertEqual(self.t.docs('projects')['app']['repoPath'], value or '')
+                self.assertEqual(linked(self.t, SID), (None, None))
+
 
 class Discovery(TreeCase):
     def test_missing_projects_root_fails_and_keeps_the_last_export(self):
@@ -676,6 +699,35 @@ class Cache(TreeCase):
         self.assertTrue(self.t.docs('sessions')[SID]['build'])
         self.t.run(config())
         self.assertFalse(self.t.docs('sessions')[SID]['build'])
+
+    def test_a_link_config_change_applies_without_a_transcript_change(self):
+        # FR-40: the link is decided from the cached evidence each run, so none of these re-reads a transcript.
+        edit_session(self.t, SID, REPO + '/a.py')
+        self.assertEqual(self.count_parses(pconfig(proj('a'), proj('p', repoPath=REPO))), 1)
+        self.assertEqual(linked(self.t, SID), ('p', 'edits'))
+        for cfg, want in ((pconfig(proj('a'), proj('p', repoPath='C:/moved')), (None, None)),
+                          (pconfig(proj('a'), proj('p', repoPath='C:/moved', worktreeRoots=['C:/work'])), ('p', 'edits')),
+                          (pconfig(proj('a', SID), proj('p', repoPath=REPO)), ('a', 'config'))):
+            with self.subTest(cfg=cfg['projects']):
+                self.assertEqual(self.count_parses(cfg), 0)
+                self.assertEqual(linked(self.t, SID), want)
+
+    def test_a_cache_from_before_main_edits_were_parsed_is_read_again(self):
+        # PARSER_VERSION 10 cached no main-transcript edits, so such an entry must not be replayed as a session
+        # that edited nothing.
+        self.assertGreater(es.PARSER_VERSION, 10)
+        edit_session(self.t, SID, REPO + '/a.py')
+        cfg = pconfig(proj('p', repoPath=REPO))
+        self.assertEqual(self.t.run(cfg), 0)
+        cache_path = os.path.join(self.t.out, '.cache', 'sessions.json')
+        with io.open(cache_path, encoding='utf-8') as f:
+            cache = json.load(f)
+        cache[SID]['sig'][0] = 10
+        del cache[SID]['result']['doc']['edits']
+        with io.open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump(cache, f)
+        self.assertEqual(self.count_parses(cfg), 1)
+        self.assertEqual(linked(self.t, SID), ('p', 'edits'))
 
     def test_running_window_change_applies_without_a_transcript_change(self):
         self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_cw')])
@@ -875,6 +927,31 @@ def proj(pid, *sids, **over):
     return p
 
 
+REPO = 'C:/work/repo'  # never created: linking reads paths, not the disk
+
+
+def edit_call(m, tid, path, name='Edit'):
+    return reply(m, 'm-' + tid, tools=[(tid, name, {'notebook_path' if name == 'NotebookEdit' else 'file_path': path})])
+
+
+def tool_result(m, tid, is_error=False):
+    return {'type': 'user', 'timestamp': ts(m), 'message': {'role': 'user', 'content': [
+        {'type': 'tool_result', 'tool_use_id': tid, 'is_error': is_error, 'content': 'refused' if is_error else 'ok'}]}}
+
+
+def edit_session(t, sid, *paths, name='Edit'):
+    """A session whose main transcript successfully edited paths, and nothing else."""
+    recs = [user(0, 'go')]
+    for i, p in enumerate(paths):
+        recs += [edit_call(1 + i, 'te%d' % i, p, name), tool_result(1 + i, 'te%d' % i)]
+    return t.session(sid, recs)
+
+
+def linked(t, sid):
+    doc = t.docs('sessions')[sid]
+    return doc['project'], doc.get('linkedBy')
+
+
 class Projects(TreeCase):
     def test_sessions_and_runs_carry_their_project(self):
         self.t.basic()
@@ -1007,6 +1084,171 @@ class Projects(TreeCase):
         self.t.run(pconfig())
         self.assertEqual(self.t.docs('projects'), {})
         self.assertIsNone(self.t.docs('sessions')[SID]['project'])
+
+
+SID3 = '33333333-aaaa-bbbb-cccc-000000000003'
+SID4 = '44444444-aaaa-bbbb-cccc-000000000004'
+SID5 = '55555555-aaaa-bbbb-cccc-000000000005'
+
+
+class AutoLink(TreeCase):
+    """A session no project lists is linked to the project whose files it successfully edited."""
+
+    def cw_session(self, sid, main_edits=(), agent_edits=(), name='Edit', agent_failed=False):
+        """A session that launched one code-writer; main_edits are made in the main transcript, agent_edits by the
+        agent, whose edits all fail when agent_failed."""
+        aid = 'acw' + sid[:2]
+        recs = [user(0, 'go')]
+        for i, p in enumerate(main_edits):
+            recs += [edit_call(1, 'tm%d' % i, p, name), tool_result(1, 'tm%d' % i)]
+        self.t.session(sid, recs + [launch(2, 'toolu_cw'), notify(30, aid, result='DONE', tokens='5', ms='60000')])
+        arecs = [user(2, 'task')]
+        for i, p in enumerate(agent_edits):
+            arecs += [edit_call(3, 'ta%d' % i, p, name), tool_result(3, 'ta%d' % i, is_error=agent_failed)]
+        self.t.agent(sid, aid, arecs + [reply(4, 'm-done', text='DONE')], CW_META)
+        return aid
+
+    def test_one_successful_edit_links_the_session_its_runs_and_the_project(self):
+        for name in ('Edit', 'Write', 'MultiEdit', 'NotebookEdit'):
+            with self.subTest(tool=name):
+                self.t = Tree()
+                self.addCleanup(self.t.cleanup)
+                self.t.basic(SID2)
+                aid = self.cw_session(SID, [REPO + '/a.py'], name=name)
+                self.assertEqual(self.t.run(pconfig(proj('p', SID2, repoPath=REPO))), 0)
+                self.assertEqual((linked(self.t, SID), linked(self.t, SID2)), (('p', 'edits'), ('p', 'config')))
+                self.assertEqual(self.t.docs('runs')[aid]['project'], 'p')
+                self.assertEqual(self.t.docs('projects')['p']['sessions'], [SID2, SID])
+                self.assertEqual(self.t.docs('projects')['p']['runs'], 2)
+
+    def test_an_edit_made_only_by_a_subagent_links_and_its_files_become_repo_relative(self):
+        aid = self.cw_session(SID, agent_edits=['C:\\work\\repo\\src\\b.py'])
+        self.assertEqual(self.t.run(pconfig(proj('p', repoPath='C:/elsewhere'))), 0)
+        self.assertEqual((linked(self.t, SID), self.t.docs('runs')[aid]['files']), ((None, None), ['…/b.py']))
+        self.assertEqual(self.t.run(pconfig(proj('p', repoPath=REPO))), 0)
+        self.assertEqual((linked(self.t, SID), self.t.docs('runs')[aid]['files']), (('p', 'edits'), ['src/b.py']))
+
+    def test_worktree_edits_link_by_the_default_or_the_configured_roots(self):
+        edit_session(self.t, SID, REPO + '-worktrees/PBI-1/a.py')
+        edit_session(self.t, SID2, 'C:\\other\\x\\a.py')
+        edit_session(self.t, SID3, REPO + '-worktrees-old/x/f')
+        edit_session(self.t, SID4, REPO + '-worktrees/f')
+        edit_session(self.t, SID5, 'C:/wt/x/f')
+        cases = (
+            (proj('p', repoPath=REPO), ('p', None, None, 'p', None)),
+            (proj('p', repoPath=REPO + '/'), ('p', None, None, 'p', None)),
+            (proj('p', repoPath='C:\\work\\repo\\'), ('p', None, None, 'p', None)),
+            (proj('p', repoPath=REPO, worktreeRoots=['C:/other']), (None, 'p', None, None, None)),
+            (proj('p', repoPath=REPO, worktreeRoots=[]), (None, None, None, None, None)),
+            (proj('p', repoPath='', worktreeRoots=['C:/wt']), (None, None, None, None, 'p')),
+        )
+        # No git and no process: the rule reads paths only, so a launch would fail the export.
+        with mock.patch('subprocess.run', side_effect=AssertionError('no process may be launched')):
+            for p, want in cases:
+                with self.subTest(project=p):
+                    self.assertEqual(self.t.run(pconfig(p)), 0, self.t.err)
+                    self.assertEqual(tuple(self.t.docs('sessions')[s]['project'] for s in (SID, SID2, SID3, SID4, SID5)), want)
+
+    def test_a_listed_session_keeps_its_project_whatever_it_edited(self):
+        edit_session(self.t, SID, 'C:/b/1.py', 'C:/b/2.py')
+        self.assertEqual(self.t.run(pconfig(proj('a', SID, repoPath='C:/a'), proj('b', repoPath='C:/b'))), 0)
+        self.assertEqual(linked(self.t, SID), ('a', 'config'))
+        projects = self.t.docs('projects')
+        self.assertEqual((projects['a']['sessions'], projects['b']['sessions']), ([SID], []))
+
+    def test_reads_searches_and_shell_commands_do_not_link(self):
+        tools = [('r%d' % i, n, {'file_path': REPO + '/a.py', 'pattern': REPO, 'path': REPO,
+                                 'command': 'echo x > %s/a.py && cat %s/b.py' % (REPO, REPO)})
+                 for i, n in enumerate(('Read', 'Grep', 'Glob', 'Bash', 'PowerShell'))]
+        read_result = {'type': 'user', 'timestamp': ts(3), 'message': {'role': 'user', 'content': [
+            {'type': 'tool_result', 'tool_use_id': 'r0', 'content': 'Edit %s/a.py: "file_path": "%s/a.py"' % (REPO, REPO)}]}}
+        self.t.session(SID, [user(0, 'go'), reply(1, 'm1', tools=tools), read_result, reply(4, 'm2', text='read it')])
+        self.assertEqual(self.t.run(pconfig(proj('p', repoPath=REPO))), 0)
+        self.assertEqual(linked(self.t, SID), (None, None))
+        self.assertEqual(self.t.docs('projects')['p']['sessions'], [])
+
+    def test_a_failed_edit_is_not_evidence_in_the_main_or_a_subagent_transcript(self):
+        self.t.session(SID, [user(0, 'go'), edit_call(1, 'tm', REPO + '/a.py'), tool_result(2, 'tm', is_error=True)])
+        self.cw_session(SID2, agent_edits=[REPO + '/b.py'], agent_failed=True)
+        self.assertEqual(self.t.run(pconfig(proj('p', repoPath=REPO))), 0)
+        self.assertEqual((linked(self.t, SID), linked(self.t, SID2)), ((None, None), (None, None)))
+
+    def test_an_auto_linked_session_whose_transcript_has_gone_never_fails_the_run(self):
+        self.t.basic(SID2)
+        path = edit_session(self.t, SID, REPO + '/a.py')
+        cfg = pconfig(proj('p', SID2, repoPath=REPO))
+        self.assertEqual(self.t.run(cfg), 0)
+        self.assertEqual(self.t.docs('projects')['p']['sessions'], [SID2, SID])
+        os.remove(path)
+        self.assertEqual(self.t.run(cfg), 0, self.t.err)
+        self.assertNotIn(SID, self.t.docs('sessions'))
+        self.assertEqual(self.t.docs('projects')['p']['sessions'], [SID2])
+
+    def test_an_auto_linking_session_outside_the_window_is_not_exported(self):
+        recs = [user(0, 'go'), edit_call(1, 'te', REPO + '/a.py'), tool_result(1, 'te')]
+        for r in recs:
+            r['timestamp'] = (BASE - timedelta(days=8)).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+        path = self.t.session(SID, recs)
+        old = time.time() - 8 * 86400
+        os.utime(path, (old, old))
+        self.assertEqual(self.t.run(pconfig(proj('p', repoPath=REPO), days=7)), 0)
+        self.assertEqual((self.t.docs('sessions'), self.t.docs('projects')['p']['sessions']), ({}, []))
+
+    def test_an_auto_linked_session_of_the_meta_status_project_is_not_a_build_session(self):
+        edit_session(self.t, SID, REPO + '/a.py')
+        self.assertEqual(self.t.run(pconfig(proj('pc', repoPath=REPO, statusDoc='meta/status'))), 0)
+        self.assertEqual((linked(self.t, SID), self.t.docs('sessions')[SID]['build']), (('pc', 'edits'), False))
+
+    def test_an_auto_linked_sessions_review_round_joins_the_projects_findings_ledger(self):
+        self.t.session(SID, [user(0, 'go'), edit_call(1, 'te', REPO + '/a.py'), tool_result(1, 'te'),
+                             launch(2, 'toolu_r1'), notify(10, 'acr1', result=review_result('NO-GO', 'F1'))])
+        self.t.agent(SID, 'acr1', [reply(3, 'a', text='reviewing')], review_meta('toolu_r1'))
+        self.assertEqual(self.t.run(pconfig(proj('p', repoPath=REPO))), 0)
+        item = self.t.docs('projectTabs')['p.findings']['items']['PBI-001']
+        self.assertEqual([f['id'] for f in item['open']], ['F1'])
+
+    def test_neither_the_cached_edits_nor_worktree_roots_are_published(self):
+        self.t.basic(SID2)
+        self.cw_session(SID, [REPO + '/a.py'], [REPO + '-worktrees/x/b.py'])
+        self.assertEqual(self.t.run(pconfig(proj('p', SID2, repoPath=REPO, worktreeRoots=[REPO + '-worktrees']))), 0)
+        self.assertEqual(linked(self.t, SID), ('p', 'edits'))
+        for folder, _, files in os.walk(self.t.out):
+            if os.path.basename(folder) == '.cache':
+                continue
+            for f in files:
+                with io.open(os.path.join(folder, f), encoding='utf-8') as fh:
+                    doc = json.load(fh)
+                with self.subTest(file=f):
+                    self.assertNotIn('worktreeRoots', json.dumps(doc))
+                    self.assertNotIn('edits', doc)
+
+    def test_only_a_session_that_edited_nothing_under_a_root_is_left_in_other_sessions(self):
+        self.t.basic(SID2)
+        edit_session(self.t, SID, REPO + '/a.py')
+        edit_session(self.t, SID3, 'C:/elsewhere/a.py')
+        self.assertEqual(self.t.run(pconfig(proj('p', SID2, repoPath=REPO))), 0)
+        sessions = self.t.docs('sessions')
+        self.assertEqual({sid for sid, d in sessions.items() if d['project'] is None}, {SID3})
+
+    def test_a_kept_parse_without_cached_edits_links_on_its_subagent_files(self):
+        # A session that fails to re-parse keeps its last cache entry; just after the parser version bump that
+        # entry has no main-transcript edits, so the session links on its subagents' files alone.
+        self.cw_session(SID, ['C:/b/1.py', 'C:/b/2.py'], ['C:/a/1.py'])
+        cfg = pconfig(proj('a', repoPath='C:/a'), proj('b', repoPath='C:/b'))
+        self.assertEqual(self.t.run(cfg), 0)
+        self.assertEqual(linked(self.t, SID), ('b', 'edits'))
+        cache_path = os.path.join(self.t.out, '.cache', 'sessions.json')
+        with io.open(cache_path, encoding='utf-8') as f:
+            cache = json.load(f)
+        cache[SID]['sig'][0] = es.PARSER_VERSION - 1
+        del cache[SID]['result']['doc']['edits']
+        with io.open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump(cache, f)
+        with mock.patch.object(es, 'parse_session', side_effect=ValueError('unreadable')):
+            self.assertEqual(self.t.run(cfg), 0)
+        self.assertIn('keeping its last export', self.t.err)
+        self.assertEqual(linked(self.t, SID), ('a', 'edits'))
+        self.assertNotIn('edits', self.t.docs('sessions')[SID])
 
 
 def finding(fid, loc='app.py:1'):

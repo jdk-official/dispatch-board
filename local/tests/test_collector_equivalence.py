@@ -40,6 +40,24 @@ def scenarios(t):
     t.session(S[6], [tes.user(0, 'private work', PRIVATE_DIR), tes.reply(1, 'm-s', text='ok')], folder='C--work-private')
 
 
+L = ['8' * 8 + '-aaaa-bbbb-cccc-000000000008', '9' * 8 + '-aaaa-bbbb-cccc-000000000009',
+     'a' * 8 + '-aaaa-bbbb-cccc-00000000000a']
+ALPHA, BETA = 'C:/work/alpha', 'C:\\work\\beta'
+
+
+def link_scenarios(t):
+    """Sessions no project lists that edited project files: one in a repository, one only in a worktree through
+    its agent (with a failed edit beside it), and one that edited two projects, the second one more."""
+    tes.edit_session(t, L[0], ALPHA + '/a.py')
+    t.session(L[1], [tes.user(0, 'go'), tes.launch(1, 'toolu_wt'),
+                     tes.notify(30, 'awt', result='DONE', tokens='5', ms='60000')])
+    t.agent(L[1], 'awt', [tes.user(1, 'task'), tes.edit_call(2, 'tw1', ALPHA + '-worktrees/PBI-1/a.py'),
+                          tes.tool_result(2, 'tw1'), tes.edit_call(3, 'tw2', BETA + '\\refused.py'),
+                          tes.tool_result(3, 'tw2', is_error=True), tes.reply(4, 'm-wt', text='DONE')],
+            {'agentType': 'engineering-agents:code-writer', 'description': 'PBI-003 worktree', 'toolUseId': 'toolu_wt'})
+    tes.edit_session(t, L[2], ALPHA + '/1.py', ALPHA + '/2.py', BETA + '\\1.py', BETA + '\\2.py', BETA + '\\3.py')
+
+
 def transcript_files(root):
     """Every transcript and meta file under root, as {path: bytes}."""
     found = {}
@@ -63,9 +81,24 @@ class Equivalence(unittest.TestCase):
         fcfg = f.config()
         fcfg['catalogue'] = self.e.cfg()['catalogue']
         scenarios(self.e.t)
+        link_scenarios(self.e.t)
+        linking = self.e.cfg()
+        linking['projects'] = [tes.proj('alpha', S[0], repoPath=ALPHA), tes.proj('beta', repoPath=BETA)]
         return [('conformance fixture', fcfg, f.root),
                 ('tree scenarios', self.e.cfg(build=[S[0], S[3]]), self.e.root),
-                ('tree scenarios, excluded by cwd', self.e.cfg(build=[S[0]], exclude=[PRIVATE_DIR + '*']), self.e.root)]
+                ('tree scenarios, excluded by cwd', self.e.cfg(build=[S[0]], exclude=[PRIVATE_DIR + '*']), self.e.root),
+                ('tree scenarios, auto-linked', linking, self.e.root)]
+
+    def test_the_auto_link_fixture_links_as_the_rule_says(self):
+        name, cfg, root = self.configs()[3]
+        conn = self.fresh_db(name)
+        self.run_pass(cfg, root, conn)
+        stored = self.e.stored(conn)
+        got = {sid: (stored['session'][sid]['project'], stored['session'][sid].get('linkedBy')) for sid in [S[0]] + L}
+        self.assertEqual(got, {S[0]: ('alpha', 'config'), L[0]: ('alpha', 'edits'), L[1]: ('alpha', 'edits'),
+                               L[2]: ('beta', 'edits')})
+        self.assertEqual(stored['project']['alpha']['sessions'], [S[0], L[0], L[1]])
+        self.assertEqual(stored['run']['awt']['project'], 'alpha')
 
     def run_pass(self, cfg, root, conn=None):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
