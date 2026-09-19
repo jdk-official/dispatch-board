@@ -1904,7 +1904,10 @@ const overStore = async () => {
     // a5 comes from a document exported before usage named PBI ids: it has no pbis key at all.
     withSubs(PROJECTS[1], [sub('a1', 'code-writer', 100, ['PBI-001']), sub('a2', 'code-reviewer', 50, ['PBI-001']),
       sub('a3', 'code-writer', 60, ['PBI-002', 'PBI-003']), sub('a4', 'Explore', 7, []), sub('a5', 'code-writer', 5),
-      sub('a6', '<b>odd</b>', 1, ['<i>PBI</i>'])]),
+      sub('a6', '<b>odd</b>', 1, ['<i>PBI</i>']),
+      // Two runs each split 3 two ways (1.5 each): summed as floats (3.0) before rounding for display, so
+      // premature per-run rounding (which would give 2+2=4) would be a visible regression.
+      sub('a7', 'test-writer', 3, ['PBI-100', 'PBI-101']), sub('a8', 'test-writer', 3, ['PBI-100', 'PBI-101'])]),
   ];
   const run = (id, seq, lane, extra) => ({ id, session: 's2', project: 'dispatch-board', seq, lane, kind: 'done', label: id + ' label', ...extra });
   const TR = [run('t3', 3, 'tw', { tests: 664, coverage: 82.5 }), run('t1', 1, 'cw', { tests: 600, coverage: 80 }),
@@ -1924,6 +1927,10 @@ const overStore = async () => {
   assert.deepEqual(effOf(U(), 'pbi', 'PBI-003'), ['PBI-003', '1', '30']);
   assert.match(text(U()), /2 runs name no work item: 12 effective/);
   ok('a run naming several work items has its usage split equally among them; runs naming none are counted apart');
+
+  assert.deepEqual(effOf(U(), 'pbi', 'PBI-100'), ['PBI-100', '2', '3']);
+  assert.deepEqual(effOf(U(), 'pbi', 'PBI-101'), ['PBI-101', '2', '3']);
+  ok('a work item\'s split contributions across several runs are summed as floats and rounded once for display');
 
   assert.deepEqual(effOf(U(), 'type', 'code-writer'), ['code-writer', '3', '165']);
   assert.deepEqual(effOf(U(), 'type', 'code-reviewer'), ['code-reviewer', '1', '50']);

@@ -1174,6 +1174,27 @@ class TrendAndCost(TreeCase):
         self.assertNotIn('tests', doc)
         self.assertNotIn('coverage', doc)
 
+    def test_a_stated_count_in_the_agents_own_transcript_is_not_recorded(self):
+        # tests/coverage are read from the run's notification result, not the agent's own transcript text
+        # (which classify() uses only as a fallback for the verdict).
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_cw'), notify(30, 'acw11', result='DONE', tokens='5000', ms='1740000')])
+        self.t.agent(SID, 'acw11', [user(1, 'task'), reply(2, 'm-a1', text='All green. 999 tests green, coverage 95%.')], CW_META)
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        doc = self.t.docs('runs')['acw11']
+        self.assertNotIn('tests', doc)
+        self.assertNotIn('coverage', doc)
+
+    def test_a_manual_runs_label_is_never_scanned_for_stated_figures(self):
+        # place_manual() builds the row directly and never calls agent_row(), so a manual row naming a
+        # builder lane still can't gain tests/coverage from text in its own label.
+        self.t.basic()
+        cfg = config()
+        cfg['runs']['manual'] = [{'id': 'orch-x', 'after': 'acw11', 'label': '700 tests green, coverage 90%', 'lane': 'cw'}]
+        self.assertEqual(self.t.run(cfg), 0)
+        doc = self.t.docs('runs')['orch-x']
+        self.assertNotIn('tests', doc)
+        self.assertNotIn('coverage', doc)
+
     def test_each_agent_run_in_usage_names_the_pbi_ids_of_its_label(self):
         self.t.basic()
         self.t.session(SID2, [user(0, 'go'), launch(1, 'toolu_cw'), notify(30, 'acw22', result='DONE')])

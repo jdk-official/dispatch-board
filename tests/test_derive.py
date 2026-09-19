@@ -423,6 +423,10 @@ class StatedFigures(unittest.TestCase):
     def test_a_percentage_over_100_is_not_a_coverage(self):
         self.assertIsNone(derive.stated_coverage('coverage 150%'))
 
+    def test_matching_is_case_insensitive(self):
+        self.assertEqual(derive.stated_tests('DONE. 700 TESTS green.'), 700)
+        self.assertEqual(derive.stated_coverage('COVERAGE: 92%'), 92)
+
 
 def cr(rid, pbi, findings, kind='changes', start=0, has_block=True):
     return {'id': rid, 'lane': 'cr', 'pbis': [pbi], 'kind': kind, 'start': ts(start), 'findings': findings,
