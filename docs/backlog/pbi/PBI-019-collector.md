@@ -87,7 +87,7 @@ Build per owner decision D-9: `engineering-agents:code-writer` under TDD, then `
 - **The gap:** a stored collector state row whose layout is right but whose inner values have the wrong type still fails every pass instead of resetting that session. Only a hand edit of the database can produce one.
 - **To do:** extend the state check to validate inner value types, and reset on a mismatch as the layout check already does.
 
-**Unblocked, 2026-09-11 (push rail).** The owner approved renaming the test constant, verbatim: "ok and approved. Continue building". It answers the question "rename the constant for PBI-019". The push rail's `generic-api-key` rule had matched `SECRET = 'C:\\work\\secret'`, a made-up folder path in two collector test files, not a credential. See `docs/backlog/handovers/PBI-019.md`.
+**Unblocked, 2026-09-11 (push rail).** The owner approved renaming the test constant, verbatim: "ok and approved. Continue building". It answers the question "rename the constant for PBI-019". The push rail's `generic-api-key` rule had matched a test constant named `SECRET` assigned a made-up Windows folder path, a made-up folder path in two collector test files, not a credential. See `docs/backlog/handovers/PBI-019.md`.
 
 ---
 
