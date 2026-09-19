@@ -8,6 +8,8 @@ the repository, and Claude usage. It tracks the projects listed under `projects`
 
 ## The published page
 
+**Retired 2026-09-19 (PBI-037).** The published artifact is frozen: nothing publishes to it, and no PBI republishes it from now on, including PBI-010, which is in flight. This section's text stays until PBI-038 removes the push path. The live board is the local app at http://127.0.0.1:8765. The revert: until PBI-038 merges, restarting `/loop 10m Refresh the dispatch board: follow the Refresh procedure in CLAUDE.md.` restores the artifact, and only the owner asks for that.
+
 - Live page: https://claude.ai/code/artifact/09d7c7e7-26ae-4ed3-9c7f-34ba86925be6 (title "Live Dispatch Board", private to the owner until shared).
 - Source: `site/index.html`. It is authored as page content only — no `<html>`, `<head>` or `<body>`; the Artifact tool wraps it.
 - **To update it from a new session:** first `Artifact` with `action: "read"` and that `url`, then publish with `file_path: site/index.html` **and the same `url`**. Publishing without `url` creates a separate artifact. Omit `capabilities` and `favicon` on redeploys so the stored ones carry forward.
@@ -54,6 +56,8 @@ No agent writes answers or calls an answers endpoint. Answers to the plan gate's
 
 ## Refresh procedure
 
+**Retired 2026-09-19 (PBI-037).** This procedure stays below until PBI-038 removes the push path, but nothing runs it. From the freeze on, nothing republishes the artifact, runs the refresher or writes its store: no `write_db` call and no hand edit of `meta/status` or `status/*`, including the paused platform-catalogue build's hand-written `title`, `message` and `metrics` further down this section. The documented revert (the loop below, owner-only) is the only exception; any other such write restarts PBI-038's T4.4 undo window. A frozen board looking stale is expected and is not a reason to restart the loop.
+
 No session reports to the board; a refresher session reads what sessions leave on disk. Sessions are
 discovered automatically. The page's picker lists the projects, then "Other sessions". A project always
 shows all its tabs (Overview, Spec, Assumptions, Decisions, Backlog, GitHub, Findings ledger, Dispatch,
@@ -82,6 +86,8 @@ view only, effective usage split evenly across the PBI ids a run names) and a Co
    - **Answers guard:** refresh.py refuses any export that holds a document in the `answers` collection (a file under `out/answers/`). It names the collection on stderr, exits non-zero and leaves nothing pending, and `--allow-mass-delete` does not lift it. No exporter writes answers, so find what put the file there and remove it.
 2. `Artifact` `action: "write_db"`, `db_op: "batch"`, `url` = the live page, `writes` = the printed array (it splits into several batches past 50).
 3. Only after the write succeeds: `python exporters/refresh.py --commit`. If a write fails, skip this; the next run re-offers the same changes.
+
+Retired 2026-09-19 (PBI-037): the loop below is not run day to day; it is the documented revert, run only when the owner asks for it, until PBI-038 merges.
 
 To keep the board live, run the refresher on a loop from a session opened in this folder. The
 owner's freshness target is 10 minutes (2026-09-11); only the owner views the board:
@@ -197,8 +203,8 @@ A project without a data file has no build state. A data file that is not valid 
 ## Open items
 
 - **Two token figures disagree.** Dispatch shows agents' self-reported tokens (~2.4M); the usage tab shows transcript-derived effective usage (agents ~8.3M). Switch Dispatch to transcript figures so there is one number.
-- **Retired tabs.** Since project-first navigation, the store's `tabs/spec`, `tabs/assumptions`, `tabs/decisions`, `tabs/backlog` and `tabs/git` are leftovers too. Nothing reads or deletes them; remove them by hand with `write_db` delete ops once the owner agrees.
-- **Leftover documents.** Besides the retired `tabs/*`, the store holds a stale `tabs/usage`. `refresh.py` never deletes it, because it deletes only documents recorded in `out/.pushed.json`. Remove it by hand with a `write_db` delete once the owner agrees. The hand-written `runs/r01`…`r36` were deleted at the switch to generated rows on 2026-09-10.
+- **Retired tabs.** Since project-first navigation, the store's `tabs/spec`, `tabs/assumptions`, `tabs/decisions`, `tabs/backlog` and `tabs/git` are leftovers too. Nothing reads or deletes them; remove them by hand with `write_db` delete ops once the owner agrees. Moot since the artifact was frozen on 2026-09-19 (PBI-037): its store is no longer written, so they stay.
+- **Leftover documents.** Besides the retired `tabs/*`, the store holds a stale `tabs/usage`. `refresh.py` never deletes it, because it deletes only documents recorded in `out/.pushed.json`. Remove it by hand with a `write_db` delete once the owner agrees. Moot since the artifact was frozen on 2026-09-19 (PBI-037): its store is no longer written, so they stay. The hand-written `runs/r01`…`r36` were deleted at the switch to generated rows on 2026-09-10.
 - Inferred links are heuristics: `feeds` needs a PBI id or the word review/notes/LOWs/fix in the task description; runs without one (e.g. "Align types.ts…") get no link.
 - The usage tab is not a plan meter: transcripts record only the moments a limit refused a request.
 - **The "Waiting on you" panel is detectors, not a guarantee** (PBI-009). A closing prose question is caught only when it looks like one — about 4 of every 7 real solicitations on measured data — so an empty panel means nothing was detected, never that nothing is waiting. On the same data the question half comes entirely from the prose detector: every structured `AskUserQuestion` in the corpus was answered, so the exact detector caught nothing there. Only main transcripts are read; a question a subagent asks its orchestrator is never listed. Refusals rest on the undocumented `toolDenialKind` field, observed only on CLI 2.1.205–2.1.260 — an older transcript can't distinguish "no refusal happened" from "the field didn't exist yet".

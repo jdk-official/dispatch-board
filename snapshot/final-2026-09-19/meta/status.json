@@ -1,0 +1,14 @@
+{
+  "live": false,
+  "message": "PAUSED by the owner. PBI-011 and its fix round are uncommitted in the working tree (919 tests pass); the code review and headless re-check were stopped before starting and must be re-run on resume. Architect tool: all seven owner decisions made; PRD rev 3 committed, rev 4 (network grounding) not started.",
+  "metrics": {
+    "bundle": "154.4 KB of 350 KB gzip",
+    "coverage": "99% lines · 98% branches",
+    "measuredAt": "2026-09-11T02:00:00Z",
+    "measuredOn": "build/logic-core working tree",
+    "testFiles": 34,
+    "tests": 919
+  },
+  "title": "Building",
+  "updatedAt": "2026-09-19T16:58:46+00:00"
+}
