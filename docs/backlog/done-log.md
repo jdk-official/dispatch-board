@@ -2,6 +2,13 @@
 
 <!-- On-demand archive of completed-PBI evidence. NEVER loaded at session start; the BOARD ## Done
      index anchors here by ID. One ## <PBI-ID> section per completed PBI. -->
+## PBI-030
+- title: Sessions link to a project automatically from the files they edit
+- PR: https://github.com/jdk-official/dispatch-board/pull/48 · merge: `fc1ad09` · class: standard · tier: assisted · cell-verdict: CELL-DONE
+- allowed_areas: exporters/export_sessions.py, exporters/board_config.py, exporters/derive.py, tests/test_export_sessions.py, tests/test_derive.py, local/collector.py, local/tests/**
+- evidence: Canonical run bound to e2b8776: 483/140/439. Accounted code-review-r1 GO, 1 Low follow-up. Real-transcript comparison: 260 runs match. Handover docs/backlog/handovers/PBI-030.md
+- outcome: resolved_method=squash (declared) / observed_method=squash, level record. Sessions link to a project from the files they edit; not sticky.
+
 ## PBI-010
 - title: Work-item status derived from runs, shown beside the hand-kept state during a shadow period (feature 4, FR-113)
 - PR: https://github.com/jdk-official/dispatch-board/pull/46 · merge: `f4e92ed` · class: standard · tier: assisted · cell-verdict: CELL-DONE

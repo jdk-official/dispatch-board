@@ -1,7 +1,7 @@
 ---
 id: PBI-030
 title: "Sessions link to a project automatically from the files they edit"
-status: Proposed
+status: Done
 change_class: standard
 depends_on: []
 allowed_areas: ["exporters/export_sessions.py", "exporters/board_config.py", "exporters/derive.py", "tests/test_export_sessions.py", "tests/test_derive.py", "local/collector.py", "local/tests/**", "docs/backlog/specs/pbi-030-*.md"]
@@ -34,19 +34,29 @@ The spec (`requires_spec: true`) must settle, with the PRD requirements it amend
 
 ## Acceptance criteria
 
-- [ ] **L-1** When a session within the window edits (Edit or Write) a file under dispatch-board's `repoPath` and is listed in no project, the session exporter and the local collector both set its `project` to `dispatch-board`, and the project document's `sessions` includes it.
-- [ ] **L-2** When a session edits files only under a worktree of a project's repository, it is linked to that project.
-- [ ] **L-3** A session listed in a project's `sessions` keeps that project even when it edited another project's files.
-- [ ] **L-4** A session that only read or searched a project's files (Read, Grep, Glob, Bash) is not linked.
-- [ ] **L-5** An auto-linked session whose transcript has gone never fails the run (FR-38 still applies to listed sessions only).
-- [ ] **L-6** Out of scope, checked: the page (`site/**`) is unchanged; "Other sessions" shrinks only because fewer sessions are unlinked.
-- [ ] Worker close-out: the three configured suites green on the head commit; accounted code-review gate passed.
+- [x] **L-1** When a session within the window edits (Edit or Write) a file under dispatch-board's `repoPath` and is listed in no project, the session exporter and the local collector both set its `project` to `dispatch-board`, and the project document's `sessions` includes it.
+- [x] **L-2** When a session edits files only under a worktree of a project's repository, it is linked to that project.
+- [x] **L-3** A session listed in a project's `sessions` keeps that project even when it edited another project's files.
+- [x] **L-4** A session that only read or searched a project's files (Read, Grep, Glob, Bash) is not linked.
+- [x] **L-5** An auto-linked session whose transcript has gone never fails the run (FR-38 still applies to listed sessions only).
+- [x] **L-6** Out of scope, checked: the page (`site/**`) is unchanged; "Other sessions" shrinks only because fewer sessions are unlinked.
+- [x] Worker close-out: the three configured suites green on the head commit; accounted code-review gate passed.
 
 ---
 
 ## Evidence
 
-- (written at close-out)
+**Closed out 2026-09-19.** Merged as `fc1ad09` (PR #48, squash; landing resolved squash (declared) / observed squash, level `record`).
+
+- **L-1 to L-5** — the spec's AL-1 to AL-25 are met, each with its proving test listed in `docs/backlog/reviews/PBI-030/change-r1.json`:
+  - an unlisted session that edits files under a project's `repoPath` or worktree root is linked, in both the exporter and the collector;
+  - a listed session keeps its project;
+  - read-only tools never link;
+  - a missing transcript of an auto-linked session never fails the run.
+
+  The reviewer ran the exporter on the real transcripts at main and at `e2b8776`: every session kept its project, all 260 runs matched, and a cold run took 2.0 s against 1.9 s.
+- **L-6** — `site/**` is unchanged by this PBI (`git diff 270f65d..e2b8776 -- site` is empty).
+- **Close-out** — canonical run bound to `e2b8776`: backend 483/0, page exit 0 (140 checks), local 439/0. Accounted `code-review-r1` (Opus) GO, 1 Low (CR-030-1, a stale comment), recorded as a follow-up. It also carried PBI-010's CR-010-1 and CR-010-2, which are fixed.
 
 ---
 
@@ -66,7 +76,8 @@ Build per owner decision D-9: `engineering-agents:code-writer` under TDD, then `
 
 | Gate | Applicable | Status | Artifact / note |
 |------|------------|--------|-----------------|
-| Spec gate | true | pending | |
+| Spec gate | true | passed 2026-09-19 | spec revision 3 (round 2 APPROVE-WITH-NOTES, notes applied); Q-1 answered by the owner |
 | External-review gate | false | n/a | |
-| Code-review gate | true | pending | |
-| No-self-merge gate | always | pending | |
+| Code-review gate | true | passed 2026-09-19 | Accounted `code-review-r1` GO, 1 Low follow-up |
+| No-self-merge gate | always | passed 2026-09-19 | PR #48 squash-merged `fc1ad09` under the owner's standing merge authorisation |
+| BOARD-tidy gate | always | passed 2026-09-19 | Done write, ledger deregistered |

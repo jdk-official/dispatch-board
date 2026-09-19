@@ -1,7 +1,7 @@
 ---
 id: PBI-031
 title: "Answers endpoint on the local server: the answer record, a server-owned answers database, `POST /api/answers` with its checks, a nonce content-security policy, `local/answers.py list` and `verify`, and the `CLAUDE.md` answer and transcription rules (FR-95, FR-132, NFR-23)"
-status: Proposed
+status: In Progress
 change_class: standard
 depends_on: [PBI-007]
 allowed_areas: ["local/server*", "local/records*", "local/schema*", "local/answers*", "local/tests/**", "board.config.json", "exporters/board_config.py", "CLAUDE.md", "README.md"]
@@ -73,6 +73,8 @@ allowed `local/server*`, `local/records*` (with `local/records.shapes.json`), `l
 ---
 
 ## Notes
+
+**External-review gate — approved by the owner 2026-09-19.** The owner was asked to approve building PBI-031, with a plain summary of what it builds and the risks they accept (anything on this PC can answer as them; misleading text if a separate display bug let it in; an old browser could delay answers appearing; answers not yet copied into the plan are not backed up). The owner answered, verbatim: "Approve the build". The spec is at revision 3, approved at spec-gate round 2. Because this is a security path, the resolver gives `code_review: human` and `merge: human`: the owner reviews the code and approves the merge.
 
 **Authority.** Decomposed from the parent spec `docs/backlog/specs/dispatch-board.md`, revision 6. The owner approved it at the plan gate on 2026-09-19 with "Approve", answering the approval question that named commit `db14c0b` (spec blob `8fbdd3eba4a1042e2dfdbeb1689369eb015eb390`). The approval is recorded at `main` `e8f3f4e` (Plan-gate record). These criteria are the spec's own until the PRD re-baseline (row 47), which un-defers FR-95, FR-132, NFR-23 and AC-87 as amended.
 
