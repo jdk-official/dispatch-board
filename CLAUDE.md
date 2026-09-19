@@ -108,7 +108,51 @@ Tests, run all three (they are the `[test_commands]` in `backlog-delivery.config
 
 - `python -m unittest discover -s tests` (stdlib only). They build synthetic transcripts, marketplaces and `out/` folders in temporary directories, pass their own config (including a `catalogue` block), and never touch the real `out/`, `~/.claude` or the live board.
 - `node tests/page.test.mjs` (node built-ins only, no `npm install`). It runs the inline script of `site/index.html` against a stub DOM and a fake store, and checks the project picker, the session filter, the project Overview, the Agent catalogue tab, the Backlog's Later group, the pull requests (the GitHub tab's panel and the Overview's awaiting-merge items), the findings ledger (PBI-011), the run detail (a picked run's verdict summary, findings, files edited and duration, PBI-014), and the data-adapter seam (PBI-006: the store adapter and the local API adapter render the same board); it exits non-zero on the first failed check. Because each tab renders in its own try/catch, any `console.error` the page logs that a check does not expect also fails the suite. `PAGE_HTML=<path>` points it at another copy of the page (default `site/index.html`).
-- `python -m unittest discover -s local/tests` (stdlib only; needs Python 3.11 or later). It tests the local-first app: its record shapes and SQLite schema (`local/records.py`, `local/schema.py`), the collector (`local/collector.py`), and the local server (`local/server.py`, PBI-005) — including its 127.0.0.1 binding, the Host allow-list and Origin check, the read-only database opener, the network-path guard and the live event stream. It also runs a conformance check that every document the exporters write fits the shapes; that check drives the real exporters rather than hand-building documents, which is how PBI-026 proved the `findings` tab is accepted.
+- `python -m unittest discover -s local/tests` (stdlib only; needs Python 3.11 or later). It tests the local-first app: its record shapes and SQLite schema (`local/records.py`, `local/schema.py`), the collector (`local/collector.py`), and the local server (`local/server.py`, PBI-005) — including its 127.0.0.1 binding, the Host allow-list and Origin check, the read-only database opener, the network-path guard and the live event stream. It also runs a conformance check that every document the exporters write fits the shapes; that check drives the real exporters rather than hand-building documents, which is how PBI-026 proved the `findings` tab is accepted. `test_deploy_e2e.py` then starts the collector and the server as two real processes, through the same wrapper Task Scheduler launches, and measures the deployed pair: the snapshot, `netstat` showing 127.0.0.1 only, and a finish appended to a transcript arriving on an already-open event stream; one case runs the tasks' exact command line, with no arguments for the target, in a copy of the checkout, so the default config, database, page and log folder are exercised too. It costs about 15 seconds and needs no network.
+
+## The local app on this PC
+
+The collector and the local server start at log-on through Task Scheduler. `python local/deploy/tasks.py`
+takes `show`, `install`, `uninstall`, `start`, `stop` and `status`; `install` is create-or-update (it registers
+by XML with `schtasks /F`), so re-running it after moving the checkout is the way to fix the paths. README.md
+has the operator's version of this.
+
+- **Each task launches `local/deploy/run_local.py --target collector|server`, never the target directly.**
+  Task Scheduler discards a process's stdout and stderr, and without them a refused collector pass or a server
+  that would not bind leaves the board stale with no visible reason. The wrapper calls the target's `main()` in
+  this process with both streams pointed at a rotating log in `out/local/logs/`, stamps every line with the
+  time, catches a crash with its traceback, and exits with the code the target returned, so Task Scheduler's
+  Last Run Result is the real one. Growth is capped: 1 MB live plus 5 rotated files per target.
+- **A failure of the log never stops the board unless the fallback file fails too, and is never silent.** A log
+  that cannot be opened, written or rotated, at log-on or later (a file or an ACL where `out/local/logs` should
+  be, a full disk, an antivirus or sync handle on a rotated file, a second wrapper on the same log), leaves the
+  target running: its lines and the reason go to `%TEMP%\dispatch-board-<target>-log-failure.txt` (capped at
+  1 MB) and to stderr when there is one. The log is opened at its first line and retried on every line, and the
+  first line it takes again says how many went to the fallback file. Only when that fallback file cannot take the
+  start line either, so that no file can hold the reason, does the wrapper not start the target: it exits
+  **73**, which Task Scheduler shows as the Last Run Result.
+- **Read the logs first when the board looks stale.** `out/local/logs/collector.log` holds one line per
+  committed pass and every refusal; `out/local/logs/server.log` holds the `server: serving …` line and every
+  rejected request.
+- **The generated task XML never enters the repository.** It carries this machine's interpreter path, checkout
+  path and user name, so `install` writes it to a temporary folder and deletes it once `schtasks` has read it.
+- **Order does not matter, and the two never fight.** The collector is the database's only writer; the server
+  opens it read-only (`query_only=1`) and answers 503 while it does not exist, then serves it without a
+  restart. The server's task is delayed 15 seconds after log-on so the first page load usually has data.
+- **Nothing here invokes `claude` or reaches an Anthropic host** (NFR-17). `local/tests/test_deploy_inspection.py`
+  parses every module under `local/` and checks it: no claude executable in any literal, no bare `claude` token
+  in the text, every process launch it can read names `git` or `schtasks`, and every launch it cannot read and
+  every import by a built name is on a hand-checked list that counts the sites in each function. It also checks
+  that no network-client module is imported, `ssl`, `_socket`, `imaplib`, `poplib`, `socketserver` and
+  `multiprocessing.connection` included, whether by name or as a submodule read off an imported package
+  (`http.client` off `import http.server`), and that no literal `__import__` or `import_module` names one of
+  them, `socket` or `ctypes`. `socket` may take only what the listener needs and `ctypes` only the drive-type
+  call, whether imported plainly, under an alias, as a submodule or name by name (attributes read off a name
+  imported from them count), and no Anthropic host may appear anywhere — in the exporter modules the collector
+  imports as well, a list the check keeps in step with the real imports. It is a tripwire, not a proof: a
+  launcher, module or attribute kept under another name (`go = subprocess.run`, `k = ctypes.windll`),
+  `getattr`, `sys.modules`, `exec`, a module an exporter re-exports, a reviewed site swapped for a different one
+  in the same function, or a program or host built at run time, would pass it.
 
 ## Projects
 
