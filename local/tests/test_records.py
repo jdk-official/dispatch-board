@@ -4,6 +4,7 @@ paths, and the row mapping (to_row / from_row).
 Nothing here touches the store, the real out/ or ~/.claude; the one file written goes to a temporary folder.
 """
 import contextlib, copy, io, json, os, shutil, sqlite3, sys, tempfile, unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(HERE, 'exporters'))
@@ -312,6 +313,30 @@ class Waiting(unittest.TestCase):
         bad = copy.deepcopy(WAITING)
         bad['refusals'][0]['tool'] = None
         self.assertEqual(records.validate('session', doc('session', waiting=bad)), [])
+
+    def test_waiting_present_but_not_an_object_is_rejected(self):
+        for bad in ('nope', ['questions'], 5):
+            with self.subTest(waiting=bad):
+                self.assertEqual(records.validate('session', doc('session', waiting=bad)), ['waiting: expected object'])
+
+    def test_waiting_missing_a_top_level_required_field_is_rejected(self):
+        self.assertEqual(records.validate('session', doc('session', waiting={'questions': []})),
+                         ['waiting.refusals: required field missing'])
+        self.assertEqual(records.validate('session', doc('session', waiting={'refusals': []})),
+                         ['waiting.questions: required field missing'])
+
+
+class GrammarExtensions(unittest.TestCase):
+    """{'list_of': TYPE} also accepts a scalar TYPE, including a "|" union, per the comment above SHAPES. No
+    shipped field uses a scalar union list yet, so the general form is pinned directly against a temporary
+    field rather than one SHAPES currently defines."""
+
+    def test_list_of_a_scalar_union_accepts_each_member_and_rejects_others(self):
+        patched = copy.deepcopy(records.SHAPES)
+        patched['run']['optional']['tags'] = {'list_of': 'str|null'}
+        with mock.patch.object(records, 'SHAPES', patched):
+            self.assertEqual(records.validate('run', doc('run', tags=['a', None, 'b'])), [])
+            self.assertEqual(records.validate('run', doc('run', tags=['a', 5])), ['tags[1]: expected str|null'])
 
 
 class Scalars(unittest.TestCase):
