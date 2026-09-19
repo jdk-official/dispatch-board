@@ -23,3 +23,16 @@ Row 37 asked: "retire the published claude.ai artifact after 30 days of reliable
 The plan-gate approval of revision 6 ("Approve", commit `db14c0b`) stated that approving "freezes the published claude.ai page today (PBI-037)". The batch approval was "Approve batch, start 037". This is also PBI-037's external-review go-ahead.
 
 All three hold, so the freeze may proceed today.
+
+## The freeze (AC-V2, AC-V3), 2026-09-19
+
+1. **Last refresher push.** `python exporters/refresh.py` planned 102 writes in 3 batches, and no run in the export was `running`. All three batches committed atomically, pinned to the versions read from the store. `refresh.py --commit` recorded 274 documents as pushed. No agent was dispatched between this push and the final write.
+2. **Snapshot.** Every `meta/*` and `status/*` document was exported to `snapshot/final-2026-09-19/` after that push and committed before the final write:
+   - `meta/lastRefresh` v16, at 2026-09-19T16:58:46Z;
+   - `meta/status` v55;
+   - `status/dispatch-board` v103.
+3. **Final write, approved by the owner.** Asked "Make the final write to the published artifact's store? …", the owner answered, verbatim: "Approve the final write". One atomic batch then made two updates:
+   - `meta/status` v55 → v56: `message` "Retired 2026-09-19: the board now runs on this PC at http://127.0.0.1:8765", `live` false;
+   - `status/dispatch-board` v103 → v104: `live` false.
+
+   The artifact itself was neither deleted nor republished, and its capabilities are unchanged (AC-V5).

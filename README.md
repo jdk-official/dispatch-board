@@ -17,6 +17,8 @@ awaiting a human, decisions, backlog, repository status and Claude usage, per pr
 - `board.config.json` — artifact URL, the projects (repo, branch, build sessions, doc paths), session discovery and privacy settings
 - `snapshot/` — copy of the board's store at the time this project was created
 
+**Retired 2026-09-19 (PBI-037).** The published artifact above is frozen: nothing publishes to it, runs the refresher, or hand-edits `meta/status` or `status/*` (including platform-catalogue's hand-written `title`, `message` and `metrics`) — see CLAUDE.md for the no-write rule and the owner-only revert. The live board is the local app below.
+
 ## Running the board on this PC
 
 The local-first app needs no open session and no Claude usage: the collector reads the transcripts on disk,
