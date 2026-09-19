@@ -78,7 +78,18 @@ class Shapes(unittest.TestCase):
                     'runs': 'int', 'running': 'int', 'usage': 'object',
                     'skillUses': {'map_of': {'required': {'count': 'int'}, 'optional': {'last': 'str'}}},
                 },
-                'optional': {'firstPrompt': 'str'},
+                'optional': {
+                    'firstPrompt': 'str',
+                    'waiting': {'object': {
+                        'required': {
+                            'questions': {'list_of': {'required': {'at': 'str|null', 'question': 'str', 'source': 'str'},
+                                                       'enums': {'source': ['ask', 'prose']}}},
+                            'refusals': {'list_of': {'required': {
+                                'at': 'str|null', 'kind': 'str', 'tool': 'str|null', 'detail': 'str'}}},
+                        },
+                        'optional': {'more': 'int'},
+                    }},
+                },
             },
             'run': {
                 'required': {
@@ -87,7 +98,7 @@ class Shapes(unittest.TestCase):
                 },
                 'optional': {
                     'from': 'str', 'feeds': 'str', 'group': 'str', 'agent': 'str', 'agentType': 'str',
-                    'start': 'str', 'end': 'str', 'files': 'list',
+                    'start': 'str', 'end': 'str', 'files': {'list_of': 'str'},
                     'findings': {'list_of': {'required': {
                         'id': 'str', 'severity': 'str', 'title': 'str', 'location': 'str', 'remediation': 'str'}}},
                 },
@@ -247,6 +258,12 @@ class Nested(unittest.TestCase):
     def test_skill_uses_not_an_object(self):
         self.assertEqual(records.validate('session', doc('session', skillUses=[])), ['skillUses: expected object'])
 
+    def test_a_run_files_item_that_is_not_a_string_is_rejected(self):
+        self.assertEqual(records.validate('run', doc('run', files=['widget.py', 5])), ['files[1]: expected str'])
+
+    def test_a_run_with_no_files_edited_is_accepted(self):
+        self.assertEqual(records.validate('run', doc('run', files=[])), [])
+
     def test_the_nested_rules_live_in_shapes(self):
         cat = records.SHAPES['catalogue']['required']
         self.assertEqual(cat['entries']['list_of']['enums'], {'kind': ['agent', 'skill']})
@@ -254,6 +271,47 @@ class Nested(unittest.TestCase):
         self.assertEqual(cat['plugins']['list_of']['required']['agents'], 'int')
         self.assertEqual(records.SHAPES['session']['required']['skillUses'],
                          {'map_of': {'required': {'count': 'int'}, 'optional': {'last': 'str'}}})
+
+
+WAITING = {
+    'questions': [{'at': '2026-09-11T10:00:00.000Z', 'question': 'Which colour?', 'source': 'ask'}],
+    'refusals': [{'at': '2026-09-11T10:05:00.000Z', 'kind': 'permission-rule', 'tool': 'Bash', 'detail': 'Permission denied.'}],
+}
+
+
+class Waiting(unittest.TestCase):
+    """SHAPES['session']['optional']['waiting'] names exporters/derive.py waiting_of() exactly: questions and
+    refusals as lists of objects, and an optional integer "more"."""
+
+    def test_a_full_waiting_object_is_accepted(self):
+        self.assertEqual(records.validate('session', doc('session', waiting=WAITING)), [])
+
+    def test_empty_question_and_refusal_lists_are_accepted(self):
+        self.assertEqual(records.validate('session', doc('session', waiting={'questions': [], 'refusals': []})), [])
+
+    def test_more_is_accepted_as_an_optional_int(self):
+        self.assertEqual(records.validate('session', doc('session', waiting=dict(copy.deepcopy(WAITING), more=3))), [])
+
+    def test_a_refusal_missing_a_field_is_rejected(self):
+        bad = copy.deepcopy(WAITING)
+        del bad['refusals'][0]['tool']
+        self.assertEqual(records.validate('session', doc('session', waiting=bad)),
+                         ['waiting.refusals[0].tool: required field missing'])
+
+    def test_a_question_that_is_not_an_object_is_rejected(self):
+        bad = copy.deepcopy(WAITING)
+        bad['questions'] = ['Which colour?']
+        self.assertEqual(records.validate('session', doc('session', waiting=bad)),
+                         ['waiting.questions[0]: expected object'])
+
+    def test_more_must_be_an_int(self):
+        bad = dict(copy.deepcopy(WAITING), more='3')
+        self.assertEqual(records.validate('session', doc('session', waiting=bad)), ['waiting.more: expected int'])
+
+    def test_a_refusals_tool_may_be_null(self):
+        bad = copy.deepcopy(WAITING)
+        bad['refusals'][0]['tool'] = None
+        self.assertEqual(records.validate('session', doc('session', waiting=bad)), [])
 
 
 class Scalars(unittest.TestCase):

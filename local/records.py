@@ -17,8 +17,11 @@ from datetime import datetime
 
 # SHAPES = {kind: SPEC}; SPEC = {"required": {field: TYPE}, "optional": {field: TYPE}, "enums": {field: [values]}},
 # where "enums", and in a nested SPEC also "optional", may be left out. A TYPE is a scalar name from _SCALARS, a
-# "|" union of them such as "str|null", {"list_of": SPEC} (a list of objects) or {"map_of": SPEC} (an object whose
-# values are objects). Fields a SPEC does not list are allowed, and kept, at every level.
+# "|" union of them such as "str|null", {"list_of": TYPE} (a list whose items are that TYPE -- a scalar list when
+# TYPE is a scalar name or union, a list of objects when TYPE is itself a SPEC), {"map_of": SPEC} (an object whose
+# values are objects matching SPEC) or {"object": SPEC} (a single nested object matching SPEC, for a field that
+# holds one sub-object rather than a list or map of them). Fields a SPEC does not list are allowed, and kept, at
+# every level.
 # Required means the v1 exporter writes the field on every document. Run and session times stay "str" because
 # the exporter also passes times without a timezone; only lastRefresh.at, which staleness is computed from, is
 # a strict "datetime".
@@ -30,7 +33,20 @@ SHAPES = {
             'running': 'int', 'usage': 'object',
             'skillUses': {'map_of': {'required': {'count': 'int'}, 'optional': {'last': 'str'}}},
         },
-        'optional': {'firstPrompt': 'str'},
+        'optional': {
+            'firstPrompt': 'str',
+            # Matches exporters/derive.py waiting_of() exactly: at most one question, then the newest refusals,
+            # and "more" only when refusals were left out for the cap.
+            'waiting': {'object': {
+                'required': {
+                    'questions': {'list_of': {'required': {'at': 'str|null', 'question': 'str', 'source': 'str'},
+                                               'enums': {'source': ['ask', 'prose']}}},
+                    'refusals': {'list_of': {'required': {
+                        'at': 'str|null', 'kind': 'str', 'tool': 'str|null', 'detail': 'str'}}},
+                },
+                'optional': {'more': 'int'},
+            }},
+        },
     },
     'run': {
         'required': {
@@ -39,7 +55,7 @@ SHAPES = {
         },
         'optional': {
             'from': 'str', 'feeds': 'str', 'group': 'str', 'agent': 'str', 'agentType': 'str', 'start': 'str',
-            'end': 'str', 'files': 'list',
+            'end': 'str', 'files': {'list_of': 'str'},
             'findings': {'list_of': {'required': {
                 'id': 'str', 'severity': 'str', 'title': 'str', 'location': 'str', 'remediation': 'str'}}},
         },
@@ -157,14 +173,24 @@ def _check_value(typ, value, path, errors):
         if not isinstance(value, list):
             errors.append('%s: expected list' % path)
         else:
+            item_type = typ['list_of']
             for i, item in enumerate(value):
-                _check_spec(typ['list_of'], item, '%s[%d]' % (path, i), errors)
+                item_path = '%s[%d]' % (path, i)
+                if isinstance(item_type, str):
+                    _check_value(item_type, item, item_path, errors)
+                else:
+                    _check_spec(item_type, item, item_path, errors)
     elif isinstance(typ, dict) and 'map_of' in typ:
         if not isinstance(value, dict):
             errors.append('%s: expected object' % path)
         else:
             for key, item in value.items():
                 _check_spec(typ['map_of'], item, '%s[%r]' % (path, key), errors)
+    elif isinstance(typ, dict) and 'object' in typ:
+        if not isinstance(value, dict):
+            errors.append('%s: expected object' % path)
+        else:
+            _check_spec(typ['object'], value, path, errors)
     elif isinstance(typ, str) and all(name in _SCALARS for name in typ.split('|')):
         if not any(_SCALARS[name](value) for name in typ.split('|')):
             errors.append('%s: expected %s' % (path, typ))
