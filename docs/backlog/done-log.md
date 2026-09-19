@@ -2,6 +2,13 @@
 
 <!-- On-demand archive of completed-PBI evidence. NEVER loaded at session start; the BOARD ## Done
      index anchors here by ID. One ## <PBI-ID> section per completed PBI. -->
+## PBI-007
+- title: Log-on start through Task Scheduler and the on-PC deployment end to end (FR-90, FR-91, NFR-17, NFR-18, NFR-21)
+- PR: https://github.com/jdk-official/dispatch-board/pull/28 · merge: `7c6bcb6` · class: standard · tier: assisted · cell-verdict: CELL-DONE
+- allowed_areas: local/deploy/**, local/tests/**, README.md, CLAUDE.md
+- evidence: AC-65 demonstrated by the owner's log-on 2026-09-19 19:26 local: Task Scheduler started collector and server, first pass 27 s later, 6 sessions served. AC-68 demonstrated 2026-09-19; AC-70 by inspection test; AC-72 deferred to PBI-016 by the owner. Handover docs/backlog/handovers/PBI-007.md
+- outcome: resolved_method=squash (declared) / observed_method=squash, level record. The board starts at log-on with no Claude session. Follow-up PBI-040: a duplicate collector instance at log-on.
+
 ## PBI-037
 - title: Retire the v1 artifact and its refresher: final store export, final status message, loop stopped, procedures marked retired (S-40)
 - PR: https://github.com/jdk-official/dispatch-board/pull/42 · merge: `85654f8` · class: standard · tier: assisted · cell-verdict: CELL-DONE
