@@ -912,6 +912,54 @@ class Board(unittest.TestCase):
         self.assertEqual(docs['decisions']['source'], 'docs/spec.md, docs/adr/')
         self.assertIn('projects/app.json', docs['backlog']['source'])
 
+    def test_extra_pbi_files_are_appended_in_id_order_after_the_table(self):
+        data = {'buildState': {'PBI-030': {'state': 'partial', 'commit': 'def'}}}
+        paths = {'spec': 'docs/spec.md'}
+        extra = [
+            {'id': 'PBI-030', 'title': 'Auto-link', 'depends_on': '[]', 'conflict_group': 'exporters',
+             'conflict_risk': 'Medium', 'requires_spec': 'true', 'status': 'Proposed'},
+            {'id': 'PBI-023', 'title': 'PR links', 'depends_on': '[PBI-001]', 'conflict_group': 'page',
+             'conflict_risk': 'High', 'requires_spec': 'false', 'status': 'Done'},
+        ]
+        docs = derive.spec_docs('app', paths, SPEC, None, '', '', [], [], data, 'NOW', extra)
+        pbis = docs['backlog']['pbis']
+        self.assertEqual([p['id'] for p in pbis], ['PBI-001', 'PBI-002', 'PBI-023', 'PBI-030'])
+        added = {p['id']: p for p in pbis[2:]}
+        self.assertEqual(added['PBI-030'], {'id': 'PBI-030', 'title': 'Auto-link', 'dependsOn': '—',
+                          'group': 'exporters', 'risk': 'Medium', 'requiresSpec': 'yes', 'state': 'partial',
+                          'review': '—', 'open': '', 'commit': 'def', 'afterPlan': True})
+        self.assertEqual(added['PBI-023']['dependsOn'], 'PBI-001')
+        self.assertEqual(added['PBI-023']['requiresSpec'], 'no')
+        self.assertNotIn('afterPlan', pbis[0])
+
+    def test_a_table_listed_id_is_not_duplicated_from_its_file(self):
+        paths = {'spec': 'docs/spec.md'}
+        extra = [{'id': 'PBI-001', 'title': 'Duplicate', 'status': 'Proposed'}]
+        docs = derive.spec_docs('app', paths, SPEC, None, '', '', [], [], {}, 'NOW', extra)
+        self.assertEqual([p['id'] for p in docs['backlog']['pbis']], ['PBI-001', 'PBI-002'])
+        self.assertNotIn('afterPlan', docs['backlog']['pbis'][0])
+
+    def test_a_later_status_file_is_not_exported_as_a_work_item(self):
+        paths = {'spec': 'docs/spec.md'}
+        extra = [{'id': 'PBI-050', 'title': 'Someday', 'status': 'Later'}]
+        docs = derive.spec_docs('app', paths, SPEC, None, '', '', [], [], {}, 'NOW', extra)
+        self.assertEqual([p['id'] for p in docs['backlog']['pbis']], ['PBI-001', 'PBI-002'])
+
+    def test_no_extra_pbis_leaves_the_backlog_as_it_was(self):
+        paths = {'spec': 'docs/spec.md'}
+        docs = derive.spec_docs('app', paths, SPEC, None, '', '', [], [], {}, 'NOW')
+        self.assertEqual([p['id'] for p in docs['backlog']['pbis']], ['PBI-001', 'PBI-002'])
+
+    def test_plan_depends_text_lists_ids_or_a_dash(self):
+        self.assertEqual(derive.plan_depends_text('[]'), '—')
+        self.assertEqual(derive.plan_depends_text('[PBI-003, PBI-004]'), 'PBI-003, PBI-004')
+        self.assertEqual(derive.plan_depends_text(''), '—')
+
+    def test_plan_yes_no_maps_true_false_and_passes_through_otherwise(self):
+        self.assertEqual(derive.plan_yes_no('true'), 'yes')
+        self.assertEqual(derive.plan_yes_no('False'), 'no')
+        self.assertEqual(derive.plan_yes_no('maybe'), 'maybe')
+
     def test_section_stops_at_a_heading_of_the_same_level(self):
         text = '## A\none\n### A.1\ntwo\n## B\nthree\n'
         self.assertEqual(derive.section(text, '## A'), '\none\n### A.1\ntwo\n')

@@ -263,6 +263,62 @@ class ExportProject(ReposCase):
         self.assertIn('workItemStatus', self.r.err)
         self.assertEqual(written(), before)
 
+    def pbi_file(self, pid, title, status='Proposed', depends_on='[]', group='g', risk='Medium', spec='false'):
+        return ('---\nid: %s\ntitle: "%s"\nstatus: %s\ndepends_on: %s\nconflict_group: %s\nconflict_risk: %s\n'
+                 'requires_spec: %s\n---\n\n# %s\n' % (pid, title, status, depends_on, group, risk, spec, pid))
+
+    def test_a_pbi_file_the_table_does_not_list_is_appended_marked_after_plan(self):
+        root = self.r.repo('app', dict(FULL, **{
+            'docs/backlog/pbi/PBI-030-x.md': self.pbi_file('PBI-030', 'Auto-link', depends_on='[PBI-001]',
+                                                             group='exporters', risk='Medium', spec='true')}))
+        self.r.data('app', DATA)
+        self.assertEqual(self.r.run([project('app', root)]), 0)
+        pbis = {p['id']: p for p in self.r.tabs()['app.backlog']['pbis']}
+        self.assertEqual(pbis['PBI-030'], {'id': 'PBI-030', 'title': 'Auto-link', 'dependsOn': 'PBI-001',
+                          'group': 'exporters', 'risk': 'Medium', 'requiresSpec': 'yes', 'state': 'todo',
+                          'review': '—', 'open': '', 'commit': '', 'afterPlan': True})
+        self.assertEqual([p['id'] for p in self.r.tabs()['app.backlog']['pbis']], ['PBI-001', 'PBI-002', 'PBI-030'])
+
+    def test_build_state_for_an_added_pbi_is_looked_up_like_a_plan_pbi(self):
+        root = self.r.repo('app', dict(FULL, **{'docs/backlog/pbi/PBI-030-x.md': self.pbi_file('PBI-030', 'Auto-link')}))
+        self.r.data('app', dict(DATA, buildState=dict(DATA['buildState'], **{
+            'PBI-030': {'state': 'partial', 'review': 'NO-GO', 'open': 'fix x', 'commit': 'def5678'}})))
+        self.r.run([project('app', root)])
+        pbis = {p['id']: p for p in self.r.tabs()['app.backlog']['pbis']}
+        self.assertEqual((pbis['PBI-030']['state'], pbis['PBI-030']['review'], pbis['PBI-030']['commit']),
+                          ('partial', 'NO-GO', 'def5678'))
+
+    def test_a_pbi_the_table_already_lists_is_exported_once_from_the_table(self):
+        root = self.r.repo('app', dict(FULL, **{
+            'docs/backlog/pbi/PBI-001-x.md': self.pbi_file('PBI-001', 'Duplicate title')}))
+        self.r.data('app', DATA)
+        self.r.run([project('app', root)])
+        pbis = self.r.tabs()['app.backlog']['pbis']
+        self.assertEqual([p['id'] for p in pbis], ['PBI-001', 'PBI-002'])
+        self.assertEqual(pbis[0]['title'], 'Widget')  # the table's own title, not the file's
+        self.assertNotIn('afterPlan', pbis[0])
+
+    def test_a_later_status_pbi_file_is_not_exported_as_a_work_item(self):
+        root = self.r.repo('app', dict(FULL, **{
+            'docs/backlog/pbi/PBI-040-x.md': self.pbi_file('PBI-040', 'Someday', status='Later')}))
+        self.r.run([project('app', root)])
+        self.assertEqual([p['id'] for p in self.r.tabs()['app.backlog']['pbis']], ['PBI-001', 'PBI-002'])
+
+    def test_unreadable_frontmatter_is_skipped_with_a_warning_not_a_failure(self):
+        root = self.r.repo('app', dict(FULL, **{
+            'docs/backlog/pbi/PBI-050-x.md': 'not frontmatter at all\n',
+            'docs/backlog/pbi/PBI-030-x.md': self.pbi_file('PBI-030', 'Auto-link')}))
+        self.assertEqual(self.r.run([project('app', root)]), 0)
+        self.assertIn('PBI-050', self.r.err)
+        pbis = self.r.tabs()['app.backlog']['pbis']
+        self.assertEqual([p['id'] for p in pbis], ['PBI-001', 'PBI-002', 'PBI-030'])
+
+    def test_a_project_without_a_pbi_folder_exports_exactly_as_before(self):
+        root = self.r.repo('app', FULL)
+        self.r.data('app', DATA)
+        self.r.run([project('app', root)])
+        self.assertEqual([p['id'] for p in self.r.tabs()['app.backlog']['pbis']], ['PBI-001', 'PBI-002'])
+
     def test_the_switch_does_not_reach_the_board_tabs(self):
         root = self.r.repo('app', FULL, with_git=False)
         self.r.data('app', DATA)
