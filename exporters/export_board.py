@@ -99,7 +99,10 @@ def intake_pbi_files(root, pid):
             continue
         rel = PBI_DIR + '/' + name
         try:
-            fm = derive.frontmatter(read(root, rel), rel, warn)
+            # utf-8-sig drops a leading byte-order mark; read() (plain utf-8) would leave it on the first
+            # line, so the opening "---" fence never matches and the file reads as having no frontmatter.
+            with io.open(os.path.join(root, rel), encoding='utf-8-sig') as f:
+                fm = derive.frontmatter(f.read(), rel, warn)
             if not fm.get('id'):
                 raise ValueError('no id')
         except (OSError, ValueError) as e:

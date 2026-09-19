@@ -321,6 +321,18 @@ class ExportProject(ReposCase):
         self.assertEqual([p['id'] for p in self.r.tabs()['app.backlog']['pbis']], ['PBI-001', 'PBI-002'])
         self.assertIn('PBI-060', self.r.err)
 
+    def test_a_bom_prefixed_pbi_file_is_read_normally(self):
+        root = self.r.repo('app', FULL)
+        self.r.data('app', DATA)
+        path = os.path.join(root, 'docs', 'backlog', 'pbi', 'PBI-070-x.md')
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with io.open(path, 'w', encoding='utf-8-sig', newline='\n') as f:
+            f.write(self.pbi_file('PBI-070', 'Bommed'))
+        self.assertEqual(self.r.run([project('app', root)]), 0)
+        pbis = {p['id']: p for p in self.r.tabs()['app.backlog']['pbis']}
+        self.assertEqual(pbis['PBI-070']['title'], 'Bommed')
+        self.assertEqual(self.r.err, '', 'a BOM-prefixed file parses normally, with no "no id" warning')
+
     def test_a_project_without_a_pbi_folder_exports_exactly_as_before(self):
         root = self.r.repo('app', FULL)
         self.r.data('app', DATA)

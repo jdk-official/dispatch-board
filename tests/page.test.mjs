@@ -527,6 +527,30 @@ const groupOf = (html, plugin) => { const m = html.match(new RegExp(`data-plugin
   ok('backlog: an item added after the plan is counted in the totals and the Overview cells, and carries the after-plan tag');
 }
 
+// ---- 8c. a self-dependency or a depends_on cycle renders the tab instead of crashing the dependency graph
+{
+  const PBIS = [
+    { id: 'PBI-001', title: 'Self', dependsOn: 'PBI-001', state: 'todo', group: 'g', risk: 'Low' },
+    { id: 'PBI-002', title: 'Cycle A', dependsOn: 'PBI-003', state: 'todo', group: 'g', risk: 'Low' },
+    { id: 'PBI-003', title: 'Cycle B', dependsOn: 'PBI-002', state: 'todo', group: 'g', risk: 'Low' },
+  ];
+  const tabs = TABS.map(t => t.id === 'platform-catalogue.backlog' ? { ...t, pbis: PBIS } : t);
+  const warned = [], realWarn = console.warn;
+  console.warn = (...a) => warned.push(a);
+  let e;
+  try {
+    e = env({ 'board-view': 'p:platform-catalogue' });
+    await tick();
+    e.fire('c:projects', PROJECTS); e.fire('c:sessions', SESSIONS); e.fire('c:runs', RUNS); e.fire('c:projectTabs', tabs);
+  } finally { console.warn = realWarn; }
+  const B = e.el('panel-backlog').innerHTML;
+  assert.doesNotMatch(B, /could not be shown/, 'the tab still renders past a self-dependency or a cycle');
+  assert.match(B, /<h3>Work items<\/h3><span class="faint">3<\/span>/);
+  for (const id of ['PBI-001', 'PBI-002', 'PBI-003']) assert.match(B, new RegExp(`<span class="id">${id}</span>`));
+  assert.ok(warned.length > 0 && warned.every(a => String(a[0]).includes('Board: dependency cycle')), 'the cycle is named in a console.warn, not silently absorbed');
+  ok('backlog: a self-dependency and a depends_on cycle render the tab instead of crashing the dependency graph');
+}
+
 // ---- 9. the Backlog's Later group: future-iteration ideas from the spec, never counted as work items
 {
   const HOSTILE_TITLE = 'Evil <img src=x onerror=alert(1)> title';

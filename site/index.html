@@ -967,7 +967,18 @@
     const cnt = k => pbis.filter(x => x.state === k).length;
     const tone = { done: 'var(--go)', conditions: 'var(--changes)', partial: 'var(--live)', todo: 'var(--rule-2)' };
     const deps = Object.fromEntries(pbis.map(x => [x.id, (String(x.dependsOn).match(/PBI-\d+/g) || []).filter(i => by[i])]));
-    const layer = {}, L = id => layer[id] ?? (layer[id] = deps[id].length ? 1 + Math.max(...deps[id].map(L)) : 0);
+    // A self-dependency or a depends_on cycle would recurse forever; visiting tracks the ids on the current
+    // call stack, so a revisit breaks the cycle (treated as depth 0) instead of blowing the call stack and
+    // taking the whole tab down with it.
+    const layer = {}, visiting = new Set();
+    const L = id => {
+      if (id in layer) return layer[id];
+      if (visiting.has(id)) { console.warn(`Board: dependency cycle at ${id}, treating it as depth 0 there`); return 0; }
+      visiting.add(id);
+      const v = deps[id].length ? 1 + Math.max(...deps[id].map(L)) : 0;
+      visiting.delete(id);
+      return layer[id] = v;
+    };
     pbis.forEach(x => L(x.id));
     const cols = {};
     pbis.forEach(x => (cols[layer[x.id]] = cols[layer[x.id]] || []).push(x.id));
