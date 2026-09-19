@@ -16,8 +16,8 @@
 | ID | Title | Depends on | Notes |
 |----|-------|------------|-------|
 | PBI-020 | Timeline view (feature 9; FR-101 filled, FR-122–FR-124) | [PBI-003, PBI-004] | Decomposed from the approved spec, 2026-09-11 |
-| PBI-030 | Sessions link to a project automatically from the files they edit | [] | Intake 2026-09-19, owner: "want the auto-linking". Spec approved 2026-09-19 (revision 3; Q-1 answered by the owner). Builds after PBI-010 merges (both edit `exporters/**`); carries PBI-010's follow-up CR-010-1. |
 | PBI-039 | The Backlog tab lists every PBI, not only the plan's | [] | Intake 2026-09-19, owner: "And PBI30 doesn't exist". page group: runs after PBI-010, before PBI-020. |
+| PBI-040 | Only one collector runs at a time | [] | Intake 2026-09-19 from PBI-007's log-on demonstration: Task Scheduler started a second collector. Starts after PBI-030 (both edit `local/collector.py`). |
 | PBI-031 | Answers endpoint on the local server: the answer record, a server-owned answers database, `POST /api/answers` with its checks, a nonce content-security policy, `local/answers.py list` and `verify`, and the `CLAUDE.md` answer and transcription rules (FR-95, FR-132, NFR-23) | [PBI-007] | Decomposed from spec revision 6 (approved 2026-09-19); batch approved by the owner 2026-09-19. |
 | PBI-032 | Answer from the board: Accept and Override on the Assumptions tab (local adapter only), answered and transcribed states (FR-131, AC-87) | [PBI-031] | Decomposed from spec revision 6 (approved 2026-09-19); batch approved by the owner 2026-09-19. |
 | PBI-033 | Answer audit: transcript tool calls that could have sent an answer, and the answers they may have made marked on the Assumptions tab | [PBI-032, PBI-030, PBI-034] | Decomposed from spec revision 6 (approved 2026-09-19); batch approved by the owner 2026-09-19. |
@@ -49,9 +49,10 @@
 
 | ID | Title | Branch | Worktree | Session tag | Started (UTC) |
 |----|-------|--------|----------|-------------|---------------|
-| PBI-007 | Log-on start through Task Scheduler and the on-PC deployment end to end (FR-90, FR-91, NFR-17, NFR-18, NFR-21) | `pbi/PBI-007-logon-start` | C:/Users/jdk/dispatch-board-worktrees/PBI-007 | 7e0c4f3c | 2026-09-12T16:05:00Z |
 <!-- Revision 6 decomposed 2026-09-19 into PBI-031 to PBI-038. The owner approved the batch, asked "Put PBI-031 to PBI-038 on the BOARD as shown, and start PBI-037 (freeze the published artifact) now?", verbatim: "Approve batch, start 037". PBI-037 is docs/Low, so it runs beside PBI-010 (page/High). -->
 | PBI-010 | Work-item status derived from runs, shown beside the hand-kept state during a shadow period (feature 4, FR-113) | `pbi/PBI-010-derived-status` | C:/Users/jdk/dispatch-board-worktrees/PBI-010 | 7e0c4f3c | 2026-09-19T13:49:57Z |
+| PBI-030 | Sessions link to a project automatically from the files they edit | `pbi/PBI-030-auto-link-sessions` | C:/Users/jdk/dispatch-board-worktrees/PBI-030 | 7e0c4f3c | 2026-09-19T18:30:00Z |
+<!-- PBI-030 started 2026-09-19 (exporters, Medium) beside PBI-010: its spec is approved (revision 3), and it rebases onto PBI-010 once that merges, taking PBI-010's follow-up CR-010-1 with it. -->
 <!-- PBI-010 started 2026-09-19 the moment PBI-012 closed and freed the page slot. Spec gate passed (revision 3); external review approved by the owner 2026-09-19 ("Approve the build"); ships in shadow mode, the switch to derived status stays the owner's (Q-3). First PBI whose PR the pr-steward raises. -->
 <!-- PBI-029 landed by intake and started 2026-09-19 at the owner's request, as a priority: the log-on collector's git children each opened a console window. exporters group, Medium; its areas avoid PBI-012's derive.py and export_sessions.py and PBI-028's records*. -->
 <!-- PBI-028 landed by intake 2026-09-19 from two banked follow-ups (PBI-009 spec row 3; PBI-027's review) and started at once under the owner's standing instruction to keep building: local-app Medium, so it runs beside PBI-012 (page High) and PBI-007 (local-app Low, merged, awaiting the owner's log-on demonstration) without collision. -->
@@ -111,3 +112,4 @@
 | PBI-012 | Test and coverage trend, cost per work item and per agent type (features 5 and 7, FR-114–FR-116, FR-119, FR-120) | https://github.com/jdk-official/dispatch-board/pull/34 | [↪](done-log.md#pbi-012) |
 | PBI-029 | No console windows from the scheduled collector | https://github.com/jdk-official/dispatch-board/pull/35 | [↪](done-log.md#pbi-029) |
 | PBI-037 | Retire the v1 artifact and its refresher: final store export, final status message, loop stopped, procedures marked retired (S-40) | https://github.com/jdk-official/dispatch-board/pull/42 | [↪](done-log.md#pbi-037) |
+| PBI-007 | Log-on start through Task Scheduler and the on-PC deployment end to end (FR-90, FR-91, NFR-17, NFR-18, NFR-21) | https://github.com/jdk-official/dispatch-board/pull/28 | [↪](done-log.md#pbi-007) |

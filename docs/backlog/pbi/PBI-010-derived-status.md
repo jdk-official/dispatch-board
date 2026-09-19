@@ -52,6 +52,8 @@ allowed `exporters/**`, `tests/test_*.py`, `site/**`, `tests/page.test.mjs`, `pr
 
 **External-review gate — approved by the owner 2026-09-19**, answering "Approve the build?" with "Approve the build" (spec revision 3; the build ships in shadow mode, and the switch to derived status stays the owner's, row Q-3). **Row Q-2 — the owner chose option (b)**, "Docs chore after merge": the build leaves `CLAUDE.md` alone and a docs chore corrects it straight after the merge. `merge_allowed_by_agent` set true under the owner's standing merge authorisation of 2026-09-12.
 
+**The page view — the owner's decision, 2026-09-19.** Shown the rendered Shadow period panel for the AC-DS22 visual check, the owner said, verbatim: "Itts very complex and I don't understand it". Offered three simpler versions, the owner chose, verbatim: "Hide it entirely". The derivation is built and exported; the page shows none of it. Agreement between derived and hand-kept state is reported to the owner in chat instead. Page criteria that describe the panel are not applicable by this decision (N/A — accepted by the owner 2026-09-19), and AC-DS22's visual check has nothing left to check.
+
 Build per owner decision D-9: `engineering-agents:code-writer` under TDD, then `review-agents:code-reviewer` until GO. `requires_spec: true`: refine a per-PBI spec from the parent spec and have it independently reviewed before any code is written. `requires_external_review: true`: the owner must explicitly approve ("approve" / "proceed" / "go ahead") before implementation begins.
 
 ---
