@@ -1137,6 +1137,82 @@ class Findings(TreeCase):
             self.assertEqual(items[pbi]['rounds'], 1)
 
 
+def asks(m, tool_id, question):
+    return reply(m, 'msg-ask-' + tool_id, tools=[(tool_id, 'AskUserQuestion', {'questions': [{'question': question}]})])
+
+
+def refused(m, tool_id, kind='permission-rule'):
+    return {'type': 'user', 'timestamp': ts(m), 'toolDenialKind': kind, 'toolUseResult': 'Error: denied',
+            'message': {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': tool_id, 'is_error': True,
+                                                     'content': 'Permission to use Bash has been denied.'}]}}
+
+
+class Waiting(TreeCase):
+    """The session document's optional "waiting" field: facts read from the main transcript, nothing that
+    depends on the time of the export."""
+
+    def blocked(self, sid=SID):
+        self.t.session(sid, [user(0, 'go'), reply(1, 'msg-bash', tools=[('toolu_b', 'Bash', {'command': 'rm x'})]),
+                             refused(2, 'toolu_b'), asks(3, 'toolu_q', 'Which port should it bind?')])
+
+    def test_a_session_with_a_pending_question_and_a_refusal_carries_waiting(self):
+        self.blocked()
+        self.t.basic(SID2)
+        self.assertEqual(self.t.run(), 0)
+        sessions = self.t.docs('sessions')
+        self.assertEqual(sessions[SID]['waiting'], {
+            'questions': [{'at': ts(3), 'question': 'Which port should it bind?', 'source': 'ask'}],
+            'refusals': [{'at': ts(2), 'kind': 'permission-rule', 'tool': 'Bash', 'detail': 'Permission to use Bash has been denied.'}]})
+        self.assertNotIn('waiting', sessions[SID2])
+
+    def test_a_question_asked_inside_an_agent_transcript_is_not_listed(self):
+        self.t.basic()
+        self.t.agent(SID, 'acw11', [user(1, 'task'), asks(2, 'toolu_inner', 'Should I use the cache?')], CW_META)
+        self.assertEqual(self.t.run(), 0)
+        self.assertNotIn('waiting', self.t.docs('sessions')[SID])
+
+    def test_waiting_holds_nothing_that_depends_on_the_export_time(self):
+        self.blocked()
+        path = os.path.join(self.t.out, 'sessions', SID + '.json')
+        texts = []
+        for later in (0, 5 * 3600):
+            shutil.rmtree(os.path.join(self.t.out, '.cache'), ignore_errors=True)  # parsed again, not replayed
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(es.main(config=config(), out_dir=self.t.out, projects_root=self.t.root, now=time.time() + later), 0)
+            with io.open(path, encoding='utf-8') as f:
+                texts.append(f.read())
+        self.assertEqual(texts[0], texts[1])
+        self.assertIn('"waiting"', texts[0])
+
+    def test_parser_version_was_bumped_for_waiting(self):
+        # 7 is the version before sessions carried "waiting"; pinning a literal keeps this from passing unbumped.
+        self.assertGreater(es.PARSER_VERSION, 7)
+
+    def test_a_cache_from_before_waiting_was_parsed_is_not_reused(self):
+        self.blocked()
+        self.assertEqual(self.t.run(), 0)
+        cache_path = os.path.join(self.t.out, '.cache', 'sessions.json')
+        with io.open(cache_path, encoding='utf-8') as f:
+            cache = json.load(f)
+        cache[SID]['sig'][0] = 7  # as the parser before "waiting" signed it
+        del cache[SID]['result']['doc']['waiting']
+        with io.open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump(cache, f)
+        self.assertEqual(self.t.run(), 0)
+        self.assertIn('waiting', self.t.docs('sessions')[SID])
+
+    def test_waiting_adds_no_collection_and_no_project_tab(self):
+        import refresh
+        self.blocked()
+        self.assertEqual(self.t.run(), 0)
+        self.assertEqual(os.listdir(os.path.join(self.t.out, 'projectTabs')), [])
+        got = refresh.plan(self.t.out)
+        writes = got['writes'] if got['batches'] == 1 else [w for b in got['writes'] for w in b]
+        collections = {w['collection'] for w in writes}
+        self.assertIn('sessions', collections)
+        self.assertLessEqual(collections, {'sessions', 'runs', 'projects', 'meta'})
+
+
 class Ownership(TreeCase):
     """The findings document's lifecycle (CR-011-4): export_sessions.py, not the folder's incidental wipe by
     export_board.py, owns writing and removing its own projectTabs/<pid>.findings.json."""

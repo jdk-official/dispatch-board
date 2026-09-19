@@ -570,6 +570,202 @@ class Git(unittest.TestCase):
         self.assertFalse(hasattr(derive, 'subprocess'))
 
 
+def said(minute, mid, text, stop=None):
+    """A final assistant reply carrying text, with its stop_reason."""
+    o = assistant(minute, mid, text=text)
+    o['message']['stop_reason'] = stop
+    return o
+
+
+def ask(minute, tid, *questions):
+    return assistant(minute, 'm-ask-' + tid, tools=[{'type': 'tool_use', 'id': tid, 'name': 'AskUserQuestion',
+                                                     'input': {'questions': [{'question': q} for q in questions]}}])
+
+
+def call(minute, tid, name='Bash'):
+    return assistant(minute, 'm-call-' + tid, tools=[{'type': 'tool_use', 'id': tid, 'name': name, 'input': {'command': 'ls'}}])
+
+
+def result(minute, tid, text='ok', is_error=False):
+    return user(minute, [{'type': 'tool_result', 'tool_use_id': tid, 'is_error': is_error, 'content': text}])
+
+
+def denial(minute, tid, kind, detail='Permission to use Bash has been denied.'):
+    # The recorded shape: a user record, isMeta absent, whose toolUseResult is a plain string, not a dict.
+    return user(minute, [{'type': 'tool_result', 'tool_use_id': tid, 'is_error': True, 'content': detail}],
+                toolDenialKind=kind, toolUseResult='Error: ' + detail, sourceToolAssistantUUID='uuid-' + tid)
+
+
+def waiting(records):
+    return derive.waiting_of(feed(records))
+
+
+class Waiting(unittest.TestCase):
+    """What a session's main transcript leaves waiting on the owner: an unanswered AskUserQuestion, a closing
+    question in prose, and tool calls the permission check refused."""
+
+    def test_an_unanswered_ask_is_a_question_waiting(self):
+        got = waiting([user(0, 'go'), ask(1, 'q1', 'Which colour?')])
+        self.assertEqual(got, {'questions': [{'at': ts(1), 'question': 'Which colour?', 'source': 'ask'}], 'refusals': []})
+
+    def test_an_answered_ask_is_not_waiting(self):
+        self.assertIsNone(waiting([user(0, 'go'), ask(1, 'q1', 'Which colour?'), result(2, 'q1', 'Blue')]))
+
+    def test_an_owner_message_after_an_ask_clears_it(self):
+        self.assertIsNone(waiting([user(0, 'go'), ask(1, 'q1', 'Which colour?'), user(3, 'blue, and carry on')]))
+
+    def test_only_the_latest_pending_ask_is_listed(self):
+        got = waiting([user(0, 'go'), ask(1, 'q1', 'First?'), ask(2, 'q2', 'Second?', 'Third?')])
+        self.assertEqual(got['questions'], [{'at': ts(2), 'question': 'Second? · Third?', 'source': 'ask'}])
+
+    def test_an_owner_message_clears_only_the_ask_before_it(self):
+        # The owner spoke between the two asks: the first is answered by their presence, the second is not.
+        got = waiting([user(0, 'go'), ask(1, 'q1', 'First?'), user(2, 'noted'), ask(3, 'q2', 'Second?')])
+        self.assertEqual(got['questions'], [{'at': ts(3), 'question': 'Second?', 'source': 'ask'}])
+
+    def test_is_owner_message(self):
+        own = derive.is_owner_message
+        self.assertTrue(own(user(0, 'Please build it')))
+        self.assertFalse(own(user(0, 'Please build it', isMeta=True)))
+        self.assertFalse(own(user(0, '<command-message>pbi-plan</command-message>')))
+        self.assertFalse(own(user(0, '<system-reminder>x</system-reminder>')))
+        self.assertFalse(own(result(0, 't1')))
+        self.assertFalse(own(assistant(0, 'm', text='hello')))
+        # A reply typed beside a pasted image arrives as list content.
+        self.assertTrue(own(user(0, [{'type': 'image', 'source': {}}, {'type': 'text', 'text': 'this one'}])))
+        self.assertFalse(own(user(0, [{'type': 'text', 'text': '<system-reminder>x</system-reminder>'}])))
+        self.assertFalse(own(user(0, [{'type': 'text', 'text': 'why'}, {'type': 'tool_result', 'tool_use_id': 't'}])))
+        self.assertFalse(own(user(0, 'Summary of the conversation so far...', isCompactSummary=True)))
+        self.assertFalse(own(user(0, [{'type': 'text', 'text': '[Request interrupted by user for tool use]'}])))
+        # The exclusion matches the fixed marker text exactly; a longer typed reply that merely mentions it is still the owner.
+        self.assertTrue(own(user(0, "I saw '[Request interrupted by user for tool use]' but go ahead and retry")))
+
+    def test_a_closing_question_in_prose_is_waiting_until_the_owner_replies(self):
+        text = 'I finished the parser.\n\nWhich would you prefer, the flag or the config key?'
+        got = waiting([user(0, 'go'), said(1, 'm1', text, 'end_turn')])
+        self.assertEqual(got['questions'], [{'at': ts(1), 'question': 'Which would you prefer, the flag or the config key?',
+                                             'source': 'prose'}])
+        self.assertIsNone(waiting([user(0, 'go'), said(1, 'm1', text, 'end_turn'), user(2, 'the flag')]))
+
+    def test_a_closing_solicitation_without_a_question_mark_is_waiting(self):
+        got = waiting([user(0, 'go'), said(1, 'm1', 'Tests are green.\n\nSay the word if you would rather I delete it.')])
+        self.assertEqual(got['questions'][0]['source'], 'prose')
+
+    def test_a_question_mark_before_the_closing_paragraph_is_not_waiting(self):
+        self.assertIsNone(waiting([user(0, 'go'), said(1, 'm1', 'Why did it fail? The cache was stale.\n\nFixed and pushed.')]))
+
+    def test_a_reply_cut_off_mid_tool_call_is_not_a_question(self):
+        self.assertIsNone(waiting([user(0, 'go'), said(1, 'm1', 'Shall I run the suite?', 'tool_use')]))
+
+    def test_the_last_turn_ignores_bookkeeping_records(self):
+        got = waiting([user(0, 'go'), said(1, 'm1', 'Want me to open the PR?'),
+                       {'type': 'attachment', 'timestamp': ts(2), 'attachment': {}}, {'type': 'last-prompt', 'lastPrompt': 'go'}])
+        self.assertEqual(got['questions'][0]['question'], 'Want me to open the PR?')
+
+    def test_a_streamed_reply_keeps_its_text_across_its_lines(self):
+        tail = assistant(2, 'm1', tools=[])  # the same message's next line, carrying no text
+        got = waiting([user(0, 'go'), said(1, 'm1', 'Shall I merge it?'), tail])
+        self.assertEqual(got['questions'][0]['question'], 'Shall I merge it?')
+
+    def test_listed_refusals_name_the_refused_tool(self):
+        for kind in ('permission-rule', 'automode-blocked', 'user-rejected'):
+            got = waiting([user(0, 'go'), call(1, 't1', 'Bash'), denial(2, 't1', kind)])
+            self.assertEqual(got['refusals'], [{'at': ts(2), 'kind': kind, 'tool': 'Bash',
+                                                'detail': 'Permission to use Bash has been denied.'}], kind)
+
+    def test_a_classifier_outage_is_not_a_refusal(self):
+        self.assertIsNone(waiting([user(0, 'go'), call(1, 't1'), denial(2, 't1', 'automode-unavailable')]))
+
+    def test_a_refusal_whose_tool_cannot_be_resolved_still_lists(self):
+        got = waiting([user(0, 'go'), denial(2, 'unknown', 'permission-rule')])
+        self.assertEqual(got['refusals'][0]['tool'], None)
+
+    def test_a_string_tool_use_result_is_read_without_raising(self):
+        state = feed([user(0, 'go'), call(1, 't1'), denial(2, 't1', 'user-rejected')])
+        self.assertEqual(state['sync'], {})
+        self.assertEqual(len(state['denials']), 1)
+
+    def test_an_owner_message_after_a_refusal_clears_it(self):
+        self.assertIsNone(waiting([user(0, 'go'), call(1, 't1'), denial(2, 't1', 'permission-rule'), user(3, 'fine, skip it')]))
+
+    def test_a_user_rejected_denial_still_lists_past_the_interruption_marker_that_follows_it(self):
+        # Claude Code writes this exact marker a moment after the owner rejects a tool-use prompt; it is not typed.
+        marker = user(3, [{'type': 'text', 'text': '[Request interrupted by user for tool use]'}])
+        got = waiting([user(0, 'go'), call(1, 't1'), denial(2, 't1', 'user-rejected'), marker])
+        self.assertEqual(got['refusals'], [{'at': ts(2), 'kind': 'user-rejected', 'tool': 'Bash',
+                                            'detail': 'Permission to use Bash has been denied.'}])
+
+    def test_an_automode_blocked_denial_still_lists_past_a_compaction_summary(self):
+        summary = user(3, 'Summary of the conversation so far...', isCompactSummary=True)
+        got = waiting([user(0, 'go'), call(1, 't1'), denial(2, 't1', 'automode-blocked'), summary])
+        self.assertEqual(got['refusals'], [{'at': ts(2), 'kind': 'automode-blocked', 'tool': 'Bash',
+                                            'detail': 'Permission to use Bash has been denied.'}])
+
+    def test_a_typed_reply_after_the_interruption_marker_or_a_compaction_summary_still_clears(self):
+        marker = user(2, [{'type': 'text', 'text': '[Request interrupted by user for tool use]'}])
+        self.assertIsNone(waiting([user(0, 'go'), call(1, 't1'), denial(2, 't1', 'user-rejected'), marker, user(3, 'fine, skip it')]))
+        summary = user(3, 'Summary of the conversation so far...', isCompactSummary=True)
+        self.assertIsNone(waiting([user(0, 'go'), call(1, 't1'), denial(2, 't1', 'automode-blocked'), summary, user(4, 'fine, skip it')]))
+
+    def test_an_esc_interruption_with_no_refusal_creates_no_item(self):
+        self.assertIsNone(waiting([user(0, 'go'), user(1, [{'type': 'text', 'text': '[Request interrupted by user]'}])]))
+
+    def test_an_owner_message_clears_only_the_refusal_before_it(self):
+        # The owner spoke between the two refusals: the first is stale, the second still stands.
+        got = waiting([user(0, 'go'), call(1, 't1'), denial(2, 't1', 'permission-rule'), user(3, 'fine, skip it'),
+                       call(4, 't2'), denial(5, 't2', 'automode-blocked')])
+        self.assertEqual(got['refusals'], [{'at': ts(5), 'kind': 'automode-blocked', 'tool': 'Bash', 'detail': 'Permission to use Bash has been denied.'}])
+
+    def test_ordinary_tool_failures_and_permission_boilerplate_are_not_refusals(self):
+        recs = [user(0, 'go'), said(1, 'm0', 'Skills need permission to use tools.')]
+        for i in range(20):
+            recs += [call(2, 'f%d' % i), result(3, 'f%d' % i, 'exit 1: permission to use this path was denied', True)]
+        recs.append(said(4, 'm9', 'All done.'))
+        self.assertIsNone(waiting(recs))
+
+    def test_a_session_lists_at_most_five_items_and_counts_the_rest(self):
+        recs = [user(0, 'go')]
+        for i in range(6):
+            recs += [call(1 + i, 't%d' % i), denial(1 + i, 't%d' % i, 'automode-blocked')]
+        got = waiting(recs)
+        self.assertEqual((len(got['refusals']), got['more']), (5, 1))
+        self.assertEqual([r['at'] for r in got['refusals']], [ts(i) for i in range(2, 7)], 'the newest five are kept')
+
+    def test_the_cap_keeps_the_question(self):
+        recs = [user(0, 'go'), ask(1, 'q1', 'Which colour?')]
+        for i in range(6):
+            recs += [call(2 + i, 't%d' % i), denial(2 + i, 't%d' % i, 'automode-blocked')]
+        got = waiting(recs)
+        self.assertEqual((len(got['questions']), len(got['refusals']), got['more']), (1, 4, 2))
+
+    def test_a_structured_ask_wins_over_prose(self):
+        got = waiting([user(0, 'go'), ask(1, 'q1', 'Which colour?'), said(2, 'm2', 'Shall I pick for you?')])
+        self.assertEqual([q['source'] for q in got['questions']], ['ask'])
+
+    def test_a_session_with_nothing_waiting_has_no_waiting_key(self):
+        doc = derive.session_result(feed(MAIN), [], [], [])['doc']
+        self.assertNotIn('waiting', doc)
+
+    def test_the_session_document_carries_a_copy_of_waiting(self):
+        state = feed([user(0, 'go'), call(1, 't1'), denial(2, 't1', 'permission-rule')])
+        doc = derive.session_result(state, [], [], [])['doc']
+        kept = copy.deepcopy(doc['waiting'])
+        derive.add_record(state, call(3, 't2'))
+        derive.add_record(state, denial(4, 't2', 'permission-rule'))
+        self.assertEqual(doc['waiting'], kept)
+
+    def test_new_session_gains_only_the_waiting_keys(self):
+        self.assertEqual(set(derive.new_session('s')), {
+            'sid', 'title', 'aiTitle', 'cwd', 'first', 'start', 'last', 'by', 'rejects', 'launched', 'stopped', 'notes',
+            'sync', 'uses', 'skillCalls', 'tools', 'asks', 'answered', 'denials', 'lastOwnerAt', 'lastTurn'})
+
+    def test_a_list_content_opener_is_an_owner_message_but_not_the_first_prompt(self):
+        opener = user(0, [{'type': 'image', 'source': {}}, {'type': 'text', 'text': 'look at this'}])
+        self.assertTrue(derive.is_owner_message(opener))
+        self.assertIsNone(feed([opener])['first'])
+        self.assertEqual(feed([opener, user(1, 'then build it')])['first'], 'then build it')
+
+
 class Catalogue(unittest.TestCase):
     def test_frontmatter_reads_single_line_values(self):
         said = []
