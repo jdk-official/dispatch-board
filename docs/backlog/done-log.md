@@ -2,6 +2,13 @@
 
 <!-- On-demand archive of completed-PBI evidence. NEVER loaded at session start; the BOARD ## Done
      index anchors here by ID. One ## <PBI-ID> section per completed PBI. -->
+## PBI-039
+- title: The Backlog tab lists every PBI, not only the plan's
+- PR: https://github.com/jdk-official/dispatch-board/pull/50 · merge: `c58dfd2` · class: standard · tier: assisted · cell-verdict: CELL-DONE
+- allowed_areas: exporters/derive.py, exporters/export_board.py, tests/test_derive.py, tests/test_export_board.py, site/index.html, tests/page.test.mjs
+- evidence: Canonical run bound to 7d35846: 498/142/439. Accounted r1 GO (2 Lows applied), r2 GO. Handover docs/backlog/handovers/PBI-039.md
+- outcome: resolved_method=squash (declared) / observed_method=squash, level record. Backlog lists every PBI; after-plan items tagged.
+
 ## PBI-030
 - title: Sessions link to a project automatically from the files they edit
 - PR: https://github.com/jdk-official/dispatch-board/pull/48 · merge: `fc1ad09` · class: standard · tier: assisted · cell-verdict: CELL-DONE

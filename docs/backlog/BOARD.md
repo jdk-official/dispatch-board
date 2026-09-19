@@ -48,7 +48,6 @@
 | ID | Title | Branch | Worktree | Session tag | Started (UTC) |
 |----|-------|--------|----------|-------------|---------------|
 <!-- Revision 6 decomposed 2026-09-19 into PBI-031 to PBI-038. The owner approved the batch, asked "Put PBI-031 to PBI-038 on the BOARD as shown, and start PBI-037 (freeze the published artifact) now?", verbatim: "Approve batch, start 037". PBI-037 is docs/Low, so it runs beside PBI-010 (page/High). -->
-| PBI-039 | The Backlog tab lists every PBI, not only the plan's | `pbi/PBI-039-backlog-lists-every-pbi` | C:/Users/jdk/dispatch-board-worktrees/PBI-039 | 7e0c4f3c | 2026-09-19T20:30:00Z |
 | PBI-031 | Answers endpoint on the local server: the answer record, a server-owned answers database, `POST /api/answers` with its checks, a nonce content-security policy, `local/answers.py list` and `verify`, and the `CLAUDE.md` answer and transcription rules (FR-95, FR-132, NFR-23) | `pbi/PBI-031-answers-endpoint` | C:/Users/jdk/dispatch-board-worktrees/PBI-031 | 7e0c4f3c | 2026-09-19T21:00:00Z |
 <!-- PBI-031 started 2026-09-19 once PBI-007 was Done and the security_paths chore (#44) merged. Spec revision 3 approved; the owner approved the build ("Approve the build"). Security path: the owner reviews the code and approves the merge. -->
 <!-- PBI-039 started 2026-09-19 the moment PBI-010 merged and freed the page slot. No spec gate, no external review. Keep it minimal: the owner found PBI-010's panel too complex. -->
@@ -115,3 +114,4 @@
 | PBI-007 | Log-on start through Task Scheduler and the on-PC deployment end to end (FR-90, FR-91, NFR-17, NFR-18, NFR-21) | https://github.com/jdk-official/dispatch-board/pull/28 | [↪](done-log.md#pbi-007) |
 | PBI-010 | Work-item status derived from runs, shown beside the hand-kept state during a shadow period (feature 4, FR-113) | https://github.com/jdk-official/dispatch-board/pull/46 | [↪](done-log.md#pbi-010) |
 | PBI-030 | Sessions link to a project automatically from the files they edit | https://github.com/jdk-official/dispatch-board/pull/48 | [↪](done-log.md#pbi-030) |
+| PBI-039 | The Backlog tab lists every PBI, not only the plan's | https://github.com/jdk-official/dispatch-board/pull/50 | [↪](done-log.md#pbi-039) |

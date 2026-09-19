@@ -1,7 +1,7 @@
 ---
 id: PBI-039
 title: "The Backlog tab lists every PBI, not only the plan's"
-status: In Progress
+status: Done
 change_class: standard
 depends_on: []
 allowed_areas: ["exporters/derive.py", "exporters/export_board.py", "tests/test_derive.py", "tests/test_export_board.py", "site/index.html", "tests/page.test.mjs"]
@@ -28,18 +28,21 @@ The exporter also reads the project's PBI files (`<repoPath>/docs/backlog/pbi/PB
 
 ## Acceptance criteria
 
-- [ ] **B-1** With a PBI file `PBI-030-…md` that the spec table does not list, the exported backlog tab carries a PBI-030 item with the file's title, dependencies, conflict group and risk, and a field marking it as added after the plan.
-- [ ] **B-2** A PBI the spec table lists is exported once, from the table, even when its file also exists; the table's order is kept and added items follow in id order.
-- [ ] **B-3** A PBI file with `status: Later` is not exported as a work item; a file with unreadable frontmatter is skipped with a warning on stderr, never a failure.
-- [ ] **B-4** A project without a `docs/backlog/pbi/` folder exports exactly what it does today (platform-catalogue's tab is unchanged byte for byte in a test fixture).
-- [ ] **B-5** The page shows added items in the backlog list and the Overview's backlog cells, counted in the PBI totals, with a small "after plan" tag; a page check proves it.
-- [ ] Worker close-out: the three configured suites green on the head commit; accounted code-review gate passed.
+- [x] **B-1** With a PBI file `PBI-030-…md` that the spec table does not list, the exported backlog tab carries a PBI-030 item with the file's title, dependencies, conflict group and risk, and a field marking it as added after the plan.
+- [x] **B-2** A PBI the spec table lists is exported once, from the table, even when its file also exists; the table's order is kept and added items follow in id order.
+- [x] **B-3** A PBI file with `status: Later` is not exported as a work item; a file with unreadable frontmatter is skipped with a warning on stderr, never a failure.
+- [x] **B-4** A project without a `docs/backlog/pbi/` folder exports exactly what it does today (platform-catalogue's tab is unchanged byte for byte in a test fixture).
+- [x] **B-5** The page shows added items in the backlog list and the Overview's backlog cells, counted in the PBI totals, with a small "after plan" tag; a page check proves it.
+- [x] Worker close-out: the three configured suites green on the head commit; accounted code-review gate passed.
 
 ---
 
 ## Evidence
 
-- (written at close-out)
+**Closed out 2026-09-19.** Merged as `c58dfd2` (PR #50, squash; landing resolved squash (declared) / observed squash, level `record`).
+
+- **B-1 to B-5** — each met, with its proving tests listed in `docs/backlog/reviews/PBI-039/change-r1.json` and `change-r2.json`. The reviewer ran the exporter on the real repos: dispatch-board's Backlog goes from 20 to 38 items, with PBI-023 to PBI-040 tagged "after plan", and platform-catalogue's is byte-identical (13 items, no PBI files).
+- **Close-out** — canonical run bound to `7d35846`: backend 498/0, page exit 0 (142 checks), local 439/0. Accounted review: round 1 GO with 2 Lows (CR-039-1 BOM, CR-039-2 dependency cycle), both applied in round 2; round 2 GO, 0 findings.
 
 ---
 
@@ -59,5 +62,6 @@ Build per owner decision D-9: `engineering-agents:code-writer` under TDD, then `
 |------|------------|--------|-----------------|
 | Spec gate | false | n/a | criteria in this PBI |
 | External-review gate | false | n/a | |
-| Code-review gate | true | pending | |
-| No-self-merge gate | always | pending | |
+| Code-review gate | true | passed 2026-09-19 | Accounted r1 GO (2 Lows applied), r2 GO |
+| No-self-merge gate | always | passed 2026-09-19 | PR #50 squash-merged `c58dfd2` under the owner's standing merge authorisation |
+| BOARD-tidy gate | always | passed 2026-09-19 | Done write, ledger deregistered |
