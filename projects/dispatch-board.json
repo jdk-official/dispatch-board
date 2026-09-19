@@ -145,10 +145,10 @@
       "commit": "f7b21f9"
     },
     "PBI-010": {
-      "state": "partial",
-      "review": "",
-      "open": "In progress from 2026-09-19: building in shadow mode (spec revision 3). The switch to derived status stays the owner's (Q-3).",
-      "commit": ""
+      "state": "done",
+      "review": "GO (fresh accounted review after a rail refusal; 2 Low follow-ups fixed in PBI-030)",
+      "open": "Done: PR #46 squash-merged (f4e92ed). Work-item status is derived from runs and exported; the page shows none of it, at the owner's choice (\"Hide it entirely\").",
+      "commit": "f4e92ed"
     },
     "PBI-029": {
       "state": "done",
@@ -161,8 +161,26 @@
       "review": "GO (round 1, 0 findings)",
       "open": "Done: PR #42 squash-merged (85654f8). The published artifact is frozen; its refresh and publish procedures are retired.",
       "commit": "85654f8"
+    },
+    "PBI-030": {
+      "state": "done",
+      "review": "GO (round 1; 1 Low follow-up)",
+      "open": "Done: PR #48 squash-merged (fc1ad09). Sessions link to a project from the files they edit; auto-links are not sticky.",
+      "commit": "fc1ad09"
+    },
+    "PBI-031": {
+      "state": "partial",
+      "review": "",
+      "open": "Building from 2026-09-19 (security path; the owner approved the build). The owner reviews the code and approves the merge.",
+      "commit": ""
+    },
+    "PBI-039": {
+      "state": "done",
+      "review": "GO (round 2; round 1's two Lows applied)",
+      "open": "Done: PR #50 squash-merged (c58dfd2). The Backlog lists every PBI file; items added after the plan are tagged.",
+      "commit": "c58dfd2"
     }
   },
   "notWorkedOut": [],
-  "boardNote": "PBI-010 (automatic work-item status) is being finished with no page view, at the owner's choice; it merges after one more review. Then the page slot takes PBI-039 (list every PBI here), then PBI-020 (timeline). PBI-030 (auto-linking sessions) is building. PBI-031 (answers endpoint) is next for the local app. PBI-040 fixes a duplicate collector seen at log-on. The published claude.ai page is frozen; this local board is the live one."
+  "boardNote": "Building PBI-031 (answers endpoint, the first step of answering from the board; security path, so the owner reviews its code). The page slot is free for PBI-020 (timeline) next. PBI-040 (one collector at a time) waits for PBI-031, which holds the local app. PBI-038 (removing the old refresher) can start on 2026-09-26. The published claude.ai page is frozen; this local board is the live one."
 }
