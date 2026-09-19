@@ -39,6 +39,15 @@ CONFIG = os.path.join(HERE, 'board.config.json')
 DATA_DIR = os.path.join(HERE, 'projects')
 TABS = ('spec', 'assumptions', 'decisions', 'backlog', 'git')
 ROUNDS = (1, 2, 3)  # review rounds looked for, per gate
+WINDOWS = sys.platform == 'win32'
+
+
+def no_window_flags():
+    """Extra subprocess kwargs for a git launch: CREATE_NO_WINDOW on Windows, where a console-less parent (a
+    collector or server started at log-on through pythonw.exe) would otherwise make Windows open a new,
+    focus-stealing console window for every git child; nothing on a platform where the flag does not exist.
+    Shared with local/tabs.py, which repeats these git calls under its own timeout."""
+    return {'creationflags': subprocess.CREATE_NO_WINDOW} if WINDOWS else {}
 
 
 def warn(msg):
