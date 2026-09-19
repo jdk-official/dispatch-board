@@ -133,16 +133,28 @@
       "commit": "7c6bcb6"
     },
     "PBI-012": {
-      "state": "partial",
-      "review": "In build",
-      "open": "Building 2026-09-19: test trend and cost per work item and per agent type.",
-      "commit": ""
+      "state": "done",
+      "review": "GO (round 1; one Low, CR-012-1, fixed as a chore in PR #36)",
+      "open": "Done: PR #34 squash-merged (312e2f5) and finalized. Runs carry stated tests and coverage; the Dispatch tab charts both; the usage tab shows cost per work item and per agent type.",
+      "commit": "312e2f5"
     },
     "PBI-028": {
+      "state": "done",
+      "review": "GO (round 1, 0 findings)",
+      "open": "Done: PR #31 squash-merged (f7b21f9) and finalized. The session shape names waiting and a run's files must be strings.",
+      "commit": "f7b21f9"
+    },
+    "PBI-010": {
       "state": "partial",
-      "review": "In build",
-      "open": "Building 2026-09-19: the local record shapes name the session's waiting list and check a run's files are strings.",
+      "review": "",
+      "open": "In progress from 2026-09-19: building in shadow mode (spec revision 3). The switch to derived status stays the owner's (Q-3).",
       "commit": ""
+    },
+    "PBI-029": {
+      "state": "done",
+      "review": "GO (rounds 1-3, 0 findings; round 3 under the owner's extension)",
+      "open": "Done: PR #35 squash-merged (8bd2621) and finalized. The scheduled collector's git children start with no console window.",
+      "commit": "8bd2621"
     }
   },
   "notWorkedOut": [],
