@@ -217,6 +217,14 @@ class Nested(unittest.TestCase):
         self.assertEqual(records.validate('catalogue', doc('catalogue', entries=[ENTRY, e])),
                          ['entries[1].installed: required field missing'])
 
+    def test_a_run_finding_missing_a_required_field_is_rejected(self):
+        finding = {'id': 'CR-1', 'severity': 'LOW', 'title': 'Example', 'location': 'file.py:1',
+                   'remediation': 'Do the thing'}
+        incomplete = dict(finding)
+        del incomplete['remediation']
+        self.assertEqual(records.validate('run', doc('run', findings=[finding, incomplete])),
+                         ['findings[1].remediation: required field missing'])
+
     def test_an_entry_that_is_not_an_object(self):
         self.assertEqual(records.validate('catalogue', doc('catalogue', entries=['eng:x'])), ['entries[0]: expected object'])
 
