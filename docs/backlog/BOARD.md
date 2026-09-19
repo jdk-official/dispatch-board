@@ -16,7 +16,8 @@
 | ID | Title | Depends on | Notes |
 |----|-------|------------|-------|
 | PBI-020 | Timeline view (feature 9; FR-101 filled, FR-122–FR-124) | [PBI-003, PBI-004] | Decomposed from the approved spec, 2026-09-11 |
-| PBI-030 | Sessions link to a project automatically from the files they edit | [] | Intake 2026-09-19, owner: "want the auto-linking". Spec gate now; build after PBI-010 merges (both edit `exporters/**`). |
+| PBI-030 | Sessions link to a project automatically from the files they edit | [] | Intake 2026-09-19, owner: "want the auto-linking". Spec approved 2026-09-19 (revision 3; Q-1 answered by the owner). Builds after PBI-010 merges (both edit `exporters/**`); carries PBI-010's follow-up CR-010-1. |
+| PBI-039 | The Backlog tab lists every PBI, not only the plan's | [] | Intake 2026-09-19, owner: "And PBI30 doesn't exist". page group: runs after PBI-010, before PBI-020. |
 
 ---
 

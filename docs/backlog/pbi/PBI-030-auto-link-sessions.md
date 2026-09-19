@@ -54,6 +54,8 @@ The spec (`requires_spec: true`) must settle, with the PRD requirements it amend
 
 **Owner authority (verbatim, 2026-09-19):** "want the auto-linking". Landed by intake the same day. `merge_allowed_by_agent` is `true` under the owner's standing merge authorisation of 2026-09-12.
 
+**Q-1 answered by the owner 2026-09-19** (asked whether an auto-linked session should stay with its project after it leaves the 7-day window), verbatim: "No, 7-day window (Recommended)". Auto-links are not sticky; to keep a session, list it.
+
 **Sequencing.** PBI-010 (page group, High) also edits `exporters/**`. PBI-030's spec gate runs while PBI-010 builds; its build starts only once PBI-010 has merged, so the two never edit `derive.py` or `export_sessions.py` at once.
 
 Build per owner decision D-9: `engineering-agents:code-writer` under TDD, then `review-agents:code-reviewer` until GO.

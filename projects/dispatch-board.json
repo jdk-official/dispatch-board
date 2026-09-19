@@ -158,5 +158,5 @@
     }
   },
   "notWorkedOut": [],
-  "boardNote": "Building PBI-012 (test trend and cost) in the page slot, and PBI-028 (local record shapes) beside it. Next in the page slot: PBI-010 (owner-approved), then PBI-020. PBI-007 waits on the owner's log-on demonstration. PBI-016 (Unraid) is deferred."
+  "boardNote": "Building PBI-010 (derived status, shadow mode) in the page slot: code review GO, owner's visual check next. The page slot then takes PBI-039 (list every PBI here, not only the plan's), then PBI-020 (timeline): they all edit the page, so they run one at a time. Not in the table below because they came in after the plan: PBI-030 (auto-linking sessions; spec approved, builds after PBI-010) and PBI-039. PBI-007 waits on the owner's log-on demonstration. The four 'Later' items are in plan-gate review (spec revision 6)."
 }
