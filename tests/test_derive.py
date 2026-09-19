@@ -635,6 +635,8 @@ class Waiting(unittest.TestCase):
         self.assertTrue(own(user(0, [{'type': 'image', 'source': {}}, {'type': 'text', 'text': 'this one'}])))
         self.assertFalse(own(user(0, [{'type': 'text', 'text': '<system-reminder>x</system-reminder>'}])))
         self.assertFalse(own(user(0, [{'type': 'text', 'text': 'why'}, {'type': 'tool_result', 'tool_use_id': 't'}])))
+        self.assertFalse(own(user(0, 'Summary of the conversation so far...', isCompactSummary=True)))
+        self.assertFalse(own(user(0, [{'type': 'text', 'text': '[Request interrupted by user for tool use]'}])))
 
     def test_a_closing_question_in_prose_is_waiting_until_the_owner_replies(self):
         text = 'I finished the parser.\n\nWhich would you prefer, the flag or the config key?'
@@ -683,6 +685,28 @@ class Waiting(unittest.TestCase):
 
     def test_an_owner_message_after_a_refusal_clears_it(self):
         self.assertIsNone(waiting([user(0, 'go'), call(1, 't1'), denial(2, 't1', 'permission-rule'), user(3, 'fine, skip it')]))
+
+    def test_a_user_rejected_denial_still_lists_past_the_interruption_marker_that_follows_it(self):
+        # Claude Code writes this exact marker a moment after the owner rejects a tool-use prompt; it is not typed.
+        marker = user(3, [{'type': 'text', 'text': '[Request interrupted by user for tool use]'}])
+        got = waiting([user(0, 'go'), call(1, 't1'), denial(2, 't1', 'user-rejected'), marker])
+        self.assertEqual(got['refusals'], [{'at': ts(2), 'kind': 'user-rejected', 'tool': 'Bash',
+                                            'detail': 'Permission to use Bash has been denied.'}])
+
+    def test_an_automode_blocked_denial_still_lists_past_a_compaction_summary(self):
+        summary = user(3, 'Summary of the conversation so far...', isCompactSummary=True)
+        got = waiting([user(0, 'go'), call(1, 't1'), denial(2, 't1', 'automode-blocked'), summary])
+        self.assertEqual(got['refusals'], [{'at': ts(2), 'kind': 'automode-blocked', 'tool': 'Bash',
+                                            'detail': 'Permission to use Bash has been denied.'}])
+
+    def test_a_typed_reply_after_the_interruption_marker_or_a_compaction_summary_still_clears(self):
+        marker = user(2, [{'type': 'text', 'text': '[Request interrupted by user for tool use]'}])
+        self.assertIsNone(waiting([user(0, 'go'), call(1, 't1'), denial(2, 't1', 'user-rejected'), marker, user(3, 'fine, skip it')]))
+        summary = user(3, 'Summary of the conversation so far...', isCompactSummary=True)
+        self.assertIsNone(waiting([user(0, 'go'), call(1, 't1'), denial(2, 't1', 'automode-blocked'), summary, user(4, 'fine, skip it')]))
+
+    def test_an_esc_interruption_with_no_refusal_creates_no_item(self):
+        self.assertIsNone(waiting([user(0, 'go'), user(1, [{'type': 'text', 'text': '[Request interrupted by user]'}])]))
 
     def test_an_owner_message_clears_only_the_refusal_before_it(self):
         # The owner spoke between the two refusals: the first is stale, the second still stands.

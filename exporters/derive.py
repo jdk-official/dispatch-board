@@ -85,6 +85,10 @@ REFUSAL_KINDS = ('permission-rule', 'automode-blocked', 'user-rejected')
 SOLICIT = re.compile(r"\b(?:let me know|want me to|shall I|should I|which would you|your call|say the word|confirm)\b", re.I)
 WAITING_CAP = 5  # items listed per session; one session refusing a call in a loop is one problem, not forty
 WAITING_TEXT = 300  # characters of a question or refusal kept; the page shows two lines of it
+# The fixed text Claude Code appends right after the owner interrupts a tool-use permission prompt. It lands as a
+# user record a moment after the denial it belongs to, so without this exclusion it reads as the owner replying to
+# their own refusal and clears it before anyone could act on it.
+INTERRUPTION_MARKER = '[Request interrupted by user for tool use]'
 
 
 def is_number(v):
@@ -462,11 +466,17 @@ def is_owner_message(o):
       - or a list holding at least one text block not beginning with "<" and no tool_result block, which is how a
         reply typed beside a pasted image or attachment arrives.
     A reply counted as not the owner's would leave an answered question listed, so the list form is accepted; the
-    "<" rule applies to both forms, since this one test clears every pending item in the session at once."""
-    if o.get('type') != 'user' or o.get('isMeta') is True:
+    "<" rule applies to both forms, since this one test clears every pending item in the session at once.
+    Two more record kinds are Claude Code's own writes, not the owner's, and are excluded even though their shape
+    otherwise matches a typed reply:
+      - a compaction summary (isCompactSummary true): inserted by Claude Code to carry context across a compaction,
+        often while the owner is away for hours, so it must not stand in for them replying;
+      - the fixed INTERRUPTION_MARKER text, a narrow exclusion on this predicate rather than a read of the refusal
+        signal itself."""
+    if o.get('type') != 'user' or o.get('isMeta') is True or o.get('isCompactSummary') is True:
         return False
     content = (o.get('message') if isinstance(o.get('message'), dict) else {}).get('content')
-    typed = lambda s: isinstance(s, str) and bool(s.strip()) and not s.lstrip().startswith('<')
+    typed = lambda s: isinstance(s, str) and bool(s.strip()) and not s.lstrip().startswith('<') and s.strip() != INTERRUPTION_MARKER
     if isinstance(content, str):
         return typed(content)
     if not isinstance(content, list):
