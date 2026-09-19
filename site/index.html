@@ -967,7 +967,18 @@
     const cnt = k => pbis.filter(x => x.state === k).length;
     const tone = { done: 'var(--go)', conditions: 'var(--changes)', partial: 'var(--live)', todo: 'var(--rule-2)' };
     const deps = Object.fromEntries(pbis.map(x => [x.id, (String(x.dependsOn).match(/PBI-\d+/g) || []).filter(i => by[i])]));
-    const layer = {}, L = id => layer[id] ?? (layer[id] = deps[id].length ? 1 + Math.max(...deps[id].map(L)) : 0);
+    // A self-dependency or a depends_on cycle would recurse forever; visiting tracks the ids on the current
+    // call stack, so a revisit breaks the cycle (treated as depth 0) instead of blowing the call stack and
+    // taking the whole tab down with it.
+    const layer = {}, visiting = new Set();
+    const L = id => {
+      if (id in layer) return layer[id];
+      if (visiting.has(id)) { console.warn(`Board: dependency cycle at ${id}, treating it as depth 0 there`); return 0; }
+      visiting.add(id);
+      const v = deps[id].length ? 1 + Math.max(...deps[id].map(L)) : 0;
+      visiting.delete(id);
+      return layer[id] = v;
+    };
     pbis.forEach(x => L(x.id));
     const cols = {};
     pbis.forEach(x => (cols[layer[x.id]] = cols[layer[x.id]] || []).push(x.id));
@@ -1005,7 +1016,7 @@
       <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Dependencies</h3><span class="faint">arrows run from a prerequisite to what depends on it</span></div><div class="pb scroll">${g}</div></div>
       <div class="panel"><div class="ph"><h3>Work items</h3><span class="faint">${pbis.length}</span></div>
         <div class="pb flush scroll"><table><thead><tr><th>Item</th><th>Delivers</th><th>Depends on</th><th>State</th><th>Review</th><th>Still open</th></tr></thead><tbody>
-        ${pbis.map(x => `<tr><td style="white-space:nowrap"><span class="id">${esc(x.id)}</span>${x.commit ? `<div class="sub id">${esc(x.commit)}</div>` : ''}</td><td class="wide">${md(x.title)}<div class="sub">${esc(x.group)} · ${esc(x.risk)} risk</div></td><td class="muted" style="white-space:nowrap">${esc(String(x.dependsOn).replace(/[\[\]]/g, '') || '—')}</td><td><span class="tag ${esc(x.state)}">${esc(own(stateLabel, x.state) || x.state)}</span></td><td class="muted">${esc(x.review)}</td><td class="wide muted">${esc(x.open) || '—'}</td></tr>`).join('')}
+        ${pbis.map(x => `<tr><td style="white-space:nowrap"><span class="id">${esc(x.id)}</span>${x.afterPlan ? ' <span class="tag muted">after plan</span>' : ''}${x.commit ? `<div class="sub id">${esc(x.commit)}</div>` : ''}</td><td class="wide">${md(x.title)}<div class="sub">${esc(x.group)} · ${esc(x.risk)} risk</div></td><td class="muted" style="white-space:nowrap">${esc(String(x.dependsOn).replace(/[\[\]]/g, '') || '—')}</td><td><span class="tag ${esc(x.state)}">${esc(own(stateLabel, x.state) || x.state)}</span></td><td class="muted">${esc(x.review)}</td><td class="wide muted">${esc(x.open) || '—'}</td></tr>`).join('')}
         </tbody></table></div></div>
       ${ideas.length ? `<div class="panel" data-later style="margin-top:16px"><div class="ph"><div><h3>Later</h3><p class="muted" style="font-size:13px;margin-top:2px">Ideas the spec records for a future iteration. They are not work items and are not counted.</p></div><span class="faint">${ideas.length}</span></div>
         <div class="pb"><div class="ideas">${ideas.map(x => `<div class="tile idea"><div class="tl">Not planned</div><div class="tv">${md(x.title)}</div>${x.description ? `<div class="ts">${md(x.description)}</div>` : ''}</div>`).join('')}</div></div></div>` : ''}`;

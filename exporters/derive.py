@@ -1215,6 +1215,25 @@ def later_items(spec):
     return items
 
 
+def plan_depends_text(raw):
+    """A PBI file's depends_on frontmatter value ("[]", "[PBI-001]", "[PBI-001, PBI-002]") as the PBI table's
+    Depends column shows it: the ids, comma-separated, or "—" when there are none."""
+    ids = re.findall(r'PBI-\d+', raw or '')
+    return ', '.join(ids) if ids else '—'
+
+
+def plan_pbi_number(pid):
+    """The numeric part of a PBI id ("PBI-99" -> 99), so added items sort in id order rather than text order
+    (where "PBI-100" would come before "PBI-99"). An id with no digits sorts last rather than raising."""
+    m = re.search(r'\d+', pid)
+    return int(m.group()) if m else math.inf
+
+
+def plan_yes_no(raw):
+    """A PBI file's true/false frontmatter value as the PBI table's yes/no text; anything else unchanged."""
+    return {'true': 'yes', 'false': 'no'}.get((raw or '').strip().lower(), raw or '')
+
+
 def build_state(data):
     """PBI id -> (state, review, open items, commit); state is one of STATES."""
     return {pbi: (e.get('state', 'todo'), e.get('review', '—'), e.get('open', ''), e.get('commit', ''))
@@ -1238,10 +1257,15 @@ def adr_entry(text, path):
     return {'id': fm('id'), 'title': fm('title'), 'status': fm('status'), 'resolves': fm('resolves'), 'path': path}
 
 
-def spec_docs(pid, paths, spec, prd, brief, design, adrs, rounds, data, now):
+def spec_docs(pid, paths, spec, prd, brief, design, adrs, rounds, data, now, extra_pbis=()):
     """The spec, assumptions, decisions and backlog tabs of project pid. paths is its docs block; spec, prd,
     brief and design are those files' text (prd None when it has none, brief and design '' when missing); adrs
-    are adr_entry() dicts; rounds the review rounds found, [{gate, round, verdict}]; data its hand-kept data."""
+    are adr_entry() dicts; rounds the review rounds found, [{gate, round, verdict}]; data its hand-kept data.
+
+    extra_pbis is frontmatter() dicts for PBI files intake landed after the plan gate, one per file under
+    docs/backlog/pbi/ (read and filtered by the caller, since this module touches no file). Any whose id the
+    spec table did not already list is appended to the backlog after the table's rows, in id order, marked
+    afterPlan; a file whose status is Later is left out, since the Later group already shows it."""
     SPEC, PRD, BRIEF, ADRS = paths['spec'], paths.get('prd'), paths.get('brief'), (paths.get('adrDir') or '').rstrip('/')
     rev = re.search(r'^revision:\s*(\d+)', spec, re.M)
     drev = re.search(r'^revision:\s*(\d+)', design, re.M)
@@ -1287,6 +1311,19 @@ def spec_docs(pid, paths, spec, prd, brief, design, adrs, rounds, data, now):
         state, review, open_items, commit = state_of.get(c[0], ('todo', '—', '', ''))
         pbi_rows.append({'id': c[0], 'title': c[1], 'dependsOn': c[2], 'group': c[3], 'risk': c[4],
                          'requiresSpec': c[5], 'state': state, 'review': review, 'open': open_items, 'commit': commit})
+    known = {r['id'] for r in pbi_rows}
+    added = []
+    for fm in extra_pbis:
+        pbi = fm.get('id')
+        if not pbi or pbi in known or fm.get('status') == 'Later':
+            continue
+        known.add(pbi)
+        state, review, open_items, commit = state_of.get(pbi, ('todo', '—', '', ''))
+        added.append({'id': pbi, 'title': fm.get('title', pbi), 'dependsOn': plan_depends_text(fm.get('depends_on', '')),
+                      'group': fm.get('conflict_group', ''), 'risk': fm.get('conflict_risk', ''),
+                      'requiresSpec': plan_yes_no(fm.get('requires_spec', '')),
+                      'state': state, 'review': review, 'open': open_items, 'commit': commit, 'afterPlan': True})
+    pbi_rows += sorted(added, key=lambda r: plan_pbi_number(r['id']))
 
     return {
         'spec': {

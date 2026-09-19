@@ -23,6 +23,11 @@ Build state per PBI, the brief's open questions and the backlog's note about the
 the build repo, so they are kept by hand in projects/<projectId>.json in this repo. A missing file means no
 build state. A malformed one stops the export and leaves out/ as it was, so a typo cannot reset every PBI
 to "not started".
+
+The backlog tab also carries a PBI whose file (docs/backlog/pbi/PBI-*.md) landed through intake after the
+spec's own PBI list was written, marked as added after the plan. A file whose status is Later, or whose
+frontmatter cannot be read (warned on stderr), is left out; a project with no such folder exports exactly
+as it did before this was added.
 """
 import io, json, os, re, subprocess, sys
 from datetime import datetime, timezone
@@ -78,6 +83,35 @@ def verdict(root, path):
         return None
 
 
+PBI_DIR = 'docs/backlog/pbi'  # PBI files intake adds after the plan gate, read in addition to the spec's table
+
+
+def intake_pbi_files(root, pid):
+    """Frontmatter for every PBI_DIR/PBI-*.md file below root, in file-name order; [] without that folder. A
+    file that cannot be read, whose frontmatter cannot be read, or whose frontmatter has no id, is skipped
+    with a warning on stderr -- one bad file must not cost the rest of the project's backlog."""
+    folder = os.path.join(root, *PBI_DIR.split('/'))
+    if not os.path.isdir(folder):
+        return []
+    found = []
+    for name in sorted(os.listdir(folder)):
+        if not (name.startswith('PBI-') and name.endswith('.md')):
+            continue
+        rel = PBI_DIR + '/' + name
+        try:
+            # utf-8-sig drops a leading byte-order mark; read() (plain utf-8) would leave it on the first
+            # line, so the opening "---" fence never matches and the file reads as having no frontmatter.
+            with io.open(os.path.join(root, rel), encoding='utf-8-sig') as f:
+                fm = derive.frontmatter(f.read(), rel, warn)
+            if not fm.get('id'):
+                raise ValueError('no id')
+        except (OSError, ValueError) as e:
+            warn('project %s: %s: unreadable frontmatter (%s); skipped' % (pid, rel, e))
+            continue
+        found.append(fm)
+    return found
+
+
 def load_data(data_dir, pid):
     """The hand-kept data for a project (buildState, notWorkedOut, boardNote), or {} when it has no file.
     Raises ValueError for a file that is not valid JSON or not in that shape."""
@@ -122,7 +156,8 @@ def spec_tabs(p, data, now):
             v = verdict(root, review['path'].replace('{round}', str(r)))
             if v:
                 rounds.append({'gate': review['gate'], 'round': r, 'verdict': v})
-    return derive.spec_docs(p['id'], paths, spec, prd, brief, design, adrs, rounds, data, now)
+    extra_pbis = intake_pbi_files(root, p['id'])
+    return derive.spec_docs(p['id'], paths, spec, prd, brief, design, adrs, rounds, data, now, extra_pbis)
 
 
 def git_tab(root, now):
