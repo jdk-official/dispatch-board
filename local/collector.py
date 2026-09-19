@@ -429,11 +429,13 @@ class _Pass:
         derive.place_manual(rows, st['manual'])
         docs = {k: {} for k in KINDS}
         running, counts = {}, {}
+        repo_of = {p['id']: p['repoPath'] for p in st['projects']}
         for sid in results:
             mine = [r for r in rows if r['session'] == sid]
             derive.link(mine)
+            pid = st['project_of'].get(sid)
             for i, r in enumerate(mine, 1):
-                docs['run'][r['id']] = derive.run_doc(r, i, st['project_of'].get(sid))
+                docs['run'][r['id']] = derive.run_doc(r, i, pid, repo_of.get(pid))
             running[sid], counts[sid] = sum(r['kind'] == 'running' for r in mine), len(mine)
             docs['session'][sid] = derive.session_doc(results[sid], sid, st, len(mine), running[sid])
         for order, p in enumerate(st['projects']):

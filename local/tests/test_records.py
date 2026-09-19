@@ -87,7 +87,9 @@ class Shapes(unittest.TestCase):
                 },
                 'optional': {
                     'from': 'str', 'feeds': 'str', 'group': 'str', 'agent': 'str', 'agentType': 'str',
-                    'start': 'str', 'end': 'str',
+                    'start': 'str', 'end': 'str', 'files': 'list',
+                    'findings': {'list_of': {'required': {
+                        'id': 'str', 'severity': 'str', 'title': 'str', 'location': 'str', 'remediation': 'str'}}},
                 },
                 'enums': {
                     'kind': ['running', 'done', 'go', 'changes', 'nogo', 'killed'],
@@ -214,6 +216,14 @@ class Nested(unittest.TestCase):
         del e['installed']
         self.assertEqual(records.validate('catalogue', doc('catalogue', entries=[ENTRY, e])),
                          ['entries[1].installed: required field missing'])
+
+    def test_a_run_finding_missing_a_required_field_is_rejected(self):
+        finding = {'id': 'CR-1', 'severity': 'LOW', 'title': 'Example', 'location': 'file.py:1',
+                   'remediation': 'Do the thing'}
+        incomplete = dict(finding)
+        del incomplete['remediation']
+        self.assertEqual(records.validate('run', doc('run', findings=[finding, incomplete])),
+                         ['findings[1].remediation: required field missing'])
 
     def test_an_entry_that_is_not_an_object(self):
         self.assertEqual(records.validate('catalogue', doc('catalogue', entries=['eng:x'])), ['entries[0]: expected object'])
