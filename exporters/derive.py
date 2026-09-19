@@ -48,6 +48,11 @@ NEGATED = re.compile(r"(?:\b(?:not|never|no|cannot|without|unable\s+to|rather\s+
                      r"(?:[\s-]+(?:be|been|being|yet|fully|actually|really))*[\s*`-]*$", re.I)
 RATE_LIMIT = re.compile(r"hit your (?:session|weekly|usage) limit", re.I)
 FIX = re.compile(r'\b(review|LOWs?|notes|fix(?:es)?|CR-\d)', re.I)
+# A builder's stated test count: the first integer followed by "tests". A count grouped with commas is read whole,
+# and the look-behind stops "1,234 tests" or "0.5 tests" being read from its last digits.
+STATED_TESTS = re.compile(r'(?<![\d,.])(\d{1,3}(?:,\d{3})+|\d+)\s+tests\b', re.I)
+# A builder's stated coverage: the first percentage straight before or after the word "coverage".
+STATED_COVERAGE = re.compile(r'coverage[\s:=]*(\d+(?:\.\d+)?)\s*%|(?<![\d.])(\d+(?:\.\d+)?)\s*%\s*coverage', re.I)
 # A review-lane run's structured findings: the LAST fenced code block at the very end of its result. Split in
 # two so findings_of() can try each fence in turn and keep the rightmost match: FENCE_START finds every fence
 # opening, FENCE_JSON (matched from just after one, with re.Pattern.match's pos) requires the greedy body --
@@ -288,6 +293,23 @@ def pbis(desc):
     return sorted(set(out))
 
 
+def stated_tests(text):
+    """The test count a result states, or None."""
+    m = STATED_TESTS.search(text)
+    return int(m.group(1).replace(',', '')) if m else None
+
+
+def stated_coverage(text):
+    """The coverage percentage a result states, or None. A figure over 100 is not a coverage, so it reads as none."""
+    m = STATED_COVERAGE.search(text)
+    if not m:
+        return None
+    value = float(m.group(1) or m.group(2))
+    if value > 100:
+        return None
+    return int(value) if value.is_integer() else value
+
+
 def response(by, o):
     """Record one assistant response, deduplicated by message id (streamed responses span several lines)."""
     m = o.get('message')
@@ -406,7 +428,8 @@ def usage_doc(main, subs, span):
         raw = s['agentType'] or 'unknown'
         top = max(mods, key=mods.get) if mods else None
         agents.append({'id': s['id'], 'type': 'Gate reviewer' if raw == 'Plan' else raw.split(':')[-1], 'agentType': raw,
-                       'description': s['description'], 'requests': len(s['resps']), 'effective': round(eff_sum),
+                       'description': s['description'], 'pbis': ['PBI-' + code for code in pbis(s['description'])],
+                       'requests': len(s['resps']), 'effective': round(eff_sum),
                        'model': top, 'modelLabel': MODEL_LABEL.get(top, top or '—'), 'start': s['first'], 'end': s['last']})
 
     all_rejects = main['rejects'] + [x for s in subs for x in s['rejects']]
@@ -654,6 +677,13 @@ def agent_row(state, aid, meta, sub, age, window):
            'files': edited(sub['resps'])}
     if lane == 'other':
         row['agent'] = short or 'agent'
+    if lane in ('cw', 'tw'):
+        # Only a builder's own figures: a reviewer quoting the count it checked would put the same point on the
+        # trend twice.
+        result = (fin or {}).get('result') or ''
+        for key, value in (('tests', stated_tests(result)), ('coverage', stated_coverage(result))):
+            if value is not None:
+                row[key] = value
     if lane == 'cr':
         # found is None when the result carried no parseable findings block; hasFindingsBlock lets findings_doc()
         # and run_doc() tell that apart from a round that reported an empty findings list. hasFindingsBlock itself
@@ -942,6 +972,9 @@ def run_doc(r, seq, project, repo=None):
         for k in ('agentType', 'start'):
             if r.get(k):
                 doc[k] = r[k]
+    for k in ('tests', 'coverage'):
+        if r.get(k) is not None:  # 0 is a stated figure, not a missing one
+            doc[k] = r[k]
     if r.get('hasFindingsBlock'):
         doc['findings'] = r['findings']
     files = publishable_files(r.get('files') or [], repo)

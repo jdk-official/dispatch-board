@@ -1895,6 +1895,64 @@ const overStore = async () => {
   } finally { Date.now = realNow; }
 }
 
+// ---- 24. test trend (FR-114 to FR-116) and cost per work item and per agent type (FR-119, FR-120, AC-81)
+{
+  const sub = (id, type, effective, pbis) => ({ id, type, agentType: 'x:' + type, description: id, requests: 1, effective, model: 'm', modelLabel: 'M', ...(pbis ? { pbis } : {}) });
+  const withSubs = (p, subs) => ({ ...p, usage: { ...p.usage, subagents: subs } });
+  const TP = [
+    withSubs(PROJECTS[0], [sub('pc1', 'code-writer', 999, ['PBI-001'])]),
+    // a5 comes from a document exported before usage named PBI ids: it has no pbis key at all.
+    withSubs(PROJECTS[1], [sub('a1', 'code-writer', 100, ['PBI-001']), sub('a2', 'code-reviewer', 50, ['PBI-001']),
+      sub('a3', 'code-writer', 60, ['PBI-002', 'PBI-003']), sub('a4', 'Explore', 7, []), sub('a5', 'code-writer', 5),
+      sub('a6', '<b>odd</b>', 1, ['<i>PBI</i>'])]),
+  ];
+  const run = (id, seq, lane, extra) => ({ id, session: 's2', project: 'dispatch-board', seq, lane, kind: 'done', label: id + ' label', ...extra });
+  const TR = [run('t3', 3, 'tw', { tests: 664, coverage: 82.5 }), run('t1', 1, 'cw', { tests: 600, coverage: 80 }),
+    run('t2', 2, 'cr', {}), run('t4', 4, 'cw', { coverage: 'x', tests: null })];
+  const e = env({ 'board-view': 'p:dispatch-board', 'board-tab': 'usage' });
+  await tick();
+  e.fire('c:projects', TP); e.fire('c:sessions', SESSIONS); e.fire('c:runs', TR); e.fire('c:projectTabs', TABS);
+  const U = () => e.el('panel-usage').innerHTML;
+  const costOf = (H, what) => { const m = H.match(new RegExp(`data-cost="${what}"([\\s\\S]*?)</table>`)); assert.ok(m, 'cost panel ' + what); return m[1]; };
+  const effOf = (H, what, key) => cells(rowOf(costOf(H, what), key));
+
+  assert.deepEqual(effOf(U(), 'pbi', 'PBI-001'), ['PBI-001', '2', '150']);
+  assert.ok(!costOf(U(), 'pbi').includes('999'), "another project's PBI-001 is never counted");
+  ok("AC-81: two runs of one project naming PBI-001 with effective usage 100 and 50 show 150 for that project's PBI-001");
+
+  assert.deepEqual(effOf(U(), 'pbi', 'PBI-002'), ['PBI-002', '1', '30']);
+  assert.deepEqual(effOf(U(), 'pbi', 'PBI-003'), ['PBI-003', '1', '30']);
+  assert.match(text(U()), /2 runs name no work item: 12 effective/);
+  ok('a run naming several work items has its usage split equally among them; runs naming none are counted apart');
+
+  assert.deepEqual(effOf(U(), 'type', 'code-writer'), ['code-writer', '3', '165']);
+  assert.deepEqual(effOf(U(), 'type', 'code-reviewer'), ['code-reviewer', '1', '50']);
+  assert.deepEqual(effOf(U(), 'type', 'Explore'), ['Explore', '1', '7']);
+  assert.ok(!U().includes('<b>odd</b>') && !U().includes('<i>PBI</i>') && U().includes('&lt;b&gt;odd&lt;/b&gt;'));
+  ok('FR-120: effective usage totalled per agent type; agent types and PBI ids are escaped');
+
+  e.change('project', 'p:platform-catalogue');
+  assert.deepEqual(effOf(U(), 'pbi', 'PBI-001'), ['PBI-001', '1', '999']);
+  e.change('project', 'other');
+  assert.doesNotMatch(U(), /data-cost="pbi"/);
+  assert.match(U(), /data-cost="type"/);
+  ok('cost per work item follows the project picked and is left out of Other sessions, where a PBI id has no project');
+
+  e.change('project', 'p:dispatch-board');
+  const D = e.el('panel-dispatch').innerHTML;
+  const trend = what => { const m = D.match(new RegExp(`data-trend="${what}"([\\s\\S]*?)</svg>`)); assert.ok(m, 'trend ' + what); return [...m[1].matchAll(/<title>([^<]*)<\/title>/g)].map(t => t[1]); };
+  assert.deepEqual(trend('tests'), ['run 1 · 600 tests · t1 label', 'run 3 · 664 tests · t3 label']);
+  assert.deepEqual(trend('coverage'), ['run 1 · 80% coverage · t1 label', 'run 3 · 82.5% coverage · t3 label']);
+  ok('FR-116: the Dispatch tab plots each recorded test count and coverage in seq order, numbered as the run log is');
+
+  for (const H of [D, U()]) assert.ok(![...H.matchAll(/data-(?:trend|cost)="[^"]*"[\s\S]*?(?:<\/svg>|<\/table>)/g)].some(m => m[0].includes('--human')), 'no --human in the trend or cost panels');
+  ok('the trend and cost panels never use the --human colour');
+
+  e.fire('c:runs', RUNS);
+  assert.match(text(e.el('panel-dispatch').innerHTML), /No test count recorded yet/);
+  ok('without any recorded figure, the trend says none was recorded');
+}
+
 assert.deepEqual([...everySub].filter(k => k === 'c:tabs' || k.startsWith('d:tabs/')), [], 'a retired tabs/* subscription');
 assert.ok(everySub.has('c:projectTabs'), 'the guard saw the page\'s real subscriptions');
 ok('the page never subscribes to the retired tabs collection or a tabs/* document');
