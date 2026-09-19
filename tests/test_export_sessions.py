@@ -1147,6 +1147,83 @@ def refused(m, tool_id, kind='permission-rule'):
                                                      'content': 'Permission to use Bash has been denied.'}]}}
 
 
+class TrendAndCost(TreeCase):
+    """A builder's stated test count and coverage on its run document, and the PBI ids each agent run's usage is
+    attributed to, which the page totals per work item."""
+
+    def test_ac79_a_code_writer_run_records_the_test_count_its_result_states(self):
+        self.t.basic(result='DONE. 664 tests green, coverage 88.5%.')
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        doc = self.t.docs('runs')['acw11']
+        self.assertEqual(doc['tests'], 664)
+        self.assertEqual(doc['coverage'], 88.5)
+
+    def test_a_builder_whose_result_states_no_figures_carries_neither_key(self):
+        self.t.basic()
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        doc = self.t.docs('runs')['acw11']
+        self.assertNotIn('tests', doc)
+        self.assertNotIn('coverage', doc)
+
+    def test_a_review_run_quoting_a_test_count_records_none(self):
+        # Only a code-writer's or test-writer's count is its own; a reviewer quoting it would plot it twice.
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_r1'), notify(10, 'acr1', result='GO. 664 tests green, coverage 90%')])
+        self.t.agent(SID, 'acr1', [reply(2, 'a', text='reviewing')], review_meta('toolu_r1'))
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        doc = self.t.docs('runs')['acr1']
+        self.assertNotIn('tests', doc)
+        self.assertNotIn('coverage', doc)
+
+    def test_a_stated_count_in_the_agents_own_transcript_is_not_recorded(self):
+        # tests/coverage are read from the run's notification result, not the agent's own transcript text
+        # (which classify() uses only as a fallback for the verdict).
+        self.t.session(SID, [user(0, 'go'), launch(1, 'toolu_cw'), notify(30, 'acw11', result='DONE', tokens='5000', ms='1740000')])
+        self.t.agent(SID, 'acw11', [user(1, 'task'), reply(2, 'm-a1', text='All green. 999 tests green, coverage 95%.')], CW_META)
+        self.assertEqual(self.t.run(pconfig(proj('app', SID))), 0)
+        doc = self.t.docs('runs')['acw11']
+        self.assertNotIn('tests', doc)
+        self.assertNotIn('coverage', doc)
+
+    def test_a_manual_runs_label_is_never_scanned_for_stated_figures(self):
+        # place_manual() builds the row directly and never calls agent_row(), so a manual row naming a
+        # builder lane still can't gain tests/coverage from text in its own label.
+        self.t.basic()
+        cfg = config()
+        cfg['runs']['manual'] = [{'id': 'orch-x', 'after': 'acw11', 'label': '700 tests green, coverage 90%', 'lane': 'cw'}]
+        self.assertEqual(self.t.run(cfg), 0)
+        doc = self.t.docs('runs')['orch-x']
+        self.assertNotIn('tests', doc)
+        self.assertNotIn('coverage', doc)
+
+    def test_each_agent_run_in_usage_names_the_pbi_ids_of_its_label(self):
+        self.t.basic()
+        self.t.session(SID2, [user(0, 'go'), launch(1, 'toolu_cw'), notify(30, 'acw22', result='DONE')])
+        self.t.agent(SID2, 'acw22', [reply(2, 'm', text='DONE')], dict(CW_META, description='PBI-003/004 pair under TDD'))
+        self.assertEqual(self.t.run(pconfig(proj('app', SID, SID2))), 0)
+        self.assertEqual(self.t.docs('sessions')[SID]['usage']['subagents'][0]['pbis'], ['PBI-001'])
+        agents = self.t.docs('projects')['app']['usage']['subagents']
+        self.assertEqual(sorted(a['pbis'] for a in agents), [['PBI-001'], ['PBI-003', 'PBI-004']])
+
+    def test_a_cache_from_before_figures_were_parsed_is_not_reused(self):
+        cfg = pconfig(proj('app', SID))
+        self.t.basic(result='DONE. 664 tests green')
+        self.assertEqual(self.t.run(cfg), 0)
+        cache_path = os.path.join(self.t.out, '.cache', 'sessions.json')
+        with io.open(cache_path, encoding='utf-8') as f:
+            cache = json.load(f)
+        # Signed as parser 8 signed it: the last parser that read neither test counts nor usage PBI ids.
+        cache[SID]['sig'][0] = 8
+        for row in cache[SID]['result']['rows']:
+            row.pop('tests', None)
+        for a in cache[SID]['result']['doc']['usage']['subagents']:
+            a.pop('pbis', None)
+        with io.open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump(cache, f)
+        self.assertEqual(self.t.run(cfg), 0)
+        self.assertEqual(self.t.docs('runs')['acw11']['tests'], 664)
+        self.assertEqual(self.t.docs('sessions')[SID]['usage']['subagents'][0]['pbis'], ['PBI-001'])
+
+
 class Waiting(TreeCase):
     """The session document's optional "waiting" field: facts read from the main transcript, nothing that
     depends on the time of the export."""

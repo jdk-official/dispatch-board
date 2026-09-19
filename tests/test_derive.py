@@ -396,6 +396,38 @@ class FindingsOf(unittest.TestCase):
         self.assertEqual([f['id'] for f in derive.findings_of(text)], ['F1'])
 
 
+class StatedFigures(unittest.TestCase):
+    """The test count and coverage percentage a builder's result states: the first integer followed by "tests",
+    and the first percentage next to "coverage"."""
+
+    def test_ac79_the_first_integer_followed_by_tests(self):
+        self.assertEqual(derive.stated_tests('DONE. 664 tests green; 2 tests added earlier.'), 664)
+
+    def test_a_grouped_count_is_read_whole_not_from_its_last_group(self):
+        self.assertEqual(derive.stated_tests('Ran 1,234 tests, OK'), 1234)
+        self.assertIsNone(derive.stated_tests('0.5 tests'))
+
+    def test_no_count_when_nothing_is_followed_by_tests(self):
+        self.assertIsNone(derive.stated_tests('All green. DONE'))
+        self.assertIsNone(derive.stated_tests('1 test added'))
+
+    def test_the_first_percentage_next_to_coverage_either_side(self):
+        self.assertEqual(derive.stated_coverage('Coverage: 87.5% (lines); 90% branches'), 87.5)
+        self.assertEqual(derive.stated_coverage('Suite green at 91% coverage.'), 91)
+        self.assertEqual(derive.stated_coverage('a 12% speed-up; coverage 80% then coverage 85%'), 80)
+
+    def test_no_coverage_without_a_percentage_beside_the_word(self):
+        self.assertIsNone(derive.stated_coverage('coverage is good, 40% faster'))
+        self.assertIsNone(derive.stated_coverage('"coverage": 91'))
+
+    def test_a_percentage_over_100_is_not_a_coverage(self):
+        self.assertIsNone(derive.stated_coverage('coverage 150%'))
+
+    def test_matching_is_case_insensitive(self):
+        self.assertEqual(derive.stated_tests('DONE. 700 TESTS green.'), 700)
+        self.assertEqual(derive.stated_coverage('COVERAGE: 92%'), 92)
+
+
 def cr(rid, pbi, findings, kind='changes', start=0, has_block=True):
     return {'id': rid, 'lane': 'cr', 'pbis': [pbi], 'kind': kind, 'start': ts(start), 'findings': findings,
             'hasFindingsBlock': has_block}

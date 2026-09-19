@@ -699,6 +699,33 @@
     </div><!--/detail-->`;
   }
 
+  // A builder's stated test count or coverage: one point per run that stated a readable one, numbered as the run
+  // log numbers runs, so a point and its row can be matched.
+  const figures = (R, key, valid) => R.map((r, i) => ({ n: i + 1, v: r[key], label: r.label || r.id }))
+    .filter(p => typeof p.v === 'number' && Number.isFinite(p.v) && valid(p.v));
+  function trendChart(what, pts, max, fmt) {
+    const W = 560, H = 170, L = 48, RM = 14, T = 14, B = 26, iw = W - L - RM, ih = H - T - B;
+    const x = i => L + (pts.length > 1 ? i * iw / (pts.length - 1) : iw / 2), y = v => T + ih - v / max * ih;
+    const step = Math.max(1, Math.ceil(pts.length / 10));
+    let s = `<svg data-trend="${what}" viewBox="0 0 ${W} ${H}" role="img" aria-label="The ${what} each run stated, in run order"><g font-family="Schibsted Grotesk, system-ui, sans-serif" font-size="11">`;
+    [0, 0.5, 1].forEach(f => { const yy = y(max * f); s += `<line x1="${L}" x2="${L + iw}" y1="${yy}" y2="${yy}" stroke="var(--rule)"/><text x="${L - 6}" y="${yy + 3.5}" text-anchor="end" fill="var(--ink-3)">${esc(fmt(max * f))}</text>`; });
+    s += `<polyline points="${pts.map((p, i) => `${x(i)},${y(p.v)}`).join(' ')}" fill="none" stroke="var(--live)" stroke-width="1.5"/>`;
+    pts.forEach((p, i) => {
+      s += `<circle cx="${x(i)}" cy="${y(p.v)}" r="3.5" fill="var(--live)"><title>run ${p.n} · ${esc(fmt(p.v))} ${what} · ${esc(p.label)}</title></circle>`;
+      if (i % step === 0) s += `<text x="${x(i)}" y="${H - 7}" text-anchor="middle" fill="var(--ink-3)">${p.n}</text>`;
+    });
+    return s + '</g></svg>';
+  }
+  function trendPanels(R) {
+    const panel = (title, what, pts, max, fmt, example) => `<div class="panel"><div class="ph"><h3>${title}</h3><span class="faint">${pts.length} of ${R.length} runs stated one</span></div>
+      ${pts.length ? `<div class="pb scroll">${trendChart(what, pts, max, fmt)}</div>` : `<p class="pb faint" style="margin:0">No ${title.toLowerCase()} recorded yet. A code-writer or test-writer run records one when its result states it, such as "${example}".</p>`}</div>`;
+    const tests = figures(R, 'tests', v => v >= 0), cover = figures(R, 'coverage', v => v >= 0 && v <= 100);
+    return `<div class="grid g-1-1" style="margin-top:16px">
+      ${panel('Test count', 'tests', tests, niceCeil(Math.max(...tests.map(p => p.v), 0)), v => Math.round(v).toLocaleString(), '664 tests green')}
+      ${panel('Coverage', 'coverage', cover, 100, v => `${Math.round(v * 10) / 10}%`, 'coverage 88%')}
+    </div>`;
+  }
+
   function renderDispatch() {
     const R = sorted(), p = $('panel-dispatch');
     if (!R.length) { p.innerHTML = '<div class="empty">No runs recorded yet. The board fills as agents are dispatched.</div>'; return; }
@@ -756,7 +783,8 @@
       <div class="panel"><div class="ph"><h3>Run log</h3><span class="faint">pick a run for its detail · newest first</span></div>
         <div class="pb flush scroll"><table><thead><tr><th>#</th><th>Agent</th><th>Run</th><th>Outcome</th><th>Detail</th><th style="min-width:120px">Reported tokens</th><th class="num">Minutes</th></tr></thead><tbody>
         ${R.slice().reverse().map(r => `<tr${r === det ? ' class="sel"' : ''}><td class="faint">${R.indexOf(r) + 1}</td><td style="white-space:nowrap">${esc(agentName(r))}</td><td class="wide"><button type="button" class="rowbtn" data-run="${esc(r.id)}" aria-pressed="${r === det}">${esc(r.label)}</button></td><td><span class="tag ${esc(r.kind)}">${esc(own(kindLabel, r.kind) || r.kind)}</span></td><td class="muted">${esc(r.verdict || '')}</td><td>${r.tok ? `<div class="bar"><i style="width:${Math.max(2, (Number(r.tok) || 0) / maxTok * 100)}%"></i></div><div class="sub">${esc(Number(r.tok).toLocaleString())}</div>` : '<span class="faint">—</span>'}</td><td class="num muted">${esc(r.min || '—')}</td></tr>`).join('')}
-        </tbody></table></div></div>`;
+        </tbody></table></div></div>
+      ${trendPanels(R)}`;
   }
 
   // ---------------- agent catalogue ----------------
@@ -1167,6 +1195,34 @@
     return `<div class="panel"><div class="ph"><h3>Claude usage</h3><button class="linkbtn" data-go="usage">View</button></div><div class="pb">${body}</div></div>`;
   }
 
+  // Cost is each agent run's effective usage, never its reported tokens. A run naming several work items is split
+  // equally among them. A PBI id is only unique within its project, so the per-work-item table is drawn only in a
+  // project view, where the usage shown is that project's alone. Maps, not objects: the keys come from the store.
+  function costPanels(subs) {
+    const eff = x => Number(x.effective) || 0, byPbi = new Map(), byType = new Map();
+    const add = (m, k, v) => { const c = m.get(k) || { n: 0, v: 0 }; c.n++; c.v += v; m.set(k, c); };
+    let loose = 0, looseRuns = 0;
+    subs.forEach(x => {
+      const ids = [...new Set((Array.isArray(x.pbis) ? x.pbis : []).filter(id => typeof id === 'string' && id))];
+      if (!ids.length) { loose += eff(x); looseRuns++; }
+      ids.forEach(id => add(byPbi, id, eff(x) / ids.length));
+      add(byType, String(x.type ?? 'unknown'), eff(x));
+    });
+    const table = (what, head, m, empty) => {
+      const rows = [...m].sort((a, b) => b[1].v - a[1].v), max = Math.max(1, ...rows.map(r => r[1].v));
+      return `<div class="pb flush scroll"><table data-cost="${what}"><thead><tr><th>${head}</th><th class="num">Runs</th><th style="min-width:150px">Effective</th></tr></thead><tbody>
+        ${rows.map(([k, c]) => `<tr data-entry="${esc(k)}"><td>${esc(k)}</td><td class="num">${esc(c.n)}</td><td><div class="bar"><i style="width:${Math.max(2, c.v / max * 100)}%;background:var(--live)"></i></div><div class="sub">${fmtTok(c.v)}</div></td></tr>`).join('') || `<tr><td colspan="3" class="muted">${empty}</td></tr>`}
+      </tbody></table></div>`;
+    };
+    const typePanel = `<div class="panel"><div class="ph"><h3>Cost per agent type</h3><span class="faint">effective usage</span></div>${table('type', 'Agent type', byType, 'No agent runs.')}</div>`;
+    if (!inProject()) return `<div class="grid">${typePanel}</div>`;
+    return `<div class="grid g-1-1">
+      <div class="panel"><div class="ph"><h3>Cost per work item</h3><span class="faint">effective usage by the PBI ids in run labels</span></div>${table('pbi', 'Work item', byPbi, 'No agent run names a work item.')}
+        <div class="pb faint" style="border-top:1px solid var(--rule)">A run naming several work items has its usage split equally among them.${looseRuns ? ` ${looseRuns} run${looseRuns === 1 ? ' names' : 's name'} no work item: ${fmtTok(loose)} effective.` : ''}</div></div>
+      ${typePanel}
+    </div>`;
+  }
+
   function renderUsage() {
     const u = docs.usage, p = $('panel-usage');
     if (!u) { p.innerHTML = '<div class="empty">Usage has not been exported yet.</div>'; return; }
@@ -1210,6 +1266,7 @@
           ${lim.map((l, k) => `<tr><td>${k + 1} · usage limit</td><td>${esc(when(l.firstAt))}</td><td class="num">${esc(l.refused)}</td><td>${esc(when(l.resetsAt)) || '—'}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No limit was hit.</td></tr>'}
         </tbody></table><div class="pb faint" data-forecast style="border-top:1px solid var(--rule)">${forecastNote(fc)}</div>${u.overage ? `<div class="pb faint" style="border-top:1px solid var(--rule)">${esc(u.overage)}</div>` : ''}</div></div>
       </div>
+      ${costPanels(subs)}
       <div class="panel"><div class="ph"><h3>Agent runs</h3><span class="faint">${subs.length} runs · ${fmtTok(subEff)} effective</span></div><div class="pb flush scroll"><table><thead><tr><th>Agent</th><th>Task</th><th>Model</th><th class="num">Requests</th><th style="min-width:150px">Effective</th></tr></thead><tbody>
         ${subs.slice().sort((a, b) => b.effective - a.effective).map(x => `<tr><td style="white-space:nowrap">${esc(x.type)}</td><td>${esc(x.description)}</td><td class="muted">${esc(x.modelLabel)}</td><td class="num">${esc(x.requests)}</td><td><div class="bar"><i style="width:${Math.max(2, x.effective / smax * 100)}%;background:var(--live)"></i></div><div class="sub">${fmtTok(x.effective)}</div></td></tr>`).join('')}
       </tbody></table></div></div>`;
