@@ -4,10 +4,14 @@ folder, activity, usage) and one runs/<agentId> row per agent the session dispat
     python exporters/export_sessions.py [out_dir]
 
 Sessions are discovered, not listed: every main transcript under sessions.projectsRoot written to in
-the last sessions.days days, plus every session linked to a project in board.config.json
-(projects[].sessions; build.sessions and usage.sessions in the older shape). Each session and run
-records its project id, or null when it is linked to none, and out/projects/<projectId>.json combines
-a project's linked sessions: run counts, latest activity, and one usage block for all of them. Sessions
+the last sessions.days days, plus every session listed by a project in board.config.json
+(projects[].sessions; build.sessions and usage.sessions in the older shape). A session no project lists is
+linked to the project under whose repoPath or worktreeRoots (default <repoPath>-worktrees) it successfully
+edited the most distinct files, in its main or subagent transcripts, ties going to the project listed first;
+reads and shell commands are not edits. Such a session is exported only while it is in the window. Each
+session and run records its project id, or null when it is linked to none, and a linked session's document
+says why (linkedBy "config" or "edits"). out/projects/<projectId>.json combines a project's linked sessions:
+run counts, latest activity, and one usage block for all of them. Sessions
 whose working folder or project folder name matches a sessions.exclude glob are never read. The first
 prompt is published only with sessions.showFirstPrompt, and then with obvious secrets redacted.
 
@@ -41,7 +45,7 @@ running becomes killed once the running window has passed since its end). A line
 or a response whose token counts are not numbers, costs only that record. The exit code is non-zero, and out/ is
 left as it was, only when the export itself cannot be trusted: projectsRoot is missing, the project list
 is unusable, a sessions or runs value is not its documented type or a runs.manual row is malformed, or a
-linked session's transcript cannot be found.
+listed session's transcript cannot be found.
 """
 import glob, io, json, os, shutil, sys, tempfile, time
 from datetime import datetime, timezone
@@ -57,7 +61,7 @@ from derive import (  # noqa: F401
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(HERE, 'board.config.json')
-PARSER_VERSION = 10  # bump when parsing changes, to drop cached results
+PARSER_VERSION = 11  # bump when parsing changes, to drop cached results
 
 
 # (block, key, check, what the value must be) for each typed value under sessions and runs; board_config.manual
@@ -269,6 +273,10 @@ def main(config=None, out_dir=None, projects_root=None, now=None):
             results[sid] = result
     os.makedirs(os.path.dirname(cache_path), exist_ok=True)
     write_json(cache_path, fresh, indent=None)
+    # Decided now from the cached evidence and the current config, so a config change needs no re-read. build stays
+    # the listed sessions: an auto-linked one is never kept past the window, and its missing transcript is not fatal.
+    project_of, linked_by = derive.link_sessions(results, st['projects'], st['project_of'])
+    st = dict(st, project_of=project_of, linked_by=linked_by)
 
     rows = sorted((dict(r, session=sid) for sid, res in results.items() for r in res['rows']), key=lambda r: r['start'] or '')
     derive.place_manual(rows, st['manual'])

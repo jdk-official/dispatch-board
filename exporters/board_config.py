@@ -1,11 +1,12 @@
 """The tracked projects listed in board.config.json, read the same way by every exporter.
 
-Each project is {id, name, repoPath, branch, sessions, statusDoc, docs, workItemStatus}: sessions are the
-Claude Code session ids that build it, statusDoc is the store document its live flag and updatedAt go to, docs
-are paths relative to repoPath, and workItemStatus ("shadow" unless the owner set "derived") says whether its
-work-item state derived from runs is shown beside the hand-kept state or in place of it. A config without a
-"projects" list (the shape used before projects existed) is read as one project made from build.* and
-usage.sessions, with the document paths export_board.py always read for it.
+Each project is {id, name, repoPath, branch, sessions, statusDoc, docs, workItemStatus, worktreeRoots}: sessions
+are the Claude Code session ids that build it, statusDoc is the store document its live flag and updatedAt go to,
+docs are paths relative to repoPath, workItemStatus ("shadow" unless the owner set "derived") is exported on
+projects/<id> beside the work-item state derived from runs, for later consumers (the page reads neither), and
+worktreeRoots are the folders holding its worktrees (never published). A config without a "projects" list (the
+shape used before projects existed) is read as one project made from build.* and usage.sessions, with the
+document paths export_board.py always read for it.
 
 catalogue() reads the "catalogue" block: where export_catalogue.py finds the agent-catalog marketplace clone
 and the installed-plugins file. manual() reads runs.manual: the rows for work the orchestrator did in-line.
@@ -13,6 +14,8 @@ local() reads the "local" block: where the local-first app's SQLite database liv
 server binds.
 """
 import os, re
+
+import derive
 
 # Ids become file names under out/ and store document ids, so they are kept to one safe path segment.
 ID = re.compile(r'^[A-Za-z0-9_-]{1,100}$')
@@ -33,10 +36,10 @@ RUN_ID = re.compile(r'(?!\.\.?\Z)[^/\\\x00-\x1f\x7f-\x9f]+')
 # a leading dot hides the file from the *.json glob refresh.py pushes, Windows strips a trailing dot or space, and
 # a device name (with or without an extension) opens the device. Kept separate so RUN_ID stays the local form;
 # refusing more than the local form is safe, because every id the exporter writes still passes local to_row.
-# A project's work-item state during the shadow period is derived from runs and shown beside the hand-kept state;
-# "derived" retires the hand-kept state for that project. Only the owner sets it, in board.config.json.
-WORK_ITEM_STATUS = ('shadow', 'derived')
 UNSAFE_FILE_NAME = re.compile(r'[:*?<>|"]|\A\.|[. ]\Z|\A(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?\Z', re.I | re.S)
+# A project's workItemStatus switch: "shadow" or "derived". It is exported on projects/<id> with the work-item
+# state derived from runs, for later consumers; the page reads neither. Only the owner sets it, in board.config.json.
+WORK_ITEM_STATUS = ('shadow', 'derived')
 LEGACY_DOCS = {
     'spec': 'docs/backlog/specs/platform-catalogue.md',
     'design': 'docs/backlog/specs/pbi-008-design-system.md',
@@ -106,7 +109,8 @@ def legacy(cfg):
 
 def projects(cfg):
     """The projects in config order, with defaults filled in. Raises ValueError for a "projects" value that is
-    not a list of objects, and for an id or statusDoc that cannot be used, or one that two projects share."""
+    not a list of objects, for an id or statusDoc that cannot be used, or one that two projects share, and for a
+    repoPath that is neither a string nor null or an unusable worktreeRoots (worktree_roots)."""
     # Reading a malformed "projects" as "no projects" would drop every project's documents at exit 0.
     if 'projects' in cfg:
         raw = cfg['projects']
@@ -133,11 +137,34 @@ def projects(cfg):
             raise ValueError('project %s: workItemStatus %r must be "shadow" or "derived"' % (pid, mode))
         ids.add(pid)
         docs.add(status)
+        repo = p.get('repoPath')
+        if repo is not None and not isinstance(repo, str):
+            raise ValueError('project %s: repoPath must be a string or null, not %r' % (pid, repo))
         # A session listed twice would count its runs and usage twice in the project's totals.
-        out.append({'id': pid, 'name': p.get('name') or pid, 'repoPath': p.get('repoPath') or '',
+        out.append({'id': pid, 'name': p.get('name') or pid, 'repoPath': repo or '',
                     'branch': p.get('branch') or '', 'sessions': list(dict.fromkeys(p.get('sessions') or [])),
-                    'statusDoc': status, 'docs': dict(p.get('docs') or {}), 'workItemStatus': mode})
+                    'statusDoc': status, 'docs': dict(p.get('docs') or {}), 'workItemStatus': mode,
+                    'worktreeRoots': worktree_roots(pid, p, repo or '')})
     return out
+
+
+def worktree_roots(pid, p, repo):
+    """The folders holding the project's worktrees, whose edits link a session to it: worktreeRoots as written,
+    or by default <repoPath>-worktrees, from repoPath's normal form ([] when repoPath gives no root). Raises
+    ValueError, naming the project and the entry, for a value that is not a list, or an entry that is not a string
+    or is no usable root (derive.link_root): relative, "~", a filesystem, drive or bare UNC root, or one ending in
+    whitespace. A bad entry is refused rather than ignored, so a typo never silently links nothing."""
+    if 'worktreeRoots' not in p:
+        root = derive.link_root(repo)
+        return [root + '-worktrees'] if root else []
+    roots = p['worktreeRoots']
+    if not isinstance(roots, list):
+        raise ValueError('project %s: worktreeRoots must be a list of folder paths, not %r' % (pid, roots))
+    for entry in roots:
+        if not isinstance(entry, str) or derive.link_root(entry) is None:
+            raise ValueError('project %s: worktreeRoots entry %r must be an absolute folder path that is not a '
+                             'filesystem, drive or bare UNC root and does not end in whitespace' % (pid, entry))
+    return list(roots)
 
 
 def manual(cfg):

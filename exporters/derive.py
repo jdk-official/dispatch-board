@@ -522,7 +522,8 @@ def new_session(sid):
     """The running state of a session's main transcript, fed record by record with add_record()."""
     return {'sid': sid, 'title': None, 'aiTitle': None, 'cwd': None, 'first': None, 'start': None, 'last': None,
             'by': {}, 'rejects': [], 'launched': {}, 'stopped': {}, 'notes': {}, 'sync': {}, 'uses': {}, 'skillCalls': set(),
-            'tools': {}, 'asks': {}, 'answered': set(), 'denials': [], 'lastOwnerAt': None, 'lastTurn': None}
+            'tools': {}, 'asks': {}, 'answered': set(), 'denials': [], 'lastOwnerAt': None, 'lastTurn': None,
+            'failed': set()}
 
 
 def add_waiting(state, o, ts, t, m):
@@ -584,6 +585,7 @@ def add_record(state, o, raw=None, warn=None):
             use_skill(state['uses'], state['sid'], name[1:] if name.startswith('/') else name, ts, warn)
     reject(state['rejects'], o)
     response(state['by'], o)
+    failed_edit(state['failed'], o)
     add_waiting(state, o, ts, t, m)
     if t == 'assistant':
         for c in m.get('content') or []:
@@ -708,7 +710,11 @@ def session_result(state, subs, rows, skipped):
     main = {'resps': list(state['by'].values()), 'rejects': state['rejects']}
     doc = {'title': state['title'] or state['aiTitle'], 'cwd': cwd or '', 'folder': os.path.basename((cwd or '').rstrip('\\/')),
            'firstPrompt': first, 'start': state['start'], 'last': last, 'usage': usage_doc(main, subs, (state['start'], last)),
-           'skillUses': {k: dict(v) for k, v in state['uses'].items()}}
+           'skillUses': {k: dict(v) for k, v in state['uses'].items()},
+           # The main transcript's successful edits, kept for link_sessions() and never published: session_doc()
+           # drops them. Subagents' edits are already on their rows' files.
+           'edits': edited([{'files': [p for tid, p in r['files'] if tid not in state['failed']]}
+                            for r in state['by'].values()])}
     waiting = waiting_of(state)
     if waiting:  # left out entirely otherwise, so a session with nothing waiting exports exactly as before
         doc['waiting'] = waiting
@@ -718,6 +724,7 @@ def session_result(state, subs, rows, skipped):
 def session_doc(result, sid, st, runs, running):
     """The published session document: the cached parse plus everything the config decides."""
     doc = dict(result['doc'])
+    doc.pop('edits', None)  # a parse cached before edits were collected has none
     first = doc.pop('firstPrompt', '')
     if not st['show_first_prompt']:
         first = ''  # the title fallback must not leak the prompt either
@@ -726,6 +733,9 @@ def session_doc(result, sid, st, runs, running):
         doc['firstPrompt'] = first
     doc.update(build=sid in st['legacy_build'], project=st['project_of'].get(sid), windowDays=st['days'],
                windowMinutes=st['window_minutes'], runs=runs, running=running)
+    linked_by = st.get('linked_by', {}).get(sid)
+    if linked_by and doc['project']:
+        doc['linkedBy'] = linked_by
     return doc
 
 
@@ -922,6 +932,75 @@ def place_manual(rows, manual):
         rows.insert(anchor + 1, row)
 
 
+def normal_path(path):
+    """The form a path and a root are compared in: "\\" as "/", then posixpath.normpath."""
+    return posixpath.normpath(path.replace('\\', '/'))
+
+
+def under(path, root):
+    """True when normal path is root or inside it: compared case-insensitively, on whole path components, so
+    "C:/app-other/x" is not under "C:/app". Both arguments are normal_path() forms, root with no trailing "/"."""
+    return (path + '/').lower().startswith(root.lower() + '/')
+
+
+# A bare UNC server or share ("//host", "//host/share"); "//?/C:", the extended-length form of a drive, is not one.
+BARE_UNC = re.compile(r'^//(?![?.]/)[^/]+(?:/[^/]+)?$')
+
+
+def link_root(value):
+    """value's normal form as a root link_sessions() may place files under, or None when it would match far too
+    much or nothing at all: empty, "/", a bare drive, a bare UNC server or share, a value ending in whitespace
+    (Windows drops a trailing space from a real path, so nothing could ever be under it), or a path that is not
+    absolute. A home-relative "~/x" is not absolute: it is refused, never expanded."""
+    root = normal_path(value).rstrip('/')
+    # A bare drive "C:" fails ABSOLUTE, which needs the "/" after the letter that rstrip removed.
+    if not root or root[-1].isspace() or not ABSOLUTE.match(root) or BARE_UNC.match(root):
+        return None
+    return root
+
+
+def link_sessions(results, projects, listed):
+    """(project_of, linked_by), both keyed by session id: which project each session in results belongs to, and
+    why. projects is board_config.projects()'s list, listed its config-only {session id: project id}.
+
+    A listed session keeps its listed project ("config") whatever it edited. Any other session is linked
+    ("edits") to the project under whose repoPath or worktreeRoots it successfully edited the most distinct
+    files, in its main transcript (doc["edits"]) or its agents' runs (each row's files); a tie goes to the
+    project listed first, and a session that edited no such file maps to None with no linked_by entry. Each
+    file counts for the project owning the longest root it is under, so a project nested inside another's
+    folder takes its own files. Only absolute paths are placed, compared as under() compares them."""
+    roots = []  # (root, project id) in config order, so max() below keeps the first of equal-length roots
+    for p in projects:
+        for value in [p.get('repoPath') or ''] + list(p.get('worktreeRoots') or []):
+            root = link_root(value)
+            if root:
+                roots.append((root, p['id']))
+    order = {p['id']: i for i, p in enumerate(projects)}
+    project_of, linked_by = {}, {}
+    for sid, result in results.items():
+        if sid in listed:
+            project_of[sid], linked_by[sid] = listed[sid], 'config'
+            continue
+        paths = list(result['doc'].get('edits') or [])
+        for row in result.get('rows') or []:
+            paths += row.get('files') or []
+        files = {}
+        for path in paths:
+            p = normal_path(path.strip()) if isinstance(path, str) else ''
+            if ABSOLUTE.match(p):
+                files.setdefault(p.lower(), p)
+        counts = {}
+        for p in files.values():
+            owner = max((r for r in roots if under(p, r[0])), key=lambda r: len(r[0]), default=None)
+            if owner:
+                counts[owner[1]] = counts.get(owner[1], 0) + 1
+        pid = min(counts, key=lambda k: (-counts[k], order[k])) if counts else None
+        project_of[sid] = pid
+        if pid:
+            linked_by[sid] = 'edits'
+    return project_of, linked_by
+
+
 def publishable_files(paths, repo):
     """The paths a run edited, in the form the board may publish, given the project's repository root (or None).
 
@@ -936,13 +1015,13 @@ def publishable_files(paths, repo):
     written, folders included. Parent steps are resolved before the repository test, so "<repo>/../elsewhere"
     is outside. The repository root itself is not a file. Order is kept, each file named once.
     """
-    root = posixpath.normpath(str(repo).replace('\\', '/')).rstrip('/') if repo else ''
+    root = normal_path(str(repo)).rstrip('/') if repo else ''
     out = []
     for path in paths:
         if not isinstance(path, str) or not path.strip():
             continue
-        p = posixpath.normpath(path.strip().replace('\\', '/'))
-        if root and (p + '/').lower().startswith(root.lower() + '/'):
+        p = normal_path(path.strip())
+        if root and under(p, root):
             name = p[len(root):].lstrip('/')
         elif ABSOLUTE.match(p) or p == '..' or p.startswith('../') or UNPLACEABLE.match(p):
             name = '…/' + p.rsplit('/', 1)[-1]
@@ -1031,9 +1110,11 @@ def work_items(rows):
 def project_doc(p, order, results, counts, running, project_of):
     """The published project document: its linked sessions that were exported, their run counts, latest activity
     and combined usage, and the work-item state derived from those sessions' runs. results, counts and running are
-    keyed by session id. workItemStatus is the owner's switch between the shadow period and derived state, read from
-    the config; the page decides what to show from it."""
+    keyed by session id. The sessions it lists come in config order, then the auto-linked ones by id, so a writer
+    that fills results in another order writes the same list. workItemStatus, the owner's shadow/derived switch, is
+    copied from the config; it and the derived state are exported for later consumers, and the page reads neither."""
     linked = [sid for sid in p['sessions'] if sid in results and project_of[sid] == p['id']]
+    linked += sorted(sid for sid in results if project_of.get(sid) == p['id'] and sid not in p['sessions'])
     lasts = [results[sid]['doc']['last'] for sid in linked if results[sid]['doc'].get('last')]
     derived = work_items([r for sid in linked for r in results[sid].get('rows') or []])
     return {'name': p['name'], 'repoPath': p['repoPath'], 'branch': p['branch'], 'sessions': linked,

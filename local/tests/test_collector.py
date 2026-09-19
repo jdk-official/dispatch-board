@@ -615,6 +615,113 @@ class Pruning(Case):
         with self.assertRaises(collector.Refusal):
             self.e.run(now=self.now)
 
+    def test_auto_linked_sessions_are_pruned_by_age_past_the_guard_and_a_listed_one_is_kept(self):
+        for sid in (SID, SID2, SID3):
+            tes.edit_session(self.e.t, sid, tes.REPO + '/%s.py' % sid[:2])
+        self.e.t.basic(sid=SID4)
+        cfg = self.e.cfg()
+        cfg['projects'] = [tes.proj('p', SID4, repoPath=tes.REPO)]
+        self.e.run(cfg, now=self.now)
+        self.assertEqual(self.e.stored()['project']['p']['sessions'], [SID4, SID, SID2, SID3])
+        report = self.e.run(cfg, now=self.now + 8 * DAY)
+        self.assertEqual(set(self.e.stored()['session']), {SID4})
+        self.assertEqual((report['aged'], self.e.stored()['project']['p']['sessions']), (3, [SID4]))
+        self.assert_equivalent(cfg, now=self.now + 8 * DAY)
+
+
+class AutoLink(Case):
+    """The collector links the sessions no project lists exactly as the session exporter does."""
+
+    def cfg(self, *projects):
+        cfg = self.e.cfg()
+        cfg['projects'] = list(projects) or [tes.proj('p', repoPath=tes.REPO)]
+        return cfg
+
+    def link(self, sid):
+        doc = self.e.stored()['session'][sid]
+        return doc['project'], doc.get('linkedBy')
+
+    def test_a_listed_session_keeps_its_project_whatever_it_edited(self):
+        tes.edit_session(self.e.t, SID, 'C:/b/1.py', 'C:/b/2.py')
+        cfg = self.cfg(tes.proj('a', SID, repoPath='C:/a'), tes.proj('b', repoPath='C:/b'))
+        self.e.run(cfg, now=self.now)
+        self.assertEqual(self.link(SID), ('a', 'config'))
+        self.assertEqual((self.e.stored()['project']['a']['sessions'], self.e.stored()['project']['b']['sessions']),
+                         ([SID], []))
+        self.assert_equivalent(cfg)
+
+    def test_an_auto_linked_session_whose_transcript_has_gone_is_deleted_not_refused(self):
+        tes.edit_session(self.e.t, SID, tes.REPO + '/a.py')
+        for sid in (SID2, SID3):
+            self.e.t.basic(sid=sid)
+        cfg = self.cfg()
+        self.e.run(cfg, now=self.now)
+        self.assertEqual(self.link(SID), ('p', 'edits'))
+        os.remove(self.e.main_path(SID))
+        self.e.run(cfg, now=self.now)
+        self.assertNotIn(SID, self.e.stored()['session'])
+        self.assertEqual(self.e.stored()['project']['p']['sessions'], [])
+        self.assert_equivalent(cfg)
+
+    def test_with_nothing_else_stored_only_the_mass_delete_guard_can_refuse(self):
+        tes.edit_session(self.e.t, SID, tes.REPO + '/a.py')
+        cfg = self.cfg()
+        self.e.run(cfg, now=self.now)
+        os.remove(self.e.main_path(SID))
+        with self.assertRaises(collector.Refusal) as cm:
+            self.e.run(cfg, now=self.now)
+        self.assertIn('refusing to delete', str(cm.exception))
+        self.assertNotIn('no transcript', str(cm.exception))
+
+    def test_one_appended_edit_links_the_session_reading_only_the_appended_bytes(self):
+        self.e.t.session(SID, quiet(SID))
+        cfg = self.cfg()
+        self.e.run(cfg, now=self.now)
+        self.assertEqual(self.link(SID), (None, None))
+        raw = append(self.e.main_path(SID), [tes.edit_call(5, 'te', tes.REPO + '/a.py'), tes.tool_result(5, 'te')])
+        report = self.e.run(cfg, now=self.now)
+        self.assertEqual((self.link(SID), report['bytes']), (('p', 'edits'), len(raw)))
+        self.assert_equivalent(cfg)
+
+    def test_a_link_config_change_re_derives_no_session(self):
+        tes.edit_session(self.e.t, SID, tes.REPO + '/a.py')
+        self.e.run(self.cfg(), now=self.now)
+        for cfg, want in ((self.cfg(tes.proj('p', repoPath='C:/moved')), (None, None)),
+                          (self.cfg(tes.proj('p', repoPath='C:/moved', worktreeRoots=['C:/work'])), ('p', 'edits')),
+                          (self.cfg(tes.proj('a', SID), tes.proj('p', repoPath=tes.REPO)), ('a', 'config'))):
+            with self.subTest(cfg=cfg['projects']):
+                report = self.e.run(cfg, now=self.now)
+                self.assertEqual((report['rederived'], self.link(SID)), (0, want))
+
+    def test_state_stored_by_the_previous_parser_is_read_again_from_the_start_once(self):
+        tes.edit_session(self.e.t, SID, tes.REPO + '/a.py')
+        cfg = self.cfg()
+        self.e.run(cfg, now=self.now)
+
+        def as_base(v):  # parser 10 stored no failed set and no main-transcript edits
+            v['parser'] = 10
+            v['state'].pop('failed')
+            v['result']['doc'].pop('edits')
+        for key, text in self.e.conn.execute('SELECT id, data FROM collector_sessions').fetchall():
+            v = collector.decode(text)
+            as_base(v)
+            self.e.conn.execute('UPDATE collector_sessions SET data = ? WHERE id = ?', (collector.encode(v), key))
+        self.e.reconnect()
+        spy = self.spy()
+        self.e.run(cfg, now=self.now)
+        self.assertEqual([c['seeks'] for c in spy.of(self.e.main_path(SID))], [[0]])
+        self.assertEqual(self.link(SID), ('p', 'edits'))
+        self.e.run(cfg, now=self.now)
+        self.assertEqual(len(spy.of(self.e.main_path(SID))), 1)
+
+    def test_an_unusable_worktree_roots_or_repo_path_refuses_the_pass(self):
+        self.e.t.basic()
+        for over in ({'worktreeRoots': 'x'}, {'worktreeRoots': ['C:/']}, {'worktreeRoots': ['~/x']}, {'repoPath': 5}):
+            with self.subTest(over=over):
+                with self.assertRaises(collector.Refusal) as cm:
+                    self.e.run(self.cfg(tes.proj('p', **over)), now=self.now)
+                self.assertIn('project p', str(cm.exception))
+
 
 # ---------------------------------------------------------------- exclusion
 
