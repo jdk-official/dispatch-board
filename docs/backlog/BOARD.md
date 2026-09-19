@@ -17,7 +17,6 @@
 |----|-------|------------|-------|
 | PBI-020 | Timeline view (feature 9; FR-101 filled, FR-122–FR-124) | [PBI-003, PBI-004] | Decomposed from the approved spec, 2026-09-11 |
 | PBI-040 | Only one collector runs at a time | [] | Intake 2026-09-19 from PBI-007's log-on demonstration: Task Scheduler started a second collector. Starts after PBI-030 (both edit `local/collector.py`). |
-| PBI-031 | Answers endpoint on the local server: the answer record, a server-owned answers database, `POST /api/answers` with its checks, a nonce content-security policy, `local/answers.py list` and `verify`, and the `CLAUDE.md` answer and transcription rules (FR-95, FR-132, NFR-23) | [PBI-007] | Decomposed from spec revision 6 (approved 2026-09-19); batch approved by the owner 2026-09-19. |
 | PBI-032 | Answer from the board: Accept and Override on the Assumptions tab (local adapter only), answered and transcribed states (FR-131, AC-87) | [PBI-031] | Decomposed from spec revision 6 (approved 2026-09-19); batch approved by the owner 2026-09-19. |
 | PBI-033 | Answer audit: transcript tool calls that could have sent an answer, and the answers they may have made marked on the Assumptions tab | [PBI-032, PBI-030, PBI-034] | Decomposed from spec revision 6 (approved 2026-09-19); batch approved by the owner 2026-09-19. |
 | PBI-034 | Approvals as answers: `planApproval` bound to git's blob id of the committed spec, and `conditionsAccepted` bound to one review run, with server checks and `verify` support (S-31) | [PBI-031] | Decomposed from spec revision 6 (approved 2026-09-19); batch approved by the owner 2026-09-19. |
@@ -49,8 +48,9 @@
 | ID | Title | Branch | Worktree | Session tag | Started (UTC) |
 |----|-------|--------|----------|-------------|---------------|
 <!-- Revision 6 decomposed 2026-09-19 into PBI-031 to PBI-038. The owner approved the batch, asked "Put PBI-031 to PBI-038 on the BOARD as shown, and start PBI-037 (freeze the published artifact) now?", verbatim: "Approve batch, start 037". PBI-037 is docs/Low, so it runs beside PBI-010 (page/High). -->
-| PBI-030 | Sessions link to a project automatically from the files they edit | `pbi/PBI-030-auto-link-sessions` | C:/Users/jdk/dispatch-board-worktrees/PBI-030 | 7e0c4f3c | 2026-09-19T18:30:00Z |
 | PBI-039 | The Backlog tab lists every PBI, not only the plan's | `pbi/PBI-039-backlog-lists-every-pbi` | C:/Users/jdk/dispatch-board-worktrees/PBI-039 | 7e0c4f3c | 2026-09-19T20:30:00Z |
+| PBI-031 | Answers endpoint on the local server: the answer record, a server-owned answers database, `POST /api/answers` with its checks, a nonce content-security policy, `local/answers.py list` and `verify`, and the `CLAUDE.md` answer and transcription rules (FR-95, FR-132, NFR-23) | `pbi/PBI-031-answers-endpoint` | C:/Users/jdk/dispatch-board-worktrees/PBI-031 | 7e0c4f3c | 2026-09-19T21:00:00Z |
+<!-- PBI-031 started 2026-09-19 once PBI-007 was Done and the security_paths chore (#44) merged. Spec revision 3 approved; the owner approved the build ("Approve the build"). Security path: the owner reviews the code and approves the merge. -->
 <!-- PBI-039 started 2026-09-19 the moment PBI-010 merged and freed the page slot. No spec gate, no external review. Keep it minimal: the owner found PBI-010's panel too complex. -->
 <!-- PBI-030 started 2026-09-19 (exporters, Medium) beside PBI-010: its spec is approved (revision 3), and it rebases onto PBI-010 once that merges, taking PBI-010's follow-up CR-010-1 with it. -->
 <!-- PBI-010 started 2026-09-19 the moment PBI-012 closed and freed the page slot. Spec gate passed (revision 3); external review approved by the owner 2026-09-19 ("Approve the build"); ships in shadow mode, the switch to derived status stays the owner's (Q-3). First PBI whose PR the pr-steward raises. -->
@@ -114,3 +114,4 @@
 | PBI-037 | Retire the v1 artifact and its refresher: final store export, final status message, loop stopped, procedures marked retired (S-40) | https://github.com/jdk-official/dispatch-board/pull/42 | [↪](done-log.md#pbi-037) |
 | PBI-007 | Log-on start through Task Scheduler and the on-PC deployment end to end (FR-90, FR-91, NFR-17, NFR-18, NFR-21) | https://github.com/jdk-official/dispatch-board/pull/28 | [↪](done-log.md#pbi-007) |
 | PBI-010 | Work-item status derived from runs, shown beside the hand-kept state during a shadow period (feature 4, FR-113) | https://github.com/jdk-official/dispatch-board/pull/46 | [↪](done-log.md#pbi-010) |
+| PBI-030 | Sessions link to a project automatically from the files they edit | https://github.com/jdk-official/dispatch-board/pull/48 | [↪](done-log.md#pbi-030) |
