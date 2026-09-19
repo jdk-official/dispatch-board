@@ -637,6 +637,8 @@ class Waiting(unittest.TestCase):
         self.assertFalse(own(user(0, [{'type': 'text', 'text': 'why'}, {'type': 'tool_result', 'tool_use_id': 't'}])))
         self.assertFalse(own(user(0, 'Summary of the conversation so far...', isCompactSummary=True)))
         self.assertFalse(own(user(0, [{'type': 'text', 'text': '[Request interrupted by user for tool use]'}])))
+        # The exclusion matches the fixed marker text exactly; a longer typed reply that merely mentions it is still the owner.
+        self.assertTrue(own(user(0, "I saw '[Request interrupted by user for tool use]' but go ahead and retry")))
 
     def test_a_closing_question_in_prose_is_waiting_until_the_owner_replies(self):
         text = 'I finished the parser.\n\nWhich would you prefer, the flag or the config key?'
