@@ -51,6 +51,12 @@ class LogPath(unittest.TestCase):
         self.assertEqual(run_local.fallback_path('server'),
                          os.path.join(tempfile.gettempdir(), 'dispatch-board-server-log-failure.txt'))
 
+    def test_run_refuses_a_target_outside_the_known_two(self):
+        # argparse's choices already keep an unknown --target from reaching run() through main(); this pins the
+        # function's own contract for a caller that reaches it directly.
+        with self.assertRaises(ValueError):
+            run_local.run('exporter')
+
 
 class MakesItsFolder(Case):
     def test_a_missing_log_folder_is_created(self):

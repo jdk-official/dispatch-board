@@ -305,6 +305,11 @@ class CommandLine(Seam):
     def test_no_subcommand_is_a_usage_error(self):
         self.assertEqual(tasks.main([]), 2)
 
+    def test_an_unrecognised_subcommand_is_a_usage_error(self):
+        # Argparse rejects it before args.command is ever assigned, which is the SystemExit main() catches
+        # rather than the explicit "a command is required" branch the no-subcommand case takes.
+        self.assertEqual(tasks.main(['bogus']), 2)
+
 
 if __name__ == '__main__':
     unittest.main()
