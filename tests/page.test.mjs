@@ -1960,6 +1960,25 @@ const overStore = async () => {
   ok('without any recorded figure, the trend says none was recorded');
 }
 
+// ---- 25. derived work-item state is exported for the exporters' own consumers, but the page draws none of it: no
+// Shadow period panel, no derived tiles, no per-item mark, whatever workItemStatus and workItems carry
+{
+  const withDerived = p => p.id !== 'platform-catalogue' ? p : { ...p, workItemStatus: 'derived',
+    workItems: { 'PBI-001': { state: 'partial', rounds: 1, verdict: 'GO', latestRound: 'r2', builds: 1, runs: ['r1', 'r2'] } } };
+  const load = async projects => {
+    const e = env({ 'board-view': 'p:platform-catalogue' });
+    await tick();
+    e.fire('c:projects', projects); e.fire('c:sessions', SESSIONS); e.fire('c:runs', RUNS); e.fire('c:projectTabs', TABS);
+    return e;
+  };
+  const derived = await load(PROJECTS.map(withDerived)), plain = await load(PROJECTS);
+  const B = derived.el('panel-backlog').innerHTML, O = derived.el('panel-overview').innerHTML;
+  assert.ok(!B.includes('Shadow period') && !B.includes('data-shadow') && !O.includes('data-shadow'));
+  assert.equal(B, plain.el('panel-backlog').innerHTML, 'derived work-item state changes nothing the Backlog draws');
+  assert.equal(O, plain.el('panel-overview').innerHTML, 'derived work-item state changes nothing the Overview draws');
+  ok('the Backlog tab renders no shadow panel or derived-status mark, even when the project document carries derived work-item state');
+}
+
 assert.deepEqual([...everySub].filter(k => k === 'c:tabs' || k.startsWith('d:tabs/')), [], 'a retired tabs/* subscription');
 assert.ok(everySub.has('c:projectTabs'), 'the guard saw the page\'s real subscriptions');
 ok('the page never subscribes to the retired tabs collection or a tabs/* document');

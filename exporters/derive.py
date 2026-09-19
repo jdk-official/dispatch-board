@@ -984,15 +984,64 @@ def run_doc(r, seq, project, repo=None):
     return doc
 
 
+EVIDENCE_LANES = ('cw', 'tw', 'cr')
+ROUND_KINDS = ('go', 'changes', 'nogo')
+CONDITIONS_TOKENS = ('GO-WITH-CONDITIONS', 'APPROVE-WITH-CONDITIONS')
+
+
+def work_items(rows):
+    """Each work item's state as the runs show it: {'items': {PBI id: item}, 'unattributedRounds': int}.
+
+    Only code-writer, test-writer and code-reviewer runs are evidence, credited to every PBI id their label names,
+    as findings_doc() credits them. A spec gate's approval is not built work, and a verifier's word is not a review
+    verdict. A round is a finished review (kind go, changes or nogo); the latest round decides the state: done when
+    it passed, conditions when it set conditions, partial when it failed. Evidence with no round at all is partial.
+    Nothing a later build or an unfinished review does changes that, since only a review can say work passed.
+    todo is never published: a work item no run names has no entry, because the runs cannot show that nothing was
+    done (the work may have run in a session not linked to the project). A round naming no PBI is counted in
+    unattributedRounds instead of being dropped unseen.
+
+    Rows are taken in (start, id) order, the id breaking a tie, so the exporter and the collector, which each
+    gather rows in their own order, decide the same latest round. Each item holds state, rounds, verdict and
+    latestRound (the latest round's verdict and run id, null without one), builds (cw/tw runs) and runs (every
+    evidence run id)."""
+    items, unattributed = {}, 0
+    for r in sorted(rows, key=lambda r: (r.get('start') or '', r.get('id') or '')):
+        if r.get('lane') not in EVIDENCE_LANES:
+            continue
+        is_round = r['lane'] == 'cr' and r.get('kind') in ROUND_KINDS
+        if not r.get('pbis'):
+            if is_round:
+                unattributed += 1
+            continue
+        for code in r['pbis']:
+            item = items.setdefault('PBI-' + code, {'state': 'partial', 'rounds': 0, 'verdict': None, 'latestRound': None,
+                                                    'builds': 0, 'runs': []})
+            item['runs'].append(r['id'])
+            if r['lane'] != 'cr':
+                item['builds'] += 1
+            elif is_round:
+                item['rounds'] += 1
+                item['verdict'], item['latestRound'] = r.get('verdict'), r['id']
+                item['state'] = ('partial' if r['kind'] != 'go' else
+                                 'conditions' if r.get('verdict') in CONDITIONS_TOKENS else 'done')
+    return {'items': items, 'unattributedRounds': unattributed}
+
+
 def project_doc(p, order, results, counts, running, project_of):
     """The published project document: its linked sessions that were exported, their run counts, latest activity
-    and combined usage. results, counts and running are keyed by session id."""
+    and combined usage, and the work-item state derived from those sessions' runs. results, counts and running are
+    keyed by session id. workItemStatus is the owner's switch between the shadow period and derived state, read from
+    the config; the page decides what to show from it."""
     linked = [sid for sid in p['sessions'] if sid in results and project_of[sid] == p['id']]
     lasts = [results[sid]['doc']['last'] for sid in linked if results[sid]['doc'].get('last')]
+    derived = work_items([r for sid in linked for r in results[sid].get('rows') or []])
     return {'name': p['name'], 'repoPath': p['repoPath'], 'branch': p['branch'], 'sessions': linked,
             'statusDoc': p['statusDoc'], 'order': order, 'runs': sum(counts[sid] for sid in linked),
             'running': sum(running[sid] for sid in linked), 'last': max(lasts) if lasts else None,
-            'usage': aggregate_usage([results[sid]['doc'].get('usage') for sid in linked])}
+            'usage': aggregate_usage([results[sid]['doc'].get('usage') for sid in linked]),
+            'workItems': derived['items'], 'unattributedRounds': derived['unattributedRounds'],
+            'workItemStatus': p.get('workItemStatus') or 'shadow'}
 
 
 # --- project tabs ------------------------------------------------------------
