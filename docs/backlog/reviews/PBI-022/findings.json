@@ -1,0 +1,85 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-11",
+    "mode": "diff",
+    "scope": "Uncommitted diff of C:/Users/jdk/dispatch-board-worktrees/PBI-022 against 942842b (docs/prd/dispatch-board.md, docs/brief/raw-notes.md) plus the untracked docs/backlog/evidence/2026-09-11-prd-demonstrations.md. Intent rung 2 (work-item AC): PBI-022's AC-R1..AC-R3 from docs/backlog/pbi/PBI-022.md, cross-checked against the parent spec revision 5 (ledger rows 1-24, Key decisions, Plan-gate record). Grounding path: repo suites run read-only (unittest 197 OK; page suite 44 checks passed), plus scripted cross-reference checks: id continuity from PRD revision 2 to 3, test class/method pairings, page-check names against suite output, brief line numbers, and the harness data in the gitignored out/preview. Security is reasoning-only; no Touchstone SARIF was provided.",
+    "summary": "0 CRITICAL, 0 HIGH, 1 MEDIUM, 3 LOW. Change class trivial per metadata (docs only, no executable code); correctness checked at the depth the operator asked for; security at the floor (nothing found); maintainability ceremony skipped; test-adequacy: no behaviour change, both suites green on the working tree. AC-R1 met, AC-R2 met apart from stale brief line citations, AC-R3 met. No id lost from revision 2; only allowed areas touched; the brief edits beyond one line are justified. Flag-only: nothing changed, committed or deployed; no exporter run.",
+    "sensitivity": "sensitive",
+    "verdict": "GO-WITH-CONDITIONS"
+  },
+  "findings": [
+    {
+      "id": "CR-1",
+      "severity": "MEDIUM",
+      "title": "About 36 brief line citations in PRD revision 3 point at the wrong lines, because the same change edited the brief (D-19 and D-20 now point inside decision 18)",
+      "subject": {"type": "change", "id": "docs/prd/dispatch-board.md:192", "name": "PRD brief-line citations vs docs/brief/raw-notes.md"},
+      "evidence": [
+        {"field": "docs/prd/dispatch-board.md:192", "value": "D-19 source: \"Brief decision 19 (line 165)\"; decision 19 is now at docs/brief/raw-notes.md:170 (line 165 is inside decision 18)", "sensitive": false},
+        {"field": "docs/prd/dispatch-board.md:193", "value": "D-20 source: \"Brief decision 20 (line 166)\"; decision 20 is now at raw-notes.md:171", "sensitive": false},
+        {"field": "docs/prd/dispatch-board.md:175,191,132,590,591", "value": "D-2 \"57–58\" (now 58–59); D-18 \"151–163\" (now 156–168); S-24 \"168–193\" (now 173–198); C-16 \"221–224\" (now 226–229); C-17 \"225\" (now 230)", "sensitive": false},
+        {"field": "git diff 942842b -- docs/brief/raw-notes.md", "value": "+1 line in decision 1 (line 56) and +4 lines after decision 15 (lines 133-136), so every brief line from 57 on moved by +1 and from 133 on by +5; the PRD's citations match the base brief", "sensitive": false}
+      ],
+      "impact": "Anyone tracing a decision or feature back to the brief lands on the wrong text. This includes D-19 and D-20, the brief decisions AC-R2 requires to be recorded. The citations were right for the base brief, and this PBI's own brief edits broke them.",
+      "remediation": "Re-point every brief line citation above line 55: +1 for cited lines 57-132 and +5 for lines 133 and later. Extend D-1's citation to lines 55-57 so it covers the new supersession text. Alternatively, cite the brief by heading and decision number (for example 'brief decision 19'), which does not drift when the brief changes.",
+      "refs": ["AC-R2 (brief decisions 19 and 20 recorded)", "Consistency With Existing Code"],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-2",
+      "severity": "LOW",
+      "title": "Section 7's intro leaves AC-84 out of the criteria that gate shipped behaviour, though its requirement is in Part A and it was demonstrated in this change",
+      "subject": {"type": "file", "id": "docs/prd/dispatch-board.md:605", "name": "Section 7 intro"},
+      "evidence": [
+        {"field": "docs/prd/dispatch-board.md:605", "value": "\"Of these, AC-85 and AC-89 to AC-93 now gate shipped behaviour.\"", "sensitive": false},
+        {"field": "docs/prd/dispatch-board.md:395,718", "value": "FR-128 is Part A \"Met by inspection: row 2\"; AC-84 \"Demonstrated as met under AC-R3 on 2026-09-11\"", "sensitive": false}
+      ],
+      "impact": "The re-baselined intro undercounts what is shipped, so readers get two different pictures of AC-84.",
+      "remediation": "Change the sentence to 'AC-84, AC-85 and AC-89 to AC-93 now gate shipped behaviour'.",
+      "refs": ["AC-R1 (Part A re-baselined)"],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-3",
+      "severity": "LOW",
+      "title": "The evidence note's AC-92 setup says the second session was linked 'beside' this one, but the copy moved it out of platform-catalogue; the copy is gitignored and the screenshot is not saved",
+      "subject": {"type": "file", "id": "docs/backlog/evidence/2026-09-11-prd-demonstrations.md:40", "name": "AC-92 setup"},
+      "evidence": [
+        {"field": "2026-09-11-prd-demonstrations.md:40", "value": "\"platform-catalogue's build session `7f71729a` is linked to dispatch-board beside this session `9562c312`\"", "sensitive": false},
+        {"field": "out/preview/harness.html vs harness-two-sessions.html", "value": "7f71729a's session and its 56 runs had project rewritten from \"platform-catalogue\" to \"dispatch-board\"; dispatch-board's sessions list became [9562c312, 7f71729a], and platform-catalogue's list no longer holds 7f71729a", "sensitive": true},
+        {"field": "site/index.html:289,966", "value": "the page scopes a project by s.project === p.id and r.project === p.id, so the rewrite was needed", "sensitive": false},
+        {"field": "2026-09-11-prd-demonstrations.md:25", "value": "\"A screenshot taken at 1050 px shows the same layout\" (no screenshot under docs/backlog/evidence/)", "sensitive": false}
+      ],
+      "impact": "The results are right (56 + 23 = 79 is confirmed from the harness data), but nobody can reproduce the demonstration from the repo, and the note does not say which documents were changed.",
+      "remediation": "Describe the change exactly: session and run project fields rewritten to dispatch-board, and the session dropped from platform-catalogue for the demonstration. Either save the 1050 px screenshot beside the note or remove the reference to it. Optionally commit a short recipe for rebuilding the harness.",
+      "refs": ["AC-R3", "Testing Discipline (evidence reproducibility)"],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-4",
+      "severity": "LOW",
+      "title": "The evidence note quotes AC-85 in its revision-2 wording (eight tabs), while the revision-3 criterion it is evidence for lists nine",
+      "subject": {"type": "change", "id": "docs/backlog/evidence/2026-09-11-prd-demonstrations.md:29", "name": "AC-85 quote vs PRD AC-85"},
+      "evidence": [
+        {"field": "2026-09-11-prd-demonstrations.md:29,33", "value": "quotes \"...Backlog, GitHub, Dispatch and Claude usage tabs\" and says \"All eight tabs the criterion names are shown\"", "sensitive": false},
+        {"field": "docs/prd/dispatch-board.md:719,821", "value": "AC-85 now lists \"...Dispatch, Agent catalogue and Claude usage\"; A-41 says \"the visible tabs are the nine AC-85 names\"", "sensitive": false}
+      ],
+      "impact": "A small mismatch between the evidence and the criterion it records. The note does explain the ninth tab, so the result is not in doubt.",
+      "remediation": "Label the quote as the revision-2 wording, or quote the revision-3 AC-85 and say that all nine named tabs are shown.",
+      "refs": ["AC-R3"],
+      "category": "correctness"
+    }
+  ],
+  "not_audited": [
+    {"ref": "Evidence note pixel figures and 'no page error logged'", "reason": "The harness was not re-run in a browser. The run counts and session links were checked against the harness data, and the tab labels against site/index.html:219-227; the x 28-136 px position and the error log come from the orchestrator's run."},
+    {"ref": "PBI-022 close-out: both suites green on the head commit", "reason": "The change is uncommitted. Both suites pass on the working tree (197 OK; 44 checks); re-run them on the commit."},
+    {"ref": "Security dimension", "reason": "No Touchstone SARIF was provided; reasoning only. The diff is documentation with no executable code, and no secrets were seen."}
+  ],
+  "follow_ups": [
+    "A-45: the NFR-9 half can be closed. Colour literals in site/index.html are still only on lines 8-24, inside the :root token blocks; update NFR-9 (PRD:548) and A-45 (PRD:834) to match.",
+    "A-45: FR-137 and AC-90 still have no named test (none in tests/test_export_sessions.py). Add one in a code PBI with exporters/tests in its areas; PBI-022 cannot touch tests/.",
+    "Optional: reword the scope string at PRD:847, 'tests (searched, not run)', to 'searched at authoring; run 2026-09-11 (A-44)' so the report does not seem to contradict A-44.",
+    "Optional: the change log's '28 A-rows settled by the ledger' (PRD:29) counts A-20, which the PRD maps to row 15 itself, and leaves out A-24, which row 2 settles; state the basis of the count."
+  ]
+}

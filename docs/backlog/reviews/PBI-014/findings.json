@@ -1,0 +1,241 @@
+{
+ "schema_version": "1",
+ "audit": {
+  "agent": "code-reviewer",
+  "as_of_date": "2026-09-13",
+  "mode": "diff",
+  "scope": "Round 2 (final, code_review_max_rounds = 2) of PBI-014: uncommitted working-tree change in C:/Users/jdk/dispatch-board-worktrees/PBI-014 against base 560e296 (exporters/derive.py, exporters/export_sessions.py, site/index.html, tests/page.test.mjs, tests/test_derive.py, tests/test_export_sessions.py), checked for coherence after the interrupted and resumed fix round, against round-1 findings-r1.json and change-report-r2.json. Intent rung 2 (work item with acceptance criteria): docs/backlog/pbi/PBI-014.md (AC-82, tagged demonstration; the NFR-22 owner-confirmation criterion added 2026-09-13), read with PRD FR-121, FR-87 and AC-64, the parent spec revision 5 decision that all derivations live in one shared module so the board and the local app stay identical (specs/dispatch-board.md:87), and CLAUDE.md (privacy section; runs/<id> row). No plan-grade artifact, so no deviation ceremony. Grounding path: repo suites run read-only by this reviewer; mutation checks in scratch copies (PARSER_VERSION reverted, the interrupted run's cache signing restored, seven page mutants run through PAGE_HTML); an adversarial probe of derive.publishable_files; read-only probes of the real agent transcripts named in board.config.json and of the live parser cache out/.cache/sessions.json. No Touchstone SARIF, so security is reasoning plus probes.",
+  "summary": "0 CRITICAL, 0 HIGH, 3 MEDIUM, 1 LOW across correctness and maintainability; no security finding. Change class: standard, with extra scrutiny on the path-withholding boundary because it publishes transcript-derived file paths. Dimensions covered: security, correctness, maintainability, test-adequacy. Suites re-measured on the working tree: python -m unittest discover -s tests 358 OK; node tests/page.test.mjs 121 passed; python -m unittest discover -s local/tests 304 OK. Round-1 roll-up: CR-014-1, -2, -4, -5 and -6 resolved; CR-014-3 open (deferred, carried). Verdict GO-WITH-CONDITIONS with three conditions: CR-014-7 follow-up recorded as a dependency of PBI-007 before merge; CR-014-8 page wording corrected before merge; CR-014-3 docs chore before close-out. Flag-only review: nothing edited, staged, committed, pushed, published or refreshed.",
+  "sensitivity": "sensitive",
+  "verdict": "GO-WITH-CONDITIONS"
+ },
+ "findings": [
+  {
+   "id": "CR-014-7",
+   "severity": "MEDIUM",
+   "title": "The board and the local app now publish different files for the same run: the collector calls run_doc without the repository, so every in-repo edit reads site/index.html on the board but …/index.html locally, breaking AC-64 equal records, and the local equivalence tests cannot see it",
+   "subject": {
+    "type": "change",
+    "id": "local/collector.py:436",
+    "name": "collector run_doc call vs export_sessions.py:286"
+   },
+   "evidence": [
+    {
+     "field": "exporters/export_sessions.py:280-286",
+     "value": "repo_of = {p[id]: p[repoPath] for p in st[projects]}; derive.run_doc(r, i, pid, repo_of.get(pid))",
+     "sensitive": false
+    },
+    {
+     "field": "local/collector.py:436",
+     "value": "docs[run][r[id]] = derive.run_doc(r, i, st[project_of].get(sid)) with no repo argument; st[projects] is in hand at collector.py:439, so the fix is one dict and one argument.",
+     "sensitive": false
+    },
+    {
+     "field": "exporters/derive.py:776-779",
+     "value": "run_doc docstring: without a repo every absolute path is published as …/ and its file name.",
+     "sensitive": false
+    },
+    {
+     "field": "read-only probe of real transcripts",
+     "value": "Edited paths inside repoPath that would differ between board and local: 56 occurrences for dispatch-board and 110 for platform-catalogue. The divergence affects most builder runs, not an edge case.",
+     "sensitive": false
+    },
+    {
+     "field": "local/tests",
+     "value": "No Edit, Write, MultiEdit or NotebookEdit tool call in any fixture: test_conformance.py builds only Agent (:112), TaskStop (:116) and Skill (:171-172, :304-305) calls, and test_collector.py reuses the exporter test tree basic() fixture, which has no edits. assert_equivalent (test_collector.py:45-46) therefore compares run records with no files key on either side; 304 OK is vacuous for this field. Confirmed.",
+     "sensitive": false
+    },
+    {
+     "field": "docs/prd/dispatch-board.md:698 (AC-64)",
+     "value": "The collector shall produce session, run and project records equal to the exporter documents; whichever of PBI-019 and a feature PBI lands second extends this fixture. PBI-014 is that second-landing feature PBI, but local/** is outside its allowed_areas.",
+     "sensitive": false
+    },
+    {
+     "field": "mitigation weighed",
+     "value": "The divergence withholds rather than leaks: local shows less and publishes no absolute path. No observer today: PBI-007 (log-on deployment) is In Progress in its own worktree at 560e296 with its scheduled tasks unregistered, although the merged collector and server can still be run by hand.",
+     "sensitive": false
+    }
+   ],
+   "impact": "Once merged, main violates an approved invariant (FR-87 / AC-64 and the spec decision behind it) for every run that edited a file inside its repository. The test meant to guard it passes only because its fixtures never edit a file. Nobody sees it until the local app is deployed or run by hand, and the difference is conservative; the real risk is the fix being forgotten until PBI-007 ships a local board that silently disagrees with the published one.",
+   "remediation": "Recommended disposition (b), made enforceable rather than a note. Before merge, the orchestrator records a follow-up PBI whose allowed_areas include local/collector.py and local/tests/**. That PBI builds repo_of from st[projects] and passes repo_of.get(pid) at collector.py:436, and extends the AC-64 equivalence fixture with an in-repo edit, an outside-repo write and a worktree path. Add that PBI to the depends_on of PBI-007, so the deployment cannot land first; the areas of PBI-007 (local/deploy/**, local/tests/**) cannot make the fix. If that dependency cannot be recorded without the owner, treat this condition as unmet and escalate for a scope widening instead (disposition a). Do not make the change inside PBI-014 without an owner-approved scope change.",
+   "refs": [
+    "PRD FR-87",
+    "PRD AC-64",
+    "docs/backlog/specs/dispatch-board.md:87 (shared derivation module decision)",
+    "Testing Discipline",
+    "Consistency With Existing Code"
+   ],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-014-8",
+   "severity": "MEDIUM",
+   "title": "For this project's own worktree builds the run detail gives only bare file names and tells the owner they are outside the project repository. That is wrong for about half of dispatch-board's recorded edits and every future worktree build, and the limitation is stated nowhere",
+   "subject": {
+    "type": "file",
+    "id": "site/index.html:598",
+    "name": "run detail note on …/ names"
+   },
+   "evidence": [
+    {
+     "field": "site/index.html:598",
+     "value": "A name after …/ is a file outside the project repository, its folders withheld. (Page text as written.)",
+     "sensitive": false
+    },
+    {
+     "field": "read-only probe of real transcripts",
+     "value": "dispatch-board: 65 of 140 edited-path occurrences are under C:/Users/jdk/dispatch-board-worktrees/<PBI>/, and all 65 publish as …/<name> although each is one of the project's own files. Another 56 are in the main checkout and publish repo-relative; 19 are genuinely elsewhere. platform-catalogue, edited in its main checkout: 110 publish repo-relative and 10 are outside. git worktree list shows PBI-007 and PBI-014 both in worktrees, so the worktree share only grows.",
+     "sensitive": false
+    },
+    {
+     "field": "probe of the builder claim",
+     "value": "Of the 20 dispatch-board agents with worktree edits, only 4 recorded the worktree as their cwd; the rest recorded ~ or the main checkout. The claim that nothing in a transcript reliably ties a worktree to repoPath holds.",
+     "sensitive": false
+    },
+    {
+     "field": "exporters/derive.py:771",
+     "value": "Paths are de-duplicated on the published name, so two different files in one worktree (site/index.html and local/static/index.html) collapse into a single …/index.html. The probe confirms this; no current run hits it.",
+     "sensitive": false
+    },
+    {
+     "field": "AC-82 names a code-reviewer run",
+     "value": "0 of 37 code-reviewer runs (24 dispatch-board, 13 platform-catalogue) made an edit tool call, so for a reviewer the files line always falls back to Files its findings name. That fallback appears only when the result carried a findings block: live cache shows 11 of 24 for dispatch-board and 3 of 13 for platform-catalogue.",
+     "sensitive": false
+    }
+   ],
+   "impact": "Files touched is delivered in substance for edits made in a main checkout (platform-catalogue, and dispatch-board's earlier builds). For worktree builds it gives only file names without folders, which is still useful, but the page's gloss actively misinforms by calling the project's own site/index.html a file outside the project repository. The AC-82 demonstration can pass honestly on a review round that carries a findings block plus a builder run. It would overstate the feature if the owner took the panel at face value for a worktree build.",
+   "remediation": "Before merge, in scope (site/** and tests/page.test.mjs): reword the …/ note so it cannot misdescribe a worktree. For example: a name after …/ was edited outside the project's main checkout, such as in a git worktree of it or elsewhere, its folders withheld. Pin the wording in the AC-82 page check. Either de-duplicate on the normalised source path before reducing to …/<name>, or state the collapse. At close-out, the AC-82 evidence should demonstrate on a review round with a findings block and on a builder run, and should state the worktree limitation plainly. Follow-up for the owner: let a project declare its worktree root (for example the <repoPath>-worktrees/<id>/ pattern) so worktree edits publish repo-relative. Do not use git worktree list, which forgets a removed worktree and would flip historical runs back to bare names.",
+   "refs": [
+    "PRD AC-82 (demonstration)",
+    "PRD FR-121",
+    "Correctness: misleading user-facing statement about a derived value"
+   ],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-014-3",
+   "severity": "MEDIUM",
+   "title": "Carried from round 1 and now wider: run documents publish findings and files, but neither is named in CLAUDE.md's runs/<id> row, its privacy section, or local/records.py's run shape. After merge the owner's reference is factually incomplete about a field that publishes file names",
+   "subject": {
+    "type": "change",
+    "id": "exporters/derive.py:776",
+    "name": "run_doc published keys vs the recorded run shape"
+   },
+   "evidence": [
+    {
+     "field": "exporters/derive.py:796-800",
+     "value": "doc[findings] when hasFindingsBlock; doc[files] = publishable_files(...) when non-empty.",
+     "sensitive": false
+    },
+    {
+     "field": "CLAUDE.md runs/<id> row",
+     "value": "Lists session, project, seq, lane, label, kind, verdict, tok, min, from, feeds, group, agentType and start; it names neither findings nor files.",
+     "sensitive": false
+    },
+    {
+     "field": "CLAUDE.md privacy section",
+     "value": "Enumerates what is published unredacted (titles, run labels, skill ids, pull request titles) but not that edited file paths are now published: repo-relative inside the repository, and outside it as …/<name> with the name unredacted. For example, …/settings.json from C:/Users/jdk/.claude appears in the probe.",
+     "sensitive": false
+    },
+    {
+     "field": "local/records.py:35-49",
+     "value": "SHAPES[run] names neither field; unlisted fields still validate, so nothing breaks.",
+     "sensitive": false
+    },
+    {
+     "field": "deferral",
+     "value": "Both files are outside the allowed_areas of PBI-014; change-report-r2.json records them under not_done and follow_ups.",
+     "sensitive": false
+    }
+   ],
+   "impact": "Nothing breaks, but on merge the document that the owner and every future session read for the store shape and for what is published becomes wrong, specifically about a privacy-relevant field. This is the same docs-grant gap raised for PBI-020, and it compounds with each feature PBI.",
+   "remediation": "Accept keeping these edits out of the PBI-014 code, but make them a close-out condition rather than a loose follow-up. Land a declared docs chore (precedent #22) that: adds findings and files to the runs/<id> row; adds a privacy bullet on edited file paths (repo-relative inside the repository; …/<name> outside it with folders withheld; names unredacted; owner-only per D-12); and notes that PARSER_VERSION 7 forces one full re-parse on the first refresh. Add findings and files as optional lists to SHAPES[run] in the same follow-up PBI as CR-014-7, since both are local/**.",
+   "refs": [
+    "Consistency With Existing Code",
+    "CLAUDE.md store-path table and privacy section",
+    "local/records.py:35",
+    "PBI-011 out-of-scope precedent"
+   ],
+   "category": "maintainability"
+  },
+  {
+   "id": "CR-014-9",
+   "severity": "LOW",
+   "title": "Files it edited lists every edit tool call, including calls the tool refused or that failed, and a home-relative or drive-relative path is published with its folders despite the folders-withheld rule",
+   "subject": {
+    "type": "file",
+    "id": "exporters/derive.py:292",
+    "name": "response() edit-path capture"
+   },
+   "evidence": [
+    {
+     "field": "exporters/derive.py:287-292",
+     "value": "The path is appended on the tool_use record itself and the matching tool_result is never consulted, so a denied or failed Edit on a file that was never changed still appears under Files it edited.",
+     "sensitive": false
+    },
+    {
+     "field": "probe of derive.publishable_files, repo C:/Users/jdk/dispatch-board",
+     "value": "Home-relative ~/.ssh/id_rsa publishes as ~/.ssh/id_rsa, and drive-relative C:foo/bar/baz.txt publishes as C:foo/bar/baz.txt, because both are treated as plain relative paths. Both inputs are reachable only through a call the Edit and Write tools reject for not being absolute.",
+     "sensitive": false
+    },
+    {
+     "field": "withholding attempts that held",
+     "value": "No absolute path leaked for: another drive (D:); a UNC path in either slash direction; the extended-length form; mixed case against repoPath (c:/users/JDK/Dispatch-Board); repoPath itself with or without a trailing separator; <repo>/../x and deeper climbs; a sibling-prefix folder; an 8.3 short name; a trailing-dot folder; the Git Bash /c/ form. Every value reaches the page through esc() (site/index.html:597), and a scratch mutant with esc() removed fails the AC-82 check.",
+     "sensitive": false
+    }
+   ],
+   "impact": "Low. Only the owner sees the board, a successful retry of a failed edit de-duplicates to the same file, and the folder leak needs input the tool itself refuses. The line can still name a file the run never changed, for example after a blocked-area or permission refusal.",
+   "remediation": "In publishable_files, treat a path starting with ~, or with a drive letter not followed by a slash, as outside the repository. Then either drop edits whose tool_result has is_error, or word the line as the files the run wrote to or tried to. Pin both cases in test_derive.py.",
+   "refs": [
+    "Correctness: robustness of a derived display value",
+    "Error Handling at Boundaries",
+    "CLAUDE.md privacy section"
+   ],
+   "category": "correctness"
+  }
+ ],
+ "not_audited": [
+  {
+   "ref": "Touchstone SARIF / SAST",
+   "reason": "None supplied and the repo has no SAST; security is reasoning plus the path-withholding and escaping probes."
+  },
+  {
+   "ref": "AC-82 live demonstration",
+   "reason": "Read-only review: nothing was refreshed or published. The suite equivalents pass, and the real-data probes show which runs can demonstrate it (CR-014-8)."
+  },
+  {
+   "ref": "NFR-22 judgement half, both themes",
+   "reason": "Needs a browser render. It is now the owner-confirmation criterion at PBI-014.md:38; the stub DOM cannot judge layout or contrast."
+  },
+  {
+   "ref": "Symlinks and junctions on disk",
+   "reason": "Not exercised on a real filesystem. publishable_files is purely lexical by design: a junction inside the repository that points outside publishes its in-repo relative name, and one outside that points in publishes as …/<name>. Neither publishes an absolute path, but the name can differ from the real target."
+  },
+  {
+   "ref": "Sensitive file names",
+   "reason": "Not a finding. File names outside the repository are published unredacted (for example …/settings.json), consistent with titles and labels already published under the D-12 owner-only rule. Folded into the privacy-doc condition in CR-014-3."
+  }
+ ],
+ "follow_ups": [
+  {
+   "ref": "Round-1 roll-up",
+   "reason": "CR-014-1 resolved: files is built from the Edit/Write/MultiEdit/NotebookEdit inputs the transcript walk genuinely reads (derive.py:287-292, pinned through read_agent); the residual gap is raised as CR-014-8. CR-014-2 resolved: in scratch copies, a hex colour in the panel, a hex in the .rowbtn CSS, and --human as the findings-tile tone each fail the NFR-22 check; the owner both-themes criterion covers the judgement half. CR-014-3 open, carried. CR-014-4 resolved: assertNotIn hasFindingsBlock and pbis on a real exported review run. CR-014-5 resolved: the page check covers a drive letter, a ;-split location, a comma line list and an object. CR-014-6 resolved: a verbatim copied row fails the check, but a copy differing only in attribute quoting passes, because that pin is a source grep; acceptable for a LOW."
+  },
+  {
+   "ref": "PARSER_VERSION 6 to 7: verified; the tree is coherent",
+   "reason": "With 7 reverted to 6 in a scratch copy, test_a_cache_from_before_edited_files_were_parsed_is_not_reused errors, because cached parser-6 rows are replayed without files (exactly the PBI-011 defect, caught). With the interrupted run's PARSER_VERSION - 1 signing restored, the test passes with no bump. Both builder claims are confirmed. export_sessions.py now passes repoPath (:280-286), and the end-to-end test proves it arrives. Collector safe: _session_ok checks the parser version (collector.py:159), and a reset session re-reads its agents from scratch (:348), so no parser-6 agent state reaches the r[files] read in agent_summary."
+  },
+  {
+   "ref": "Suites and page invariants re-measured",
+   "reason": "358 OK / 121 passed / 304 OK. The diff weakens nothing; the only removed assertion is the inversion disclosed in round 1. The ten-panel equivalence now compares a review run with findings on both adapters, and emptyPanels is still asserted empty. The one-event-one-render-pass check is unedited and passes, and a run pick re-renders through the same renderAll(). No unexpected console.error."
+  },
+  {
+   "ref": "Decomposition gap for the owner",
+   "reason": "AC-64 assigns the equivalence-fixture extension to the second-landing feature PBI, yet PBI-014 excludes local/**. Every future run-document field repeats CR-014-7. Consider a standing grant for feature PBIs that touch run_doc: the collector call site plus local/tests/**."
+  },
+  {
+   "ref": "First refresh after merge",
+   "reason": "PARSER_VERSION 7 forces a full re-parse. Every run document with edits gains files (about 53 agent runs across both projects), on top of the 14 findings changes from round 1. That is one or two ordinary batches with no deletions; the mass-delete guard is unaffected."
+  }
+ ]
+}

@@ -1,0 +1,135 @@
+{
+ "schema_version": "1",
+ "report": {
+  "agent": "code-writer",
+  "as_of_date": "2026-09-12",
+  "mode": "finding",
+  "change_class": "large-sensitive",
+  "scope": "PBI-025 conditions round: apply both findings of docs/backlog/reviews/PBI-025/findings.json (verdict GO-WITH-CONDITIONS, 0 CRITICAL, 0 HIGH, 1 MEDIUM CR-025-01, 1 LOW CR-025-02) to the working tree of C:/Users/jdk/dispatch-board-worktrees/PBI-025. Acceptance: (1) CR-025-01 -- a git call whose output is not valid UTF-8 costs that project's git tab alone, the pass still commits, and a test drives real non-UTF-8 bytes out of a faked git call; (2) CR-025-02 -- the statuses half of the Case tearDown guard is re-expressed rather than left absent, and the change report's 'none removed' wording is corrected; (3) tabs.carry is NOT changed (the reviewer adjudicated the deviation correct and the spec defective); (4) the three configured suites stay green. This report covers the whole PBI-025 working-tree change, of which the two conditions are the delta from change-report.json. Grounding path: ran-suite (all three configured suites run from the worktree root, verification tier 3, canonical run performed).",
+  "verdict": "DONE",
+  "summary": "This round: 3 files modified (local/tabs.py, local/tests/test_tabs.py, local/tests/test_collector.py) and 1 more touched for the restored guard (local/tests/collector_support.py); 1 test added (test_tabs.PerProjectFailures.test_non_utf8_git_output_is_confined) and 1 every-scenario tearDown assertion restored. Whole change: 7 files modified, 3 created; 46 tests added. Suites from the worktree root: python -m unittest discover -s tests 345 passed / 0 failed; node tests/page.test.mjs 99 passed / 0 failed; python -m unittest discover -s local/tests 304 passed / 0 failed (303 before this round, +1 new case). Nothing committed, staged, pushed or deployed.",
+  "sensitivity": "sensitive"
+ },
+ "changes": [
+  {
+   "path": "local/tabs.py",
+   "change_kind": "modify",
+   "why": "CR-025-01. GIT_ERRORS gains UnicodeDecodeError, with the comment moved above the constant to say why: _stdout and is_repo decode git strictly (text=True, encoding='utf-8'), so a non-UTF-8 commit subject or branch name raises an error that is neither an OSError nor a SubprocessError and escaped the per-project boundary, failing every pass and writing nothing for as long as the condition lasted. No collision with the load_data carve-out, which is outside the confined block and raises a plain ValueError. This is the only line of production code this round changes; tabs.carry is left exactly as it was, per the reviewer's adjudication.",
+   "acceptance_refs": ["CR-025-01", "AC-TB14", "spec 4.2.1 row 3"]
+  },
+  {
+   "path": "local/tests/test_tabs.py",
+   "change_kind": "modify",
+   "why": "CR-025-01's failing test, written and confirmed red before the fix. FakeRun gains raw: bytes for a repository or one of its commands, decoded with the encoding the caller asked for exactly as subprocess.run decodes under text=True, so the UnicodeDecodeError is git's own output and not a hand-made exception. PerProjectFailures.test_non_utf8_git_output_is_confined drives b'...Caf\\xe9 fix' out of alpha's git log call through the command line and asserts the failure is confined. No existing case changed.",
+   "acceptance_refs": ["CR-025-01"]
+  },
+  {
+   "path": "local/tests/test_collector.py",
+   "change_kind": "modify",
+   "why": "CR-025-02. The statuses half of the Case tearDown, deleted in round 1, is restored as an assertion of the rows a pass should have written: the stored status ids equal the statusDoc paths of every project any pass in the scenario was configured with (the empty set for the many scenarios that configure none). That keeps the every-scenario invariant the original guard existed for -- no status record the pass should not write -- and is true of the new behaviour, including the scenario where a project leaves the config and its project record is deleted while its status record is deliberately kept. One test that drives run_pass directly declares its config to the guard through Env.seen.",
+   "acceptance_refs": ["CR-025-02"]
+  },
+  {
+   "path": "local/tests/collector_support.py",
+   "change_kind": "modify",
+   "why": "CR-025-02's plumbing, and the smallest way to make the restored guard exact rather than a weaker subset check. Env records, per pass, the statusDoc of every project the config names, read through exporters/board_config.projects -- the same loader the pass uses, so the default 'status/<id>' form and the validation rules are not restated in the tests. A config that loader refuses names no project a pass could write a status for, and the pass refuses it too, so it contributes nothing.",
+   "acceptance_refs": ["CR-025-02"]
+  },
+  {
+   "path": "exporters/derive.py",
+   "change_kind": "modify",
+   "why": "Unchanged this round. The git tab's pure half moved into the shared module: git_default (the master/main/'' selection) and git_doc (the whole document from captured stdout, applying the ahead/shortstat emptiness rule itself), plus public_remote and its USERINFO pattern. No subprocess, no file read.",
+   "acceptance_refs": ["T-6", "AC-TB11"]
+  },
+  {
+   "path": "exporters/export_board.py",
+   "change_kind": "modify",
+   "why": "Unchanged this round. git_tab is a thin caller of derive.git_default and derive.git_doc, keeping its ten subprocess calls and their order; public_remote and USERINFO are re-exported through the existing import line. Output unchanged.",
+   "acceptance_refs": ["T-6", "AC-TB11"]
+  },
+  {
+   "path": "local/collector.py",
+   "change_kind": "modify",
+   "why": "Unchanged this round. Hooks the pass in: tabs.build before BEGIN IMMEDIATE, tab and status added to the stored read, the stored tabs partitioned so a foreign suffix takes part in nothing, the carry rule applied inside the transaction, tab added to the deletion kinds, the emptied-tabs guard clause, and the status records written after the upserts and deletions from one clock reading shared with lastRefresh.",
+   "acceptance_refs": ["T-1", "T-3", "AC-TB4", "AC-TB5", "AC-TB8", "AC-TB12", "AC-TB13"]
+  },
+  {
+   "path": "local/tests/test_tabs_equivalence.py",
+   "change_kind": "create",
+   "why": "Unchanged this round. The equivalence suite, built on test_conformance.Fixture consumed unmodified: tab documents equal after removing generatedAt and pulls, carriedSince equal on both sides, the findings document untouched by either writer, and refresh.plan's status documents agreeing with the collector's.",
+   "acceptance_refs": ["T-1", "T-3", "AC-TB1", "AC-TB13"]
+  },
+  {
+   "path": "tests/test_derive.py",
+   "change_kind": "modify",
+   "why": "Unchanged this round. The Git case class: git_doc over captured output, the emptiness rule, git_default's master-wins precedence, public_remote, and the assertion that derive still has no subprocess attribute.",
+   "acceptance_refs": ["T-6", "AC-TB11"]
+  },
+  {
+   "path": "tests/test_export_board.py",
+   "change_kind": "modify",
+   "why": "Unchanged this round. The in-run T-6 evidence: a verbatim pre-move reference git_tab driven through one shared fake git over four input sets, and byte-identity for the four deterministic spec tabs.",
+   "acceptance_refs": ["T-6", "AC-TB11"]
+  }
+ ],
+ "tests": [
+  {"path": "local/tests/test_tabs.py", "kind": "added", "status": "pass", "covers": "CR-025-01: PerProjectFailures.test_non_utf8_git_output_is_confined -- real non-UTF-8 bytes from alpha's git log call, decoded by the fake with the call's own encoding. Confirmed red before the fix, with the right failure: exit 1 and 'collector: pass failed (UnicodeDecodeError: ...); nothing written'. Green after it, asserting exit 0, a committed pass seen from a second connection (PRAGMA data_version moved), alpha.git carried with carriedSince while alpha.spec is fresh, beta's git tab rebuilt (branch 'work', no carriedSince), lastRefresh written, and the warning naming the project and the exception class"},
+  {"path": "local/tests/test_collector.py", "kind": "modified", "status": "pass", "covers": "CR-025-02: the Case tearDown's every-scenario guard, restored as stored status ids == the statusDoc paths of every project the scenario configured. Shown non-vacuous by a throwaway mutation probe: with tabs.statuses made to write one extra record for an unconfigured project, the guard fails the scenario in tearDown after the test body passed"},
+  {"path": "local/tests/collector_support.py", "kind": "modified", "status": "pass", "covers": "Env.seen: the configured statusDoc set the restored guard compares against, read through exporters/board_config.projects"},
+  {"path": "local/tests/test_tabs_equivalence.py", "kind": "existing", "status": "pass", "covers": "tab, carry, ownership and status equivalence between the exporters and one collector pass; unchanged this round"},
+  {"path": "local/tests/test_conformance.py", "kind": "existing", "status": "pass", "covers": "v1 conformance; consumed by the equivalence suite and NOT modified in either round (git diff --stat reports nothing for it)"},
+  {"path": "tests/test_derive.py", "kind": "existing", "status": "pass", "covers": "derive.git_doc, git_default, public_remote and the no-subprocess assertion; unchanged this round"},
+  {"path": "tests/test_export_board.py", "kind": "existing", "status": "pass", "covers": "git_tab against the pre-move reference and the spec tabs' byte-identity; unchanged this round"},
+  {"path": "tests (whole suite)", "kind": "existing", "status": "pass", "covers": "python -m unittest discover -s tests: 345 passed / 0 failed"},
+  {"path": "tests/page.test.mjs", "kind": "existing", "status": "pass", "covers": "node tests/page.test.mjs: 99 passed / 0 failed; site/** untouched"},
+  {"path": "local/tests (whole suite)", "kind": "existing", "status": "pass", "covers": "python -m unittest discover -s local/tests: 304 passed / 0 failed (303 in round 1, +1 for the new confinement case)"}
+ ],
+ "acceptance": [
+  {"criterion": "CR-025-01 (MEDIUM): a git call whose output is not valid UTF-8 costs that project's git tab alone; the pass still commits", "met": "yes", "evidence": "tabs.GIT_ERRORS = (OSError, subprocess.SubprocessError, UnicodeDecodeError), with the adjacent comment rewritten to say which failure each member covers. test_tabs.PerProjectFailures.test_non_utf8_git_output_is_confined was written first and failed for the right reason (the exception escaped tabs.build, the command line exited 1 and wrote nothing); after the one-line fix it passes with exit 0, the healthy project built, the failing project's git tab carried and every other record of the pass written."},
+  {"criterion": "CR-025-01: the test drives real non-UTF-8 bytes out of a faked git call rather than raising a made-up exception", "met": "yes", "evidence": "FakeRun.raw holds bytes and decodes them with kw['encoding'], which tabs passes as 'utf-8' with text=True, so the error raised is the genuine UnicodeDecodeError subprocess.run would raise: \"'utf-8' codec can't decode byte 0xe9 in position 37: invalid continuation byte\", observed in the red run."},
+  {"criterion": "CR-025-02 (LOW): the deleted statuses guard is re-expressed, not left absent", "met": "yes", "evidence": "local/tests/test_collector.py Case.tearDown asserts set(db.stored(c, 'status')) == self.e.configured for every scenario in the PBI-019 suite. A mutation probe that made tabs.statuses write one extra status record for an unconfigured project failed the scenario in tearDown, so the guard still catches the collector writing status rows it should not -- the point of the original."},
+  {"criterion": "CR-025-02: the change report's 'none removed' wording is corrected", "met": "yes", "evidence": "The round-1 changes[] entry for local/tests/test_collector.py said 'Each is re-expressed to the new behaviour; none is weakened or removed', which was inaccurate about the diff: two of the three edits were re-expressions and the third was a removal. This report states that plainly in not_done[0] and replaces the entry with what the file now holds."},
+  {"criterion": "tabs.carry is NOT changed", "met": "yes", "evidence": "git diff shows local/tabs.py changed on the GIT_ERRORS constant and its comment only; carry() is byte-identical to round 1. The spec amendment to 4.4 row 4 is the orchestrator's."},
+  {"criterion": "Scope respected: only local/tabs*, local/collector*, local/tests/**, exporters/derive.py, exporters/export_board.py, tests/test_derive.py, tests/test_export_board.py, board.config.json, exporters/board_config.py", "met": "yes", "evidence": "git status in the worktree lists exactly: M exporters/derive.py, M exporters/export_board.py, M local/collector.py, M local/tests/collector_support.py, M local/tests/test_collector.py, M tests/test_derive.py, M tests/test_export_board.py, ?? local/tabs.py, ?? local/tests/test_tabs.py, ?? local/tests/test_tabs_equivalence.py. No site/**, local/records*, local/schema*, local/records.shapes.json or local/server* path is touched, and local/tests/test_conformance.py is untouched."},
+  {"criterion": "The three configured suites green from the worktree root", "met": "yes", "evidence": "python -m unittest discover -s tests: Ran 345 tests, OK. node tests/page.test.mjs: all 99 page checks passed. python -m unittest discover -s local/tests: Ran 304 tests, OK. Verification tier 3 (executable code changed); this is the canonical run, not a targeted subset."},
+  {"criterion": "The change report validates against tools/change_report_schema.py", "met": "yes", "evidence": "The module at C:/Users/jdk/.claude/plugins/marketplaces/agent-catalog/tools/change_report_schema.py was loaded and its validate() called on this file: it returned [], an empty error list. Running the module as a script is NOT a check -- it has no __main__ block, so it exits 0 on any input, including a copy of this report with an invalid verdict; that copy returns ['report.verdict: must be one of DONE/DONE-WITH-CONDITIONS/NOT-DONE'] from validate(), which is how the check was confirmed non-vacuous. The round-1 report also validates clean."},
+  {"criterion": "Nothing committed, staged, pushed or deployed", "met": "yes", "evidence": "git status shows the same working-tree change with nothing staged; no git commit, add, push or merge was run, and the live board was not refreshed."},
+  {"criterion": "Code-review gate passed (review-agents:code-reviewer)", "met": "no", "evidence": "Not this agent's to assert. The conditions round is handed back to code-reviewer for the verdict."}
+ ],
+ "not_done": [
+  {
+   "ref": "change-report.json (round 1), changes[] entry for local/tests/test_collector.py -- corrected here",
+   "reason": "That entry said of the three edits 'Each is re-expressed to the new behaviour; none is weakened or removed'. Two were re-expressions (the kinds set and the summary regex); the third, the statuses half of the tearDown guard, was a removal with no replacement. The record is wrong as written, this report supersedes it, and the guard is restored in this round."
+  },
+  {
+   "ref": "CR-025-01 -- not reproduced on a genuinely non-UTF-8 repository",
+   "reason": "The fix is exercised through the injected run with real bytes, not by building a repository with git -c i18n.commitEncoding=latin-1. That matches the suite's design (every git call in these tests goes to a fake, so no test needs a repository), and matches the reviewer's own not_audited note on the same point."
+  }
+ ],
+ "follow_ups": [
+  {
+   "ref": "spec pbi-025-local-tabs.md 4.4 row 4 -- orchestrator",
+   "reason": "Left to the spec amendment the reviewer and the orchestrator settled on. tabs.carry is untouched in this round: a record that already carries carriedSince stays in the intended set, which is the only reading consistent with 6.2, and the literal row-4 wording deletes it on the third carrying pass."
+  },
+  {
+   "ref": "spec pbi-025-local-tabs.md section 7 'new files only' -- orchestrator",
+   "reason": "Stale, as the reviewer found: it was parallel-safety with PBI-026, which merged at this PBI's base commit. This round touches a second existing test-support file, local/tests/collector_support.py, which is in local/tests/** and so in allowed areas; local/tests/test_conformance.py, the file 7.4 protects, stays untouched."
+  },
+  {
+   "ref": "errors='replace' for the git subprocesses -- spec question, not taken",
+   "reason": "The reviewer noted decoding git with errors='replace' would also close CR-025-01 but would diverge from export_board's decoding, so it belongs in the spec rather than in a code change. Not taken here: the fix keeps the two sides decoding identically and confines the failure instead."
+  },
+  {
+   "ref": "tools/change_report_schema.py -- orchestrator, for future rounds",
+   "reason": "The module is at the marketplace path and defines validate(obj) -> [errors], but it has no __main__ block, so 'python change_report_schema.py <path>' runs nothing and exits 0 whatever the file says. Any round that needs a real check must import it and call validate()."
+  },
+  {
+   "ref": "CLAUDE.md store-path table -- close-out or docs pass",
+   "reason": "Outside PBI-025 allowed areas and correctly untouched, but the collector now writes every owned projectTabs record and every status record locally, which the conventions file does not yet say."
+  },
+  {
+   "ref": "owner, spec Q-1 / Q-2 / Q-3",
+   "reason": "Carried forward unchanged: a config-sourced status block for title, message and metrics; the FYI that restoring pull requests locally needs a process outside the collector; and the local findings tab, which needs exporters/export_sessions.py and is outside these areas."
+  }
+ ]
+}

@@ -1,0 +1,54 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "build-cell",
+    "as_of_date": "2026-09-12",
+    "pbi": "PBI-011",
+    "effective_tier": "assisted",
+    "gates": {
+      "code_review": "agent",
+      "external_review": "human",
+      "merge": "human",
+      "plan": "human",
+      "spec": "agent"
+    },
+    "overrides": [],
+    "sensitivity": "sensitive",
+    "summary": "Review findings ledger: derivation in the shared module, a per-project findings tab document, and the page view; code review round 1 NO-GO (1 High, 5 Medium, 2 Low), round 2 GO with 3 Low follow-ups; canonical run 334/99/194 PASS bound to 3538b12.",
+    "verdict": "CELL-DONE"
+  },
+  "rounds": [
+    {
+      "n": 1,
+      "code_writer_verdict": "DONE-WITH-CONDITIONS",
+      "reviewer_verdict": "NO-GO",
+      "change_report_ref": "docs/backlog/reviews/PBI-011/change-report-r1.json",
+      "findings_ref": "docs/backlog/reviews/PBI-011/findings-r1.json"
+    },
+    {
+      "n": 2,
+      "code_writer_verdict": "DONE",
+      "reviewer_verdict": "GO",
+      "change_report_ref": "docs/backlog/reviews/PBI-011/change-report-r2.json",
+      "findings_ref": "docs/backlog/reviews/PBI-011/findings.json"
+    }
+  ],
+  "events": [
+    {
+      "kind": "tier-resolved",
+      "detail": "standard, ceiling assisted -> assisted"
+    },
+    {
+      "kind": "scope-check",
+      "detail": "scope_guard ok after both rounds; manifest re-synced from the main checkout after the criteria were firmed"
+    },
+    {
+      "kind": "follow-up",
+      "detail": "PBI-026 landed under Proposed: local record shapes must accept the findings tab"
+    },
+    {
+      "kind": "canonical-run",
+      "detail": "334 / 99 / 194 PASS, bound to 3538b12"
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "build-cell",
+    "as_of_date": "2026-09-11",
+    "pbi": "PBI-004",
+    "effective_tier": "assisted",
+    "gates": {
+      "code_review": "agent",
+      "external_review": "human",
+      "merge": "human",
+      "plan": "human",
+      "spec": "agent"
+    },
+    "overrides": [],
+    "sensitivity": "sensitive",
+    "summary": "Shared derivation module: exporters/derive.py holds the exporters' parsing and derivation; output byte-identical (157 files); two rounds, review GO on round 2; canonical run 300/89/90 PASS bound to 333361b.",
+    "verdict": "CELL-DONE"
+  },
+  "rounds": [
+    {
+      "n": 1,
+      "code_writer_verdict": "DONE",
+      "reviewer_verdict": "GO-WITH-CONDITIONS",
+      "change_report_ref": "docs/backlog/reviews/PBI-004/change-report-r1.json",
+      "findings_ref": "docs/backlog/reviews/PBI-004/findings-r1.json"
+    },
+    {
+      "n": 2,
+      "code_writer_verdict": "DONE",
+      "reviewer_verdict": "GO",
+      "change_report_ref": "docs/backlog/reviews/PBI-004/change-report-r2.json",
+      "findings_ref": "docs/backlog/reviews/PBI-004/findings.json"
+    }
+  ],
+  "events": [
+    {
+      "kind": "tier-resolved",
+      "detail": "autonomy_resolver: standard, ceiling assisted, earned lift supervised -> assisted"
+    },
+    {
+      "kind": "scope-check",
+      "detail": "scope_guard ok after rounds 1 and 2 and the comment fix"
+    },
+    {
+      "kind": "condition-applied",
+      "detail": "round 2 Low (stale comment at export_sessions.py:50) reworded by the orchestrator before the canonical run"
+    },
+    {
+      "kind": "canonical-run",
+      "detail": "300 / 89 / 90 PASS, bound to 333361b"
+    }
+  ]
+}

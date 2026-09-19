@@ -1,0 +1,101 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-12",
+    "mode": "pbi",
+    "change_class": "standard",
+    "scope": "PBI-026: add 'findings' to local/records.py's TAB_NAMES so projectTabs/<projectId>.findings (PBI-011's review findings ledger) validates as a 'tab' record and round-trips through to_row/from_row with its store path preserved; prove no other tab name or record kind widened; extend local/tests/test_conformance.py to exercise a findings document among what the exporters write. Grounding path: ran-suite (all three configured suites run from the worktree root).",
+    "verdict": "DONE",
+    "summary": "1 file modified (local/records.py: TAB_NAMES widened by exactly 'findings'); 2 test files modified with tests ADDED only (local/tests/test_records.py: 3 new tests in Paths; local/tests/test_conformance.py: new FindingsFixture + ConformanceFindings test class). local/records.shapes.json needed no change: it mirrors only SHAPES, which TAB_NAMES is not part of, and its existing conformance test (test_the_committed_json_copy_equals_shapes) still passes unchanged. Suite results: tests=334 passed/0 failed, page.test.mjs=99/99 checks passed, local/tests=265 passed/0 failed (261 baseline + 4 new). Nothing committed, staged or pushed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "local/records.py",
+      "change_kind": "modify",
+      "why": "Widen TAB_NAMES with exactly one new name, 'findings', so the tab id pattern (_ID_FORMS['tab']) accepts projectTabs/<projectId>.findings, per PBI-011's already-merged document; local/schema.py needs no change because it keys tab rows by kind and id, not by tab name.",
+      "acceptance_refs": ["R-1", "R-2"]
+    },
+    {
+      "path": "local/tests/test_records.py",
+      "change_kind": "modify",
+      "why": "Pin the widened TAB_NAMES: findings round-trips, the tuple grew by exactly one entry in place, and an unlisted tab name (including a two-suffix id) is still rejected.",
+      "acceptance_refs": ["R-1", "R-2", "R-4"]
+    },
+    {
+      "path": "local/tests/test_conformance.py",
+      "change_kind": "modify",
+      "why": "Add a fixture variant whose session carries a completed PBI-001 code-review round, so export_sessions.py actually writes projectTabs/alpha.findings, and check it validates against the 'tab' shape and round-trips with its store path preserved -- closing the gap PBI-011 could not fix in local/**.",
+      "acceptance_refs": ["R-3", "R-4"]
+    }
+  ],
+  "tests": [
+    {
+      "path": "local/tests/test_records.py::Paths::test_findings_is_a_valid_tab_name",
+      "kind": "added",
+      "status": "pass",
+      "covers": "R-1: 'findings' is a valid tab name; store_path and to_row/from_row round-trip alpha.findings with its store path preserved"
+    },
+    {
+      "path": "local/tests/test_records.py::Paths::test_tab_names_widened_by_exactly_one",
+      "kind": "added",
+      "status": "pass",
+      "covers": "R-2: TAB_NAMES equals the original five plus exactly 'findings', in place"
+    },
+    {
+      "path": "local/tests/test_records.py::Paths::test_an_unlisted_tab_name_is_still_rejected",
+      "kind": "added",
+      "status": "pass",
+      "covers": "R-2: an unlisted tab name ('alpha.notes', 'alpha.usage', 'alpha.findings.git') is still rejected"
+    },
+    {
+      "path": "local/tests/test_conformance.py::ConformanceFindings::test_a_findings_tab_was_written_and_conforms",
+      "kind": "added",
+      "status": "pass",
+      "covers": "R-3: a findings document among what the exporters actually write validates as 'tab' and round-trips through to_row/from_row with its store path preserved"
+    },
+    {
+      "path": "tests (python -m unittest discover -s tests)",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "R-4: full board-level suite unaffected, 334 passed"
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "R-4: page suite unaffected, 99/99 checks"
+    },
+    {
+      "path": "local/tests (python -m unittest discover -s local/tests)",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "R-4: every existing local test still passes unchanged; 265 passed (261 baseline + 4 new)"
+    }
+  ],
+  "acceptance": [
+    {
+      "criterion": "R-1: findings is a valid tab name in local/records.py and local/records.shapes.json; projectTabs/<projectId>.findings validates as a tab record and round-trips through to_row/from_row with its store path preserved",
+      "met": "yes",
+      "evidence": "records.py: TAB_NAMES now includes 'findings'. records.shapes.json holds only SHAPES (the tab kind's field spec), which does not encode tab names and is unchanged; a findings document already validates against that shape (generatedAt/source/unknown fields), and test_the_committed_json_copy_equals_shapes still passes, so shapes.json continues to accept it. test_findings_is_a_valid_tab_name and ConformanceFindings::test_a_findings_tab_was_written_and_conforms both pass, the latter via the real export_sessions.py pipeline."
+    },
+    {
+      "criterion": "R-2: a tab name not in the list is still rejected, and no other record kind's id pattern changes",
+      "met": "yes",
+      "evidence": "test_an_unlisted_tab_name_is_still_rejected (new) and the pre-existing Paths.BAD['tab'] cases (e.g. 'alpha.usage') still raise ValueError. test_tab_names_widened_by_exactly_one pins the tuple grew by exactly one entry. Every existing id-form test for session/run/project/status/lastRefresh/catalogue passes unchanged, since only the 'tab' regex (built from TAB_NAMES) could be affected and nothing else references TAB_NAMES."
+    },
+    {
+      "criterion": "R-3: local/tests/test_conformance.py exercises a findings document among the documents the exporters write",
+      "met": "yes",
+      "evidence": "New FindingsFixture drives a completed PBI-001 code-review round through the real export_sessions.py pipeline (no exporters/** edits), producing projectTabs/alpha.findings.json; ConformanceFindings::test_a_findings_tab_was_written_and_conforms asserts it is present, validates, and round-trips. Confirmed red before the fix (ValueError: 'alpha.findings' is not a valid tab id) and green after."
+    },
+    {
+      "criterion": "R-4: every existing local test still passes unchanged, new cases added rather than substituted",
+      "met": "yes",
+      "evidence": "No existing assertion was edited or removed; the shared ConformanceV1 fixture and its tests are untouched (FindingsFixture is a separate subclass used only by a new, independent test class). local/tests suite: 265 passed / 0 failed (261 baseline + 4 added). tests: 334/334. page.test.mjs: 99/99."
+    }
+  ],
+  "not_done": [],
+  "follow_ups": []
+}

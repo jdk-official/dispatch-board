@@ -1,0 +1,114 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-12",
+    "mode": "diff",
+    "scope": "Uncommitted working-tree change in C:/Users/jdk/dispatch-board-worktrees/PBI-006: site/index.html (+108/-18) and tests/page.test.mjs (+167/-0), introducing the page data-adapter seam (store adapter and local API adapter). Intent rung 2 (work item with acceptance criteria): PBI-006.md AC-73 and FR-97 to FR-99, anchored to the approved parent spec docs/backlog/specs/dispatch-board.md revision 5 and PBI-005 local-server spec revision 2 (requires_spec false, so the parent spec coverage is the design authority; row Q-11 left only the detection signal to this PBI). Grounding path: repo tests run read-only from the worktree, plus reviewer-authored mutation testing of site/index.html (7 mutants), reviewer-authored adversarial probes appended to a scratch copy of the suite (adversarial markers, malformed snapshot bodies, malformed change events, prototype-pollution attempts, render fan-out), and a headless run of local/server.py against a throwaway SQLite database to re-measure the real marker, snapshot and stream contract. That server was stopped afterwards. No Touchstone SARIF was provided, so the security dimension is reasoning plus those probes.",
+    "summary": "1 MEDIUM, 5 LOW across correctness, security, maintainability and test-adequacy. Change class: standard. Suites re-measured by the reviewer from the worktree root: python -m unittest discover -s tests = 334 OK; node tests/page.test.mjs = 108 OK; python -m unittest discover -s local/tests = 261 OK - exactly the builder reported numbers, and 9 new page checks over the 99 baseline. Every builder claim I re-measured held: reversing the local comparator kills the FR-97 check, the degrade path warns rather than errors, the reset path re-fetches, a deleted path removes the record, and a marker without a snapshot URL falls back to the store. Flag-only review: nothing was changed, merged, published or deployed; the live board was not refreshed.",
+    "sensitivity": "sensitive",
+    "verdict": "GO-WITH-CONDITIONS"
+  },
+  "findings": [
+    {
+      "id": "CR-006-01",
+      "severity": "MEDIUM",
+      "title": "The FR-97 equivalence proof runs on a fixture that leaves five of the ten panels empty on both sides, so it certifies far less than the same board",
+      "subject": { "type": "file", "id": "tests/page.test.mjs:1398", "name": "the EQ fixtures and the FR-97 equivalence check" },
+      "evidence": [
+        { "field": "fixture", "value": "EQ_TABS derives from TABS (tests/page.test.mjs:104-109), whose only dispatch-board entry is dispatch-board.git. For the compared view (board-view = p:dispatch-board) the Spec, Assumptions, Decisions, Backlog and Findings panels are therefore both in their has-not-been-exported-yet empty state, and the git tab carries no pulls array and no carriedSince.", "sensitive": false },
+        { "field": "assertion", "value": "assert.deepEqual(rendered(l), rendered(s)) - rendered() does compare the real innerHTML of every panel plus statusText, crumb, asOf and foot, so the method is right; it is the data that is thin.", "sensitive": false },
+        { "field": "reviewer re-measurement", "value": "I re-ran the same deepEqual against a fixture extended with a dispatch-board.spec carrying carriedSince, a dispatch-board.findings tab with an open HIGH finding whose title holds an img-onerror fragment, and a git tab carrying an OPEN pull request. It PASSED, so the seam is in fact equivalent on those shapes - the gap is in the evidence the suite ships, not in the page.", "sensitive": false }
+      ],
+      "impact": "The shipped check cannot detect a divergence introduced later in exactly the panels most likely to diverge: the ones whose renderers walk nested arrays (pulls, findings rounds) or branch on an optional field (carriedSince). The builder report describes this as all ten panels deep-equal, which overstates what the assertion exercises.",
+      "remediation": "Extend EQ_TABS with a dispatch-board spec tab carrying carriedSince, a findings tab holding at least one open and one resolved finding, and a git tab carrying an OPEN pull request, then leave the existing deepEqual in place. The reviewer probe shows this passes today, so it is a no-risk strengthening of the evidence rather than a code change.",
+      "refs": ["Testing Discipline", "FR-97"],
+      "category": "test-adequacy"
+    },
+    {
+      "id": "CR-006-02",
+      "severity": "LOW",
+      "title": "A local server that answers 200 with a body that is not a snapshot draws a plausible-looking empty board instead of saying it could not be reached - the one silent-blank-board path the change set out to avoid",
+      "subject": { "type": "file", "id": "site/index.html:1216", "name": "localAdapter read()" },
+      "evidence": [
+        { "field": "code", "value": "records = body?.records and typeof body.records === object ? body.records : empty map - site/index.html:1216", "sensitive": false },
+        { "field": "reviewer probe", "value": "With a 200 whose body is null, an array, or an object whose records field is a string, the page renders statusText Idle, the board normal empty states, no console.warn and no footer notice. The degrade suite only covers the case where the json() call itself throws, which does raise the out-of-reach board correctly.", "sensitive": false },
+        { "field": "stated intent", "value": "The comment the change adds at site/index.html:1252 reads: a board that quietly drew nothing would read as a board with nothing on it.", "sensitive": false }
+      ],
+      "impact": "A server bug or a mid-deploy schema mismatch that returns a well-formed JSON object of the wrong shape shows the owner a working-looking board with no data, indistinguishable from a genuinely empty database. Low blast radius: the boundary is a trusted same-host process whose own suite pins the response shape, and an empty records map is a legitimate state (a database the collector has not yet written), so this is a robustness and honesty gap, not a crash.",
+      "remediation": "Treat a body whose records field is missing or not an object as a failed read - throw from read() so the existing catch draws the out-of-reach board - and keep the empty map only when records is genuinely an empty object. Add the 200-with-wrong-shape case to the existing degrade loop in the suite.",
+      "refs": ["Error Handling at Boundaries", "robustness / broken contract", "PBI-005 spec section 6.2"],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-006-03",
+      "severity": "LOW",
+      "title": "The marker guard validates only the snapshot URL, so a marker naming no events URL opens a stream at the literal path undefined?since=N",
+      "subject": { "type": "change", "id": "site/index.html:1249", "name": "adapter selection and the EventSource URL" },
+      "evidence": [
+        { "field": "code", "value": "The guard at site/index.html:1249 tests only that local.snapshot is a string; site/index.html:1223 then builds the stream URL from local.events with the since parameter appended.", "sensitive": false },
+        { "field": "reviewer probe", "value": "A marker naming the snapshot path with no events key: the snapshot is fetched and the board renders, and the stream URL is the literal text undefined with the since parameter. In a browser that resolves to a 404 on the local origin, the stream errors, readyState reaches 2 and the footer reads: Live updates from the local server stopped.", "sensitive": false },
+        { "field": "real server", "value": "Re-measured against local/server.py:579, which always injects both keys, so this shape does not occur today.", "sensitive": false }
+      ],
+      "impact": "A latent asymmetry: the guard asserts one of the two URLs it then uses. The server always supplies both today, so the consequence is confined to a spurious request and a slightly misleading footer if the wrapper ever changes.",
+      "remediation": "Make the guard require both URLs to be strings, or skip opening the stream when the events URL is not a string and say the board is static. Cover it with a sibling of the existing marker-without-snapshot check.",
+      "refs": ["Error Handling at Boundaries", "AC-73"],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-006-04",
+      "severity": "LOW",
+      "title": "The snapshot and events URLs are used verbatim with no scheme or origin check, so a marker could point the board data feed at another origin",
+      "subject": { "type": "change", "id": "site/index.html:1248", "name": "the DISPATCH_LOCAL marker and the two transports" },
+      "evidence": [
+        { "field": "code", "value": "site/index.html:1248 reads the marker from the window; its snapshot value goes straight to fetch() at site/index.html:1213 and its events value straight to the EventSource constructor at site/index.html:1223, with no validation of either.", "sensitive": false },
+        { "field": "reviewer probe, cross-origin", "value": "A marker naming an https URL on another host: the page fetches that URL, opens the stream on that host with the since parameter, renders the board from what it is handed, and opens no store subscription.", "sensitive": false },
+        { "field": "reviewer probe, javascript scheme", "value": "A marker naming javascript-scheme URLs: the page passes those strings to fetch() and to the EventSource constructor. Neither API executes a javascript-scheme URL - fetch rejects the unsupported scheme and EventSource fails its fetch - so this is not an XSS path, but nothing in the page rejects it either.", "sensitive": false },
+        { "field": "reviewer probe, non-object and polluting markers", "value": "A marker that is a string falls through to the store adapter correctly, because a string has no snapshot property. A marker carrying a prototype-polluting key is inert. Merging a change event set that carries a JSON-parsed prototype key does NOT pollute the global object prototype and does not inject a document through the prototype chain - measured with and without a real document already at that path.", "sensitive": false }
+      ],
+      "impact": "Defence in depth only: the marker is injected into the page own head by whoever serves the page, so anyone able to set it has already fully compromised the delivered document, and the published artifact never carries it. No unprivileged path to set it exists. The finding is that the page trusts the URL shape without asserting it, on the only network boundary the change introduces.",
+      "remediation": "Require the two URLs to be same-origin - simplest is to accept only strings beginning with a single slash - and fall back to the store adapter otherwise. Two lines in the existing guard, with a probe for a cross-origin marker beside the marker-without-snapshot check.",
+      "refs": ["CWE-20 Improper Input Validation", "CWE-601 URL Redirection to Untrusted Site"],
+      "category": "security"
+    },
+    {
+      "id": "CR-006-05",
+      "severity": "LOW",
+      "title": "Every change event fans out to all eight watchers, so one pushed document re-renders each panel eight times where the store adapter renders once",
+      "subject": { "type": "file", "id": "site/index.html:1204", "name": "localAdapter watch() and notify()" },
+      "evidence": [
+        { "field": "code", "value": "site/index.html:1204-1205: watch pushes a callback and calls it immediately; notify calls every registered watcher on every event.", "sensitive": false },
+        { "field": "reviewer measurement", "value": "Instrumenting the innerHTML setter of panel-dispatch and firing one change event carrying a single runs document produced 8 writes - four collection watchers, catalogue/index, meta/lastRefresh and the two status documents, each calling refresh() or apply(). The store adapter delivers one snapshot to one callback, so one render.", "sensitive": false }
+      ],
+      "impact": "A behavioural difference between the two adapters that the equivalence check cannot see, because it compares final output rather than work done. At this board size it is imperceptible; at a 2-second poll with a busy collector it is eightfold wasted DOM rebuilding, and it makes the local adapter cost profile diverge from the artifact one.",
+      "remediation": "Have notify coalesce - run the watchers once per event behind a microtask or a dirty flag - or route the change so that only the watchers whose collection actually changed are called, since the change event already names the affected paths.",
+      "refs": ["Consistency With Existing Code", "Function Size & Complexity"],
+      "category": "maintainability"
+    },
+    {
+      "id": "CR-006-06",
+      "severity": "LOW",
+      "title": "The version counter is maintained after the stream opens but never read again, so it reads as if it drives reconnection when the browser Last-Event-ID does",
+      "subject": { "type": "file", "id": "site/index.html:1217", "name": "localAdapter version tracking" },
+      "evidence": [
+        { "field": "code", "value": "version is assigned from the snapshot at site/index.html:1217 and again from every change event at site/index.html:1229, but its only read is the stream URL built once at site/index.html:1223.", "sensitive": false },
+        { "field": "reviewer re-measurement of the stream contract", "value": "Against a headless local/server.py on a throwaway database: joining at the current version returns only the retry line and no reset; joining at a stale position against version 2 returns a reset event carrying id 2. Because the reset carries the current version as its id, the browser stored Last-Event-ID moves forward, and the server takes the larger of the query position and Last-Event-ID, so the page stale query string cannot produce the PBI-005 S-4 reset loop. The page reset handler re-fetches exactly once and does not reopen the stream. No loop.", "sensitive": false }
+      ],
+      "impact": "No functional defect - the loop protection is correct and I verified it against the real server. The residue is a write-only variable that invites a future reader to believe the page manages its own resume position.",
+      "remediation": "Either drop the post-open assignments and note in the comment that resumption is the browser Last-Event-ID plus the server larger-of-the-two rule (PBI-005 spec section 7.3), or keep the variable and use it when reopening the stream after a give-up.",
+      "refs": ["Dead Code & Leftover State", "PBI-005 spec section 7.3 and finding S-4"],
+      "category": "maintainability"
+    }
+  ],
+  "not_audited": [
+    { "ref": "Real browser execution of the page", "reason": "No browser is available in this environment. The page was exercised against the suite stub DOM, and the real local/server.py endpoints were exercised separately; the two were not joined in a live browser. Browser-specific behaviour of EventSource reconnection, and of fetch and EventSource against a javascript-scheme URL, is reasoned from the specifications rather than observed." },
+    { "ref": "Touchstone SARIF or other SAST", "reason": "No aggregated SARIF or summary.json was provided and the repo carries no SAST runner, so the security dimension is reasoning plus the reviewer own adversarial probes: markers, malformed bodies, malformed events, prototype pollution." },
+    { "ref": "End-to-end snapshot conformance of session, run and project records", "reason": "The headless server skipped the seeded session record as non-conforming, so the live end-to-end check covered catalogue/index only. The record entry shape - kind, id and doc, keyed by store path - was confirmed there and matches what the adapter reads; the remaining collections were exercised through the suite fixtures instead." }
+  ],
+  "follow_ups": [
+    { "ref": "Adapter-choice reasoning, PBI-005 spec row Q-11", "note": "The builder choice of the injected marker over absence-of-window.claude is sound and I would make the same call. An artifact whose db capability is withheld also has no window.claude, and that board must still show the store out-of-reach state naming the live store; keying on absence would silently send it down the local path and make it say it cannot reach a local server that was never involved. The change own suite pins the harder half of this - the marker wins even when window.claude is present - which is the case a weaker detection signal would get wrong. No action; recorded so the decision is traceable." },
+    { "ref": "Artifact-path regression", "note": "Re-verified, no regression. The eight store subscriptions are unchanged in shape - four ordered collections, catalogue/index, meta/lastRefresh and the two statusDoc documents - the snapshot mapper and the failure handler are unchanged, sessions is still reversed, and the suite asserts the exact eight keys. The test harness installing throwing fetch and EventSource stubs when no marker is present does prove the artifact half makes no HTTP reach: I confirmed by mutation that routing the page down the local path with those stubs installed fails the check rather than passing silently." },
+    { "ref": "Mutation coverage of two defensive guards", "note": "Two mutants survived the suite: dropping the id tiebreak in the local comparator, and dropping the document-shape guard in the local adapter entry lookup. Neither is a defect - I verified by probe that a record whose doc is a string, null or missing is ignored rather than spread into the board, and that record ids are escaped - but both guards could be deleted later without the suite noticing. Worth one check each if the fixture is strengthened for CR-006-01 anyway." },
+    { "ref": "AC-73 roll-up", "note": "Met. Artifact half: no marker, eight store subscriptions, no HTTP. Local half: marker present, the snapshot is requested and then the event stream is joined at the snapshot own version, with no store subscription. Both re-measured. The PBI-005 AC-SV7 non-leak property was re-verified independently: an answers record, a collector-state record and a bare sessions path change nothing the page draws, because the collection reader filters on the collection-name-plus-slash prefix, so a bare path cannot match, and the document reader reads only fixed paths; unknown collections are inert rather than rendered. Escaping re-verified: the change touches no renderer other than swapping two literal strings for the source-naming helpers, the markdown helper is untouched, and a hostile record id arrives escaped with no console error." }
+  ]
+}

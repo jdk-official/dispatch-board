@@ -1,0 +1,89 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-11",
+    "mode": "diff",
+    "scope": "Round 2 (final configured round) of the uncommitted working-tree diff in C:/Users/jdk/dispatch-board-worktrees/PBI-013 (branch pbi/PBI-013-usage-forecast on origin/main d9de491): site/index.html (+72/-9: forecastOf resumption rule, the absent and reset-unknown states, dur, hitsFrom N-of-M wording, NO_FORECAST, forecastNote, rewritten FORECAST_HOW, forecastIsPast and the minute-timer redraw) and tests/page.test.mjs (+200: recorded setInterval callbacks, section 11 fixtures SEVERAL/ONE/IDLE/MIXED/NORESET, usage-absent, per-state notes, minute timer, malformed limits). Judged against the round-1 findings (findings-r1.json) and change-report-r2.json. Intent rung 1 (plan): the approved spec docs/backlog/specs/dispatch-board.md (ledger row 11) with PRD FR-117, FR-118, A-34, S-18 and PBI-013 AC-80. Grounding path: repo suites run read-only (node tests/page.test.mjs 68 passed; python -m unittest discover -s tests 215 OK; python -m unittest discover -s local/tests 90 OK); git diff --check clean; both files still CRLF on every line; two read-only scratch probes that ran forecastOf, extracted verbatim from site/index.html, against the real exported usage in C:/Users/jdk/dispatch-board/out and against a malformed-leaf class. Every fixture time was re-derived by hand from the code. No Touchstone SARIF or SAST: security is reasoning-only.",
+    "summary": "Change class: standard. 0 CRITICAL, 0 HIGH, 0 MEDIUM, 1 LOW (correctness). The security, maintainability and test-adequacy passes found nothing new. All five round-1 findings are resolved: CR-PBI013-01 (MEDIUM) and CR-PBI013-02 to 05 (LOW). Hand-checked fixture times: SEVERAL 16:00Z, ONE 16:30Z, IDLE 16:30Z (18:23:20Z reset-anchored, 16:36:40Z hour-start), MIXED 13:00Z with 2 of 3, NORESET 2 h 30 min after reset. All match the resumption rule as coded. The minute-timer redraw cannot loop or repeat: it redraws once per change of the passed state. It keeps the selected tab and the picker state, and logs no console.error on any plausible data. FORECAST_HOW now honestly describes the implemented method. The method choice is still a plan-defect for the owner (follow_ups). The one new LOW is a hardening gap: forecastIsPast() runs outside the per-tab try/catch. Only a contrived store leaf triggers it, so it is advisory and does not block. Verdict GO. Flag-only: nothing changed, staged, committed, pushed or deployed.",
+    "sensitivity": "sensitive",
+    "verdict": "GO"
+  },
+  "findings": [
+    {
+      "id": "CR-PBI013-06",
+      "severity": "LOW",
+      "title": "The new passed-state check runs outside the per-tab error guard of the page, so a throw in forecastOf would escape apply() and the minute timer instead of being contained",
+      "subject": {
+        "type": "change",
+        "id": "site/index.html:996, 1004, 1086",
+        "name": "forecastIsPast in renderAll and the minute timer"
+      },
+      "evidence": [
+        {
+          "field": "site/index.html:1004",
+          "value": "forecastPassed = forecastIsPast();  (after the RENDERERS.forEach try/catch, not inside it)",
+          "sensitive": false
+        },
+        {
+          "field": "site/index.html:1086",
+          "value": "setInterval(() => { renderHeader(); fillPickers(); if (forecastIsPast() !== forecastPassed) renderAll(); }, 60000);",
+          "sensitive": false
+        },
+        {
+          "field": "scratch probe (forecastOf extracted verbatim)",
+          "value": "An hourly entry whose main is the JSON object {valueOf: 1, toString: 1} makes Number(h.main) at site/index.html:878 throw TypeError: Cannot convert object to primitive value. The plausible malformed shapes (null, a string, a number, {}, [null], a non-string hour, main as a numeric string or [1], an unparseable hour) all degrade without throwing.",
+          "sensitive": false
+        }
+      ],
+      "impact": "The design of the page is that each tab draws in its own try/catch, so bad data costs one tab. CLAUDE.md adds that the page suite fails on any unexpected console.error. forecastOf is safe inside forecastTile and renderUsage. The copy at line 1004 is not guarded, though. Any throw there leaves apply() and the onSnapshot callback uncaught after the panels are drawn, leaves forecastPassed stale, and repeats as an uncaught error every minute from the timer. The only trigger found is a contrived leaf in an admin-written store that the exporter fills with round() integers, so the practical risk is low.",
+      "remediation": "Wrap the passed-state computation in the same kind of guard: for example, make forecastIsPast return false on any exception, or compute it inside a try in renderAll. Optionally compute Date.now() once per render and pass it to both the tiles and forecastIsPast. That also closes the millisecond window in which a tile drawn just before the forecast passes is never redrawn with the passed marker. Optionally coerce hourly main and sub only when typeof is number.",
+      "refs": [
+        "Error Handling at Boundaries",
+        "CWE-20 (internal store: robustness, not attacker-reachable)",
+        "CLAUDE.md: page tests fail on unexpected console.error"
+      ],
+      "category": "correctness"
+    }
+  ],
+  "not_audited": [
+    {
+      "ref": "visual-render",
+      "reason": "The tiles, the reset-unknown value (2 h 30 min after reset) and the usage-tab note were not seen in a browser. Layout was judged from the HTML and the page suite only; a preview of site/index.html from the dispatch-board project would settle it."
+    },
+    {
+      "ref": "security-sast",
+      "reason": "Touchstone SARIF not provided and no SAST in the repo: security is reasoning-only. New store-derived output goes through esc() (when(f.at), dur(f.gap), f.n, f.m); FORECAST_HOW and NO_FORECAST are constants; no new sinks."
+    },
+    {
+      "ref": "mixed-limit-types",
+      "reason": "Not judged against real data: every recorded limit is five_hour. How a seven_day reset should anchor or weigh the average is still an owner method question."
+    }
+  ],
+  "follow_ups": [
+    {
+      "ref": "round-1 resolution",
+      "note": "CR-PBI013-01 resolved: site/index.html:880-883 times each hit from max(first used hour ending after the latest earlier reset, that reset), and anchors at the latest reset (888). The real platform-catalogue export now gives a 2 h 7 min mean and 2026-09-10T23:36Z, matching the round-1 resumption figure. CR-PBI013-02 resolved: a latest hit with no resetsAt returns reset-unknown and shows a duration after reset (887, 897), and the last SEVERAL hit now has a reset (tests/page.test.mjs:660). CR-PBI013-03 resolved: the timer redraws once when the passed state changes (995-1004, 1086), checked at tests/page.test.mjs:800-811. CR-PBI013-04 resolved: the absent text, a separate unknown note, and N of the M recorded limit hits (892-893, 902). CR-PBI013-05 resolved: skewed SEVERAL (mean 16:00 vs median 14:00), IDLE, MIXED and NORESET fixtures with working in comments."
+    },
+    {
+      "ref": "plan-defect: spec ledger row 11 / PRD A-34",
+      "note": "Still open, and a plan update rather than a code change. The plan defers to the PRD default as written, and the PRD writes no method. The owner should record the implemented method: the mean of resumption-to-hit gaps, added to the latest reset. The record should also say whether brief feature 6 (current rate of use) calls for a usage-rate model. FORECAST_HOW (site/index.html:862) now describes the implemented method honestly: the mean, the resumption rule at hourly granularity, the reset fallback, and the assumption that work resumes at the reset."
+    },
+    {
+      "ref": "justified-improvement: reset-unknown state vs AC-80 wording",
+      "note": "When the reset of the latest hit is unrecorded, the page shows a duration (2 h 30 min after reset), not a clock time. This is a justified-improvement (round-1 CR-PBI013-02 asked for it), because the alternative time would be earlier than the limit could reset. AC-80 says a time labelled as an estimate, so the owner may want to record this case when settling A-34."
+    },
+    {
+      "ref": "residual method edge",
+      "note": "A hit with no reset before it is still timed from the first hour in the recorded hourly series. When usage spans more than 168 hours, the exporter starts that series at the truncation point (exporters/export_sessions.py:377, 548), so the gap is a lower bound. FORECAST_HOW says first hour with recorded usage, which is honest. It is not a finding; worth noting in the method record of the owner."
+    },
+    {
+      "ref": "writer follow-ups carried",
+      "note": "The non-list usage.hourly throw in usageChart (inside the per-tab guard) and the one-off scroll reset when the timer redraws are both fair notes. Neither blocks. The redraw costs no more than a store change, which the 10-minute refresh loop already causes."
+    },
+    {
+      "ref": "docs",
+      "note": "CLAUDE.md does not describe the forecast tile, its states or its method. Route to the docs writers once the change is accepted."
+    }
+  ]
+}

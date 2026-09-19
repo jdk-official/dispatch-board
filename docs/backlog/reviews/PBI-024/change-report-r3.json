@@ -1,0 +1,140 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-11",
+    "mode": "finding",
+    "change_class": "standard",
+    "scope": "PBI-024 carried-tab marker (FR-190 / AC-125), this round applies code-reviewer round-1 findings (GO-WITH-CONDITIONS, docs/backlog/reviews/PBI-024/findings-r1.json), test-first, in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-024, branch pbi/PBI-024-carried-marker on origin/main 12c197a. Intent and acceptance: (1) CR-PBI024-01, carried() guards parse and re-serialise as one step, catching (ValueError, RecursionError) around json.loads, json.dumps and the encode, returning the raw bytes with one stderr warning naming the file. A kept file nested 200000 levels deep inside an object, and one holding the JSON escape for U+D800, both give exit 0 with bytes unchanged while the other, healthy project still exports. (2) CR-PBI024-02, a keep-last case with now 2026-09-11T09:30:00+01:00 gives carriedSince 2026-09-11T08:30:00Z, and a set, clear and set-again case gives the second carry the later run's time. (3) CR-PBI024-03, one helper holds the tab format and both carried() and main()'s write loop use it, the 'same serialisation' comment is gone, and one test asserts the first carry is the original bytes less the closing brace plus the marker line. (4) CLAUDE.md says a kept file that is not a readable JSON object is kept unmarked, so the page shows no warning for it. Allowed areas: exporters/export_board.py, tests/test_export_board.py, CLAUDE.md, local/tests/test_conformance.py. Grounding path: ran-suite, all three configured suites run from the worktree. Verification tier 3 (executable code). The canonical three-suite run has been done on the working tree.",
+    "verdict": "DONE-WITH-CONDITIONS",
+    "summary": "This round modified 3 files: exporters/export_board.py, tests/test_export_board.py and CLAUDE.md. local/tests/test_conformance.py is still modified from the earlier round but untouched in this one. Added 3 tests and tightened 1. Red first: the deep-nesting test failed with an uncaught RecursionError from carried(), and a probe showed the U+D800 escape raising UnicodeEncodeError from the unguarded encode. Suites, run from the worktree on the working tree: python -m unittest discover -s tests ran 274 (271 + 3 added), OK. node tests/page.test.mjs passed all 68 page checks, exit 0. python -m unittest discover -s local/tests ran 90, OK. Mutation check on a scratch copy, not the worktree: dropping .astimezone(timezone.utc) fails only the UTC test; writing carried tabs with indent=2 fails only the byte-format test; pinning each file's first carriedSince fails only the set-again test; unmutated, all 3 pass. One behaviour change beyond the findings: truncated, non-UTF-8 and non-object kept files were kept silently and now also get the one stderr warning naming the file. Conditions: the PBI close-out needs the suites green on a head commit and a code-reviewer GO, and neither is this agent's to give. Nothing staged, committed, pushed or deployed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "exporters/export_board.py",
+      "change_kind": "modify",
+      "why": "New tab_bytes(doc) returns json.dumps(doc, ensure_ascii=False, indent=1).encode('utf-8'), the single tab format. main()'s write loop now writes tab_bytes(body) in binary mode, which gives the same bytes as the old text-mode json.dump with newline='\\n'. carried(raw, since, path) now does json.loads, the dict check, the marker and tab_bytes inside one try, catching (ValueError, RecursionError). A file that is not a readable JSON object is returned as its raw bytes, with one warning: 'kept file <path> is not a readable JSON object (<reason>); it is kept without carriedSince'. A file already marked is still returned byte for byte, with no warning. The 'same serialisation' comment is removed.",
+      "acceptance_refs": ["CR-PBI024-01", "CR-PBI024-03"]
+    },
+    {
+      "path": "tests/test_export_board.py",
+      "change_kind": "modify",
+      "why": "Added test_a_kept_file_json_cannot_round_trip_is_kept_as_it_was_while_others_export (CR-01), test_carried_since_is_the_run_time_converted_to_utc and test_a_source_lost_again_after_recovery_starts_a_new_carry (CR-02). test_kept_tabs_are_byte_identical now asserts the first carry byte for byte against the original file (CR-03), in place of the parsed-equality check. Its later-run byte-stability check is unchanged.",
+      "acceptance_refs": ["CR-PBI024-01", "CR-PBI024-02", "CR-PBI024-03"]
+    },
+    {
+      "path": "CLAUDE.md",
+      "change_kind": "modify",
+      "why": "One clause added at the end of the projectTabs store-table row. A kept file that is not a readable JSON object (truncated, not UTF-8, nested too deeply to parse, or holding a lone surrogate escape such as \\ud800) is kept unmarked, exactly as it was, with a warning on stderr naming the file, so the page shows no carried warning for it.",
+      "acceptance_refs": ["CLAUDE.md unmarked-file clause"]
+    }
+  ],
+  "tests": [
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_a_kept_file_json_cannot_round_trip_is_kept_as_it_was_while_others_export",
+      "kind": "added",
+      "status": "pass",
+      "covers": "CR-PBI024-01. Two projects: app's repo is gone and other is healthy. app.spec holds {\"deep\": followed by 200000 nested arrays}, and app.decisions holds {\"note\": \"\\ud800\"}. The test asserts exit 0, both files byte-identical, exactly one stderr mention of each file name, the readable app.assumptions still marked CARRIED_Z, and other.spec rebuilt (generatedAt = the run time) without carriedSince. It failed red with RecursionError before the fix."
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_carried_since_is_the_run_time_converted_to_utc",
+      "kind": "added",
+      "status": "pass",
+      "covers": "CR-PBI024-02. A keep-last run at now 2026-09-11T09:30:00+01:00 marks every kept tab with carriedSince 2026-09-11T08:30:00Z. Dropping .astimezone(timezone.utc) fails it (mutation check)."
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_a_source_lost_again_after_recovery_starts_a_new_carry",
+      "kind": "added",
+      "status": "pass",
+      "covers": "CR-PBI024-02. The sequence is carry at CARRIED, recover at LATEST (unmarked), then lose the source again at 2026-09-13T07:15:00+00:00. The test asserts every tab equals its recovered export plus carriedSince 2026-09-13T07:15:00Z, not the first carry's time. An exporter that keeps each file's first carriedSince fails it (mutation check)."
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_kept_tabs_are_byte_identical",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "CR-PBI024-03 and stable-while-carried. For every tab, the first carry must equal the original file's bytes less the trailing '\\n}', plus ',\\n \"carriedSince\": \"2026-09-11T08:30:00Z\"\\n}'. A later run leaves each kept file byte for byte as it was. Writing carried tabs with indent=2 fails it (mutation check)."
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_a_kept_file_that_is_not_a_json_object_is_kept_as_it_was",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "Truncated JSON, a JSON array and non-UTF-8 bytes are still kept byte for byte with exit 0 under the widened guard."
+    },
+    {
+      "path": "tests (the other 269 of 274)",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "The rest of the exporter and config suite, including every rebuilt tab now written through tab_bytes(). Ran 274, OK."
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "The page is unaffected: all 68 page checks passed, exit 0."
+    },
+    {
+      "path": "local/tests (90)",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "Record shapes and conformance, including test_alpha_tabs_are_the_ones_export_board_kept (the round-2 FR-190 version) and validation of every exported document. Ran 90, OK, the count unchanged."
+    }
+  ],
+  "acceptance": [
+    {
+      "criterion": "CR-PBI024-01 (MEDIUM, the condition): carried() guards json.loads, json.dumps and the encode as one step against (ValueError, RecursionError), returns raw bytes on failure and prints one stderr warning naming the file. A 200000-deep nested kept file and a U+D800-escape kept file each give exit 0 with bytes unchanged, and the healthy project still exports.",
+      "met": "yes",
+      "evidence": "test_a_kept_file_json_cannot_round_trip_is_kept_as_it_was_while_others_export failed red with 'RecursionError: Stack overflow ... while decoding a JSON array' raised out of carried(). A probe of the old carried() on {\"note\": \"\\ud800\"} raised UnicodeEncodeError. After the fix the test passes: exit 0, both files byte-identical, each file named exactly once on stderr, and other.spec rebuilt unmarked. The except clause matches the (ValueError, RecursionError) convention at export_sessions.py:194 and export_catalogue.py:95,110."
+    },
+    {
+      "criterion": "CR-PBI024-02 (LOW): a keep-last case with now 2026-09-11T09:30:00+01:00 gives carriedSince 2026-09-11T08:30:00Z; a set, clear and set-again case gives the new carry the later run's time",
+      "met": "yes",
+      "evidence": "test_carried_since_is_the_run_time_converted_to_utc and test_a_source_lost_again_after_recovery_starts_a_new_carry both pass. Mutation check on a scratch copy: removing .astimezone(timezone.utc) fails the first, and an exporter that keeps each file's first carriedSince fails the second."
+    },
+    {
+      "criterion": "CR-PBI024-03 (LOW): one helper holds the tab format and is used by carried() and main()'s write loop; the 'same serialisation' comment is dropped; optionally one test asserts first carry == original bytes less the closing brace plus the marker line",
+      "met": "yes",
+      "evidence": "git diff exporters/export_board.py: tab_bytes() is the only json.dumps(..., indent=1) in the file, called from carried() and from main()'s write loop (now binary mode, f.write(tab_bytes(body))). The comment is gone. test_kept_tabs_are_byte_identical asserts the exact byte form for every tab. With carried tabs written at indent=2 the test fails (mutation check). The 274-test suite, which reads every rebuilt tab, is green."
+    },
+    {
+      "criterion": "CLAUDE.md: a clause saying a kept file that is not a readable JSON object is kept unmarked, so the page shows no warning for it",
+      "met": "yes",
+      "evidence": "git diff CLAUDE.md: the projectTabs row ends with the new clause naming the unreadable cases, 'kept unmarked, exactly as it was, with a warning on stderr naming the file, so the page shows no carried warning for it'."
+    },
+    {
+      "criterion": "All three configured suites run from the worktree, with real counts",
+      "met": "yes",
+      "evidence": "python -m unittest discover -s tests: 'Ran 274 tests ... OK' (271 + 3 added). node tests/page.test.mjs: 'all 68 page checks passed', exit 0. python -m unittest discover -s local/tests: 'Ran 90 tests ... OK'."
+    },
+    {
+      "criterion": "Scope: only the four allowed files differ from origin/main; nothing staged, committed or pushed",
+      "met": "yes",
+      "evidence": "git status --short lists only CLAUDE.md, exporters/export_board.py, local/tests/test_conformance.py and tests/test_export_board.py, all unstaged ( M). This round did not touch local/tests/test_conformance.py. The mutation checks ran on a copy under the session scratchpad."
+    },
+    {
+      "criterion": "PBI-024 close-out: the three suites green on the head commit and a code-reviewer GO",
+      "met": "no",
+      "evidence": "The working tree is green (274 / 68 / 90), but nothing is committed (code-writer never commits) and the round-2 review has not run yet."
+    }
+  ],
+  "not_done": [
+    {
+      "ref": "PBI-024 close-out: suites green on the head commit, code-reviewer GO",
+      "reason": "code-writer never stages or commits and never grades its own change. The working-tree run is green (274/274, 68/68, 90/90), but the criterion asks for a head commit and a reviewer GO."
+    }
+  ],
+  "follow_ups": [
+    {
+      "ref": "review-agents:code-reviewer",
+      "note": "Round-2 review of the four-file working-tree diff against origin/main 12c197a, to decide whether CR-PBI024-01's condition is closed. This report is not a quality verdict."
+    },
+    {
+      "ref": "docs/prd/dispatch-board.md FR-153 (outside allowed_areas)",
+      "note": "Carried over: FR-153 still says the kept export stays unchanged and cites test_kept_tabs_are_byte_identical. Under FR-190 the kept export gains carriedSince once. The requirements owner may want FR-153 to add 'apart from carriedSince (FR-190)'."
+    },
+    {
+      "ref": "docs/backlog/reviews/PBI-024/change-report.json",
+      "note": "The saved report in the worktree is the previous round's. This report (scratchpad cr-024-change-r3.json) covers the round-1 findings, and the orchestrator can store it beside that one."
+    }
+  ]
+}

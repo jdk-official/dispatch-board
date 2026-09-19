@@ -1,0 +1,72 @@
+{
+ "schema_version": "1",
+ "audit": {
+  "agent": "code-reviewer",
+  "as_of_date": "2026-09-12",
+  "mode": "diff",
+  "scope": "Round 2 (final) of the uncommitted change on pbi/PBI-011-findings-ledger (base f2e58e6) in C:/Users/jdk/dispatch-board-worktrees/PBI-011: exporters/derive.py, exporters/export_board.py, exporters/export_sessions.py, exporters/refresh.py, site/index.html, tests/page.test.mjs, tests/test_derive.py, tests/test_export_board.py, tests/test_export_sessions.py, tests/test_refresh.py. Intent rung 1 (plan-grade): docs/backlog/pbi/PBI-011.md F-1..F-4, AC-77 and the out-of-scope and close-out lines, with PRD FR-111/FR-112 and parent-spec row 11; plus the eight round-1 findings in docs/backlog/reviews/PBI-011/findings-r1.json as the remediation contract. Grounding path: repo tests run read-only (all three configured suites in the worktree) plus throwaway probes in the scratchpad (findings_of decoy, malformed-shape and perf probes, a filename probe of the narrowed wipe, and a full export_sessions.main run against the real transcripts into a scratch out/ dir); no Touchstone SARIF supplied.",
+  "summary": "0 CRITICAL, 0 HIGH, 0 MEDIUM, 3 LOW across correctness and maintainability; no security finding. Change class: standard. All eight round-1 findings are genuinely and correctly resolved: CR-011-1 PARSER_VERSION 5 to 6 (verified: element 0 of signature() is the parser version, so every live cache entry signed [5,600] now misses), CR-011-2 findings_of returns None versus an empty list and findings_doc takes latest_ids only from the last round with hasFindingsBlock, CR-011-3 FENCE_START/FENCE_JSON keep the rightmost fence (verified against one and two decoys), CR-011-4 export_sessions owns write and delete of its document while the export_board wipe is narrowed to its own five TABS, CR-011-5 round/lastSeen published and shown as a Round column, CR-011-6 the local-conformance claim corrected in the change report, CR-011-7 findings added to refresh.TABS, CR-011-8 lifecycle, two-PBI and id-less-finding pins added. AC-77 still holds under the None-versus-empty rule (unit, exporter and page level). Suites verified by this reviewer in the worktree: python -m unittest discover -s tests 334 OK; node tests/page.test.mjs 99 OK; python -m unittest discover -s local/tests 194 OK - the builder counts are accurate. No test was weakened: the tests diff against base is +310/-3, and the three changed lines are two write-count constants and one commit count bumped because refresh.TABS gained a sixth entry. Nothing outside allowed_areas was touched. Flag-only review: nothing changed, committed, pushed, published or refreshed against the live board.",
+  "sensitivity": "sensitive",
+  "verdict": "GO"
+ },
+ "findings": [
+  {
+   "id": "CR2-011-1",
+   "severity": "LOW",
+   "title": "The narrowed wipe can no longer clear a leftover projectTabs file whose suffix is not one of the five tabs, so any such file would be pushed to the store and re-pushed for good",
+   "subject": {"type": "file", "id": "exporters/export_board.py:284", "name": "projectTabs wipe filter"},
+   "evidence": [
+    {"field": "exporters/export_board.py:281-285", "value": "makedirs(folder, exist_ok=True), then for each name in the folder delete it only when the name ends .json AND the suffix before .json is in TABS AND it is not about to be rewritten - where the base was shutil.rmtree(folder) followed by makedirs(folder)", "sensitive": false},
+    {"field": "filename probe (scratch)", "value": "app.spec.json and p.backlog.json are deletable; app.findings.json (intended), app.usage.json, app.json and stray.txt are not", "sensitive": false},
+    {"field": "live listing (read-only) of out/projectTabs and out/.pushed.json", "value": "10 files, all five TABS suffixes for the two projects; no non-TABS leftover exists today, so nothing is actually stranded", "sensitive": true}
+   ],
+   "impact": "Narrowing the wipe is the right fix for CR-011-4 and the docstring was corrected to match, but the folder is no longer self-cleaning: a file left by a retired or renamed tab suffix now survives every run, refresh.py would push it as a projectTabs document and, once pushed, keep it alive. Nothing produces such a file today, and the pre-existing test that a dropped project loses its tabs still passes, so this is a hygiene gap, not wrong behaviour on merge.",
+   "remediation": "Either delete every .json in the folder that is neither an owned TAB about to be rewritten nor a suffix another exporter is registered as owning (a small OWNED_ELSEWHERE tuple next to TABS makes the ownership explicit in one place), or record in the docstring that a retired tab suffix must be removed by hand once. A test that plants a stale usage-suffixed file and asserts the intended outcome would pin whichever rule is chosen.",
+   "refs": ["Maintainability: Consistency With Existing Code", "PBI-011 F-2"],
+   "category": "maintainability"
+  },
+  {
+   "id": "CR2-011-2",
+   "severity": "LOW",
+   "title": "A work item can be published as reaching GO while its ledger still lists findings open, because a GO round that carried no findings block is not authoritative for resolution, and the page shows both without explaining the mismatch",
+   "subject": {"type": "change", "id": "exporters/derive.py:697", "name": "latest_ids versus roundsToGo"},
+   "evidence": [
+    {"field": "exporters/derive.py:695-707", "value": "latest_ids comes from the last round that carried a findings block, while go_at is the first round whose kind is go, whatever it carried - the two read different rounds", "sensitive": false},
+    {"field": "export_sessions.main run against the real transcripts into a scratch out/ (read-only probe)", "value": "dispatch-board PBI-013: rounds 2, roundsToGo 1, open CR-PBI013-06; PBI-024: rounds 2, roundsToGo 1, three open. The page then renders N review rounds - reached GO at round 1 beside an Open tag.", "sensitive": true},
+    {"field": "site/index.html:911", "value": "the panel subtitle appends reached GO at round N whenever roundsToGo is set, with no interaction with the open list", "sensitive": false}
+   ],
+   "impact": "Conservative and deliberate - refusing to resolve findings on a round it could not read is exactly the CR-011-2 fix, and leaving them open is the safe direction - but the published document can carry a combination a reader will take as a contradiction. F-3 asks only that a work item that has reached GO shows its rounds-to-GO, which it does, so this is presentation, not a broken criterion.",
+   "remediation": "Either word the subtitle so the two facts do not collide (naming the round the findings below came from), or state the rule in the findings_doc docstring and in the tab help text. No code-path change is needed.",
+   "refs": ["Correctness: contract reasoning against PBI-011 F-3", "PRD FR-112"],
+   "category": "correctness"
+  },
+  {
+   "id": "CR2-011-3",
+   "severity": "LOW",
+   "title": "A finding whose id is JSON null slips past the new id-less-finding drop and is published with the literal id None",
+   "subject": {"type": "file", "id": "exporters/derive.py:665", "name": "findings_of id coercion"},
+   "evidence": [
+    {"field": "exporters/derive.py:664-667", "value": "the id is coerced with str() using an empty-string default and then tested for emptiness; the default only fires when the key is absent, so a present-but-null id becomes the truthy string None and is kept", "sensitive": false},
+    {"field": "probe (scratch)", "value": "findings_of on a fenced block whose findings list holds one object with a null id returns one entry whose id is the string None and whose other fields are empty", "sensitive": false}
+   ],
+   "impact": "The collapse CR-011-8 set out to prevent still happens for this one shape: several null-id findings in one round all become the single entry None. Our own reviewers emit the required id, so this needs a malformed report to reach, and the outcome is a cosmetic row rather than a wrong open or resolved verdict.",
+   "remediation": "Coerce from a checked value rather than from the default (treat a null id as absent), or skip a finding whose id is not a non-empty string. One line, and the existing id-less-finding test gains a null-id case.",
+   "refs": ["Correctness: robustness at an input boundary (CWE-20 class, internal and trusted source)", "PBI-011 F-1"],
+   "category": "correctness"
+  }
+ ],
+ "not_audited": [
+  {"ref": "Touchstone SARIF and SAST", "reason": "none provided and no SAST configured, so the security dimension is reasoning-only. The round-2 diff adds no network call, no credential, no deserialization of untrusted bytes and no user-driven path: the only new filesystem writes and deletes are to out/projectTabs under names built from a config-validated project id, and json.loads runs on one captured fenced block with ValueError and RecursionError caught. Malformed-input enumeration on findings_of (no block, unterminated JSON, findings not a list, a list of scalars, a null id, a non-dict subject, 2000-deep nesting, one and two decoy fences, and a 960 KB 81-fence input) reached a graceful outcome in every case - None or a filtered list, never a crash, and under 1 ms. No security finding raised."},
+  {"ref": "local/** (local/records.py TAB_NAMES, local/tests/test_conformance.py)", "reason": "outside this work item's allowed_areas and deliberately untouched. Round 1's CR-011-6 asked only that the local-conformance claim be corrected in the change report, which it is (change-report-r2.json acceptance entry CR-011-6, verbatim). The v1 conformance gate still does not exercise the new document; no exporter calls local/records today, so nothing is wrong at runtime. Carried in follow_ups, not re-raised."},
+  {"ref": "The published artifact and the live store", "reason": "read-only review: nothing was pushed, published or refreshed. Live behaviour was validated by running export_sessions.main against the real transcripts into a scratchpad out/ dir (exit 0, 17 sessions, 154 runs, both projects' findings documents produced), not against the store."},
+  {"ref": "CLAUDE.md store-path table", "reason": "explicitly out of scope per the PBI-011 out-of-scope line (a follow-up docs chore); its projectTabs row still lists only the five export_board tabs and names export_board.py as the writer. Carried in follow_ups."}
+ ],
+ "follow_ups": [
+  {"ref": "Rung-1 deviation assessment, round 2: the F-2 wording (the board exporter writes the document) is still departed from - export_sessions.py writes it - but the departure is now classified justified-improvement rather than round 1's problematic-departure: the plan-protected property (refresh.py manages the document, no new collection, no change to the mass-delete guard) is restored by adding findings to refresh.TABS, and ownership is explicit and order-independent in both directions with tests on each side. Recommend a one-line plan or spec correction naming export_sessions.py as the writer, not a code change. No plan-defect found."},
+  {"ref": "Criteria walk, round 2: AC-77 met (derive unit, exporter end-to-end and page checks all assert F1 and F3 resolved, F2 open, 2 rounds). F-1 met, including the review-round attribution that was missing in round 1 (round and lastSeen). F-2 met, and now order-independent. F-3 met, including the empty case with no console error. F-4 met: only exporters/**, site/index.html, tests/test_*.py and tests/page.test.mjs changed; the tests diff is +310/-3 and the three changed lines are count constants that follow the larger refresh.TABS, not loosened assertions; all three configured suites green at 334/99/194."},
+  {"ref": "CR-011-6 carried forward (out of scope here): a follow-up must add findings to local/records.TAB_NAMES with the items field on the tab shape and extend the local/tests/test_conformance.py fixture with a code-review round carrying a findings block, before anything feeds the local app. Until then local/tests staying at 194 is not evidence of conformance for the new document."},
+  {"ref": "Docs chore: record the projectTabs findings document in the CLAUDE.md store-path table, noting export_sessions.py owns it and that the export_board.py wipe now touches only its own five tabs."},
+  {"ref": "Page robustness (not a finding, unreachable from our exporter): the renderFindings open and resolved counters read an items entry before the fallback that itemPanel applies, so an items entry that is null would throw into the per-tab catch. One optional chain would match the rest of the page."},
+  {"ref": "Observed on real data, worth an owner decision rather than a code change: a single review run whose label names PBI-003/004/005 credits the same findings, round count and resolution effect to all three ledgers (platform-catalogue PBI-003, PBI-004 and PBI-005 each show the same CR-001 to CR-007). The behaviour is now pinned by a test, so it is intended; confirm that a shared review should count as a round for every work item it names."}
+ ]
+}

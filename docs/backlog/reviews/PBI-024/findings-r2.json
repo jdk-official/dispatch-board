@@ -1,0 +1,49 @@
+{
+ "schema_version": "1",
+ "audit": {
+  "agent": "code-reviewer",
+  "as_of_date": "2026-09-11",
+  "mode": "diff",
+  "scope": "PBI-024 carried-tab marker (FR-190 / AC-125), round 2 (final configured round, code_review_max_rounds = 2). Reviewed: the uncommitted working-tree diff in C:/Users/jdk/dispatch-board-worktrees/PBI-024 (branch pbi/PBI-024-carried-marker, base origin/main 12c197a), four files: exporters/export_board.py, tests/test_export_board.py, CLAUDE.md, local/tests/test_conformance.py. Also read: round-1 findings (docs/backlog/reviews/PBI-024/findings-r1.json) and the writer's change-report-r3.json. Intent rung 2 (work-item AC): the criteria in docs/backlog/pbi/PBI-024.md, with PRD FR-190 / AC-125. They prescribe no approach, so this is an AC-alignment pass, not a deviation assessment. Grounding path: the repo suites run read-only from the worktree (tests 274 OK, page 68/68 exit 0, local/tests 90 OK; git status unchanged afterwards), plus throwaway probes in the session scratchpad. The first probe ran origin/main's exporter (git archive 12c197a) and the new one on the same synthetic git copy of the tree, config and now. The second compared text-mode json.dump with tab_bytes() on stress documents. The third ran two carry runs to check the warnings. Security is reasoning-only; no Touchstone SARIF was provided. The real out/ and refresh.py were not touched.",
+  "summary": "Change class: standard. 0 CRITICAL, 0 HIGH, 0 MEDIUM, 0 LOW, across correctness, security, maintainability and test-adequacy. All three round-1 findings are resolved. CR-PBI024-01 (MEDIUM): carried() (export_board.py:377-396) parses, marks and re-serialises inside one try that catches (ValueError, RecursionError), and returns the raw bytes with a warning. The new test covers 200000-deep nesting and the U+D800 escape with exit 0, the bytes unchanged and the healthy project still exported. CR-PBI024-02 (LOW): the +01:00 to Z conversion and the set-clear-set-again lifecycle now each have a test. CR-PBI024-03 (LOW): tab_bytes() (export_board.py:371-374) is now the only indent=1 serialisation, used by carried() and by main()'s write loop (export_board.py:444-445), and test_kept_tabs_are_byte_identical asserts the exact first-carry bytes. No regression from binary-mode writing: all 6 rebuilt tabs from origin/main's exporter and the new one are byte-identical (4 hold non-ASCII bytes, none holds CR), and 5 stress documents give identical bytes both ways. Those cover U+2028/U+2029, U+0085, an astral character, CR/LF in strings, control characters, floats, NaN, big ints, empty containers and an empty dict. So no tab is pushed again because of the format. Warning: it fires once per unreadable kept file on each run (run 1 and run 2 each named each corrupt file once), never for a readable marked file (4 marked files, no warning), and it prints only the path and an exception type name, so the planted SECRET content did not appear on stderr. Run 2 left every kept file byte for byte as run 1 wrote it. AC-alignment: AC-125, stable while carried, clears on recovery, scope, docs, out of scope and the local conformance test are met. The close-out criterion cannot be verified until the change is committed (see not_audited). Verdict GO. Flag-only: nothing was changed, staged, committed, pushed or deployed, and refresh.py was not run.",
+  "sensitivity": "sensitive",
+  "verdict": "GO"
+ },
+ "findings": [],
+ "not_audited": [
+  {
+   "ref": "PBI-024 close-out criterion (three suites green on the head commit; code-reviewer GO)",
+   "reason": "The suites cannot be checked on the head commit yet: the change is uncommitted. They are green on the working tree (274 / 68 / 90). Re-run them on the commit that lands the change."
+  },
+  {
+   "ref": "Touchstone SARIF",
+   "reason": "Not provided, so the security dimension is reasoning-only. The diff adds no input source, subprocess, network call or authorisation path. The new stderr warning prints only a path under out/projectTabs and an exception type name, never file content."
+  },
+  {
+   "ref": "refresh.py end to end against the real out/",
+   "reason": "Not run, as instructed. Because every rebuilt tab is byte-identical to origin/main's, the only new pushes are the documented one-time first-carry sets."
+  }
+ ],
+ "follow_ups": [
+  {
+   "ref": "CR-PBI024-01 (round 1, MEDIUM): resolved",
+   "note": "export_board.py:384-396: json.loads, the dict check, the marker and tab_bytes() (including the encode) all run inside one try that catches (ValueError, RecursionError), in line with export_sessions.py and export_catalogue.py. The test test_a_kept_file_json_cannot_round_trip_is_kept_as_it_was_while_others_export checks exit 0, the bytes unchanged, one stderr mention per file, a readable sibling still marked, and the healthy project rebuilt without the marker."
+  },
+  {
+   "ref": "CR-PBI024-02 (round 1, LOW): resolved",
+   "note": "test_carried_since_is_the_run_time_converted_to_utc checks that 09:30+01:00 becomes 08:30:00Z. test_a_source_lost_again_after_recovery_starts_a_new_carry checks that the second carry has the later run's time and is otherwise equal to the recovered export."
+  },
+  {
+   "ref": "CR-PBI024-03 (round 1, LOW): resolved",
+   "note": "tab_bytes() is the single format. The 'same serialisation' comment is gone. test_kept_tabs_are_byte_identical asserts that the first carry is the original bytes less the closing '\n}' plus the marker line, and that a later run leaves the file byte-stable."
+  },
+  {
+   "ref": "export_board.py:395 (for the record, not a defect)",
+   "note": "A kept file that stays unreadable is warned about on every run, so every 10-minute refresh tick, until someone fixes it. That matches the existing 'cannot rebuild ... keeping the last export' warning and is intended."
+  },
+  {
+   "ref": "docs/prd/dispatch-board.md FR-153 (outside allowed_areas)",
+   "note": "Carried over from round 1: FR-153 should say 'apart from carriedSince (FR-190)'. This is for the requirements owner, not a code change."
+  }
+ ]
+}

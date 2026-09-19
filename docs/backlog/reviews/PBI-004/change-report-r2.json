@@ -1,0 +1,56 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-11",
+    "mode": "finding",
+    "change_class": "standard",
+    "scope": "Apply code-reviewer findings CR-PBI004-01 (MEDIUM), -02 (LOW) and -03 (LOW) to the uncommitted change in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-004 (branch pbi/PBI-004-shared-derivation, base 049f27e). Acceptance: (A1) a document or agent summary derive returns is an independent snapshot, so feeding more records (a new skill use, a new reject, a streamed continuation) and deriving again leaves the first unchanged while the second reflects the new records; (A2) the unused export_sessions.use_skill wrapper is removed unless a test references it; (A3) direct behaviour tests of carried, project_doc and excluded plus the feed-derive-feed case; (A4) D-4 re-proved: exporter output byte-identical to 049f27e on a fresh frozen copy of ~/.claude/projects; (A5) all three suites green, no pre-existing test edited. Edits confined to exporters/** and tests/test_derive.py. Grounding: ran-suite plus the before/after harness. Verification tier 3 (executable code): the full configured suites were run in the worktree.",
+    "verdict": "DONE",
+    "summary": "2 files modified this round (exporters/derive.py: agent_summary and session_result return copies; exporters/export_sessions.py: use_skill wrapper removed), 1 test file extended (tests/test_derive.py: 5 tests added, 21 -> 26). Red confirmed first: both snapshot tests failed on aliasing (skill count 1 -> 2 and tools [] -> ['Bash'] in the first result). Suites: tests 300 passed / 0 failed; page 89 passed; local/tests 90 passed (unchanged). D-4 re-run from scratch against a fresh 049f27e extraction and a fresh 203 MB snapshot of ~/.claude/projects, same fixed now, gh stubbed: 157 files compared, same file set, 0 differing (437,950 bytes); stderr identical; exit codes [0,0,0] both; stdout differs only in the harness's own derive=False/True marker line. No test from before this PBI edited. Nothing committed, staged, pushed or deployed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "exporters/derive.py",
+      "change_kind": "modify",
+      "why": "CR-PBI004-01: agent_summary now returns a copy of the rejects list and a copy of each response entry (with its own tools list, since a streamed response keeps appending tools to its entry in state); session_result's skillUses is a copy of each per-skill dict rather than state['uses'] itself. Docstrings say the results are copies. The exporters derive once per parse, so the output bytes are unchanged.",
+      "acceptance_refs": ["A1", "A4"]
+    },
+    {
+      "path": "exporters/export_sessions.py",
+      "change_kind": "modify",
+      "why": "CR-PBI004-02: removed the use_skill(uses, sid, skill, ts) wrapper. Grep over the worktree (exporters/, tests/, local/tests/) and the PBI doc found no caller or reference; derive.add_record calls derive.use_skill directly.",
+      "acceptance_refs": ["A2"]
+    },
+    {
+      "path": "tests/test_derive.py",
+      "change_kind": "modify",
+      "why": "CR-PBI004-01/-03: added test_a_derived_document_does_not_change_as_more_records_arrive (feed, derive, feed a Skill use and a 429 reject, derive again; first unchanged, second has count 2 and one limit and equals a one-shot parse), test_an_agent_summary_does_not_change_as_more_records_arrive (streamed continuation adding a tool, then a reject), test_carried_ends_a_running_row_once_it_has_gone_quiet, test_excluded_matches_the_folder_or_either_form_of_the_cwd, test_project_doc_combines_its_exported_linked_sessions. This file is new in this PBI.",
+      "acceptance_refs": ["A1", "A3"]
+    }
+  ],
+  "tests": [
+    {"path": "tests/test_derive.py::Sessions.test_a_derived_document_does_not_change_as_more_records_arrive", "kind": "added", "status": "pass", "covers": "session_result snapshot under incremental feed (skillUses, limits), and equality with a one-shot parse; failed before the fix"},
+    {"path": "tests/test_derive.py::Sessions.test_an_agent_summary_does_not_change_as_more_records_arrive", "kind": "added", "status": "pass", "covers": "agent_summary snapshot (resps tools, rejects) under incremental feed; failed before the fix"},
+    {"path": "tests/test_derive.py::Sessions.test_carried_ends_a_running_row_once_it_has_gone_quiet", "kind": "added", "status": "pass", "covers": "carried: live row returned as is, quiet or end-less running row becomes a killed/no result copy, non-running row untouched"},
+    {"path": "tests/test_derive.py::Sessions.test_excluded_matches_the_folder_or_either_form_of_the_cwd", "kind": "added", "status": "pass", "covers": "excluded: folder-name glob, cwd with either slash direction, no match, no patterns"},
+    {"path": "tests/test_derive.py::Sessions.test_project_doc_combines_its_exported_linked_sessions", "kind": "added", "status": "pass", "covers": "project_doc: only exported sessions linked to this project, summed runs/running, latest last, aggregated usage totals and span, empty project"},
+    {"path": "tests/ (python -m unittest discover -s tests)", "kind": "existing", "status": "pass", "covers": "300 ran, 0 failed (274 pre-PBI unchanged + 26 in test_derive.py)"},
+    {"path": "tests/page.test.mjs", "kind": "existing", "status": "pass", "covers": "all 89 page checks passed"},
+    {"path": "local/tests (python -m unittest discover -s local/tests)", "kind": "existing", "status": "pass", "covers": "90 ran, 0 failed, unchanged"}
+  ],
+  "acceptance": [
+    {"criterion": "A1 Returned documents and agent summaries are independent snapshots under incremental feeding", "met": "yes", "evidence": "The two snapshot tests failed before the fix for the aliasing reason and pass after it."},
+    {"criterion": "A2 Unused export_sessions.use_skill removed unless referenced", "met": "yes", "evidence": "No reference in tests/, local/tests/, exporters/ or PBI-004.md; wrapper removed; suites green."},
+    {"criterion": "A3 Direct tests of carried, project_doc, excluded and feed-derive-feed", "met": "yes", "evidence": "5 added tests in tests/test_derive.py pass."},
+    {"criterion": "A4 (D-4) Exporter output byte-identical to 049f27e", "met": "yes", "evidence": "Harness re-run from scratch: fresh git-show extraction of 049f27e exporters/, fresh snapshot of ~/.claude/projects, fixed now, stubbed gh: 157/157 files identical, 0 only-before/only-after, stderr identical."},
+    {"criterion": "A5 All three suites green, no pre-existing test edited", "met": "yes", "evidence": "300 OK / 89 passed / 90 OK from real runs after the final edit; only tests/test_derive.py (new in this PBI) was changed among tests."}
+  ],
+  "not_done": [],
+  "follow_ups": [
+    {"ref": "carried-name-clash", "owner": "next PBI (collector)", "note": "derive.carried (a run row going quiet) and export_board.carried (a tab kept with carriedSince) still share a name; left as is to keep this round minimal."},
+    {"ref": "verdict_of-ver-lane", "owner": "test-writer", "note": "The reviewer also listed direct tests of verdict_of/kind_of on the ver lane, add_agent/new_agent alone and usage_doc limit grouping; not requested this round, still covered indirectly by the exporter suites."},
+    {"ref": "scratch-cleanup", "owner": "orchestrator", "note": "%TEMP%/pbi004-before-r2 and the session scratchpad (compare_r2.py, projects-snap, cmp-r2/) are throwaway."}
+  ]
+}

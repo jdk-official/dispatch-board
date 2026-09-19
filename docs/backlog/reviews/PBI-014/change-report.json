@@ -1,0 +1,155 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-12",
+    "mode": "pbi",
+    "change_class": "standard",
+    "scope": "PBI-014 (feature 8, FR-121, AC-82): run detail on the Dispatch tab. Intent: the owner can select an individual run and see that run's verdict summary, findings, files touched and duration, rather than only its row. Acceptance derived from the PRD's AC-82/FR-121 and the parent spec (revision 5), which places run detail in site/** and names exporters/** for the derivations the features need. Grounding path: ran-suite (all three configured suites run in the worktree C:/Users/jdk/dispatch-board-worktrees/PBI-014 at 560e296). Areas touched: site/index.html, tests/page.test.mjs, exporters/derive.py, tests/test_derive.py, tests/test_export_sessions.py -- all inside allowed_areas; local/** untouched.",
+    "verdict": "DONE-WITH-CONDITIONS",
+    "summary": "5 files modified (1 page, 1 exporter, 3 test files); 6 page checks and 4 Python tests added, 1 existing Python test replaced by its opposite as the deliberate behaviour change; suites: python -m unittest discover -s tests 349 passed / 0 failed (baseline 345), node tests/page.test.mjs 117 passed / 0 failed (baseline 111), python -m unittest discover -s local/tests 304 passed / 0 failed (baseline 304). Conditions: FR-121's 'files touched' is not carried by any board data and is reported as a gap rather than invented; CLAUDE.md's runs/<id> row and local/records.py's run shape are outside this item's allowed areas and do not yet name the new findings field. Nothing committed, staged, pushed, merged or deployed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "site/index.html",
+      "change_kind": "modify",
+      "why": "Adds the run detail panel to the Dispatch tab: the Run log's label cell becomes a real button carrying data-run and aria-pressed, a delegated click sets the picked run and redraws the board through the one existing render pass, and the panel shows the run's outcome and verdict, duration, reported tokens, findings count, the findings table and the files those findings name. The pick falls back to the latest run in the shown scope whenever the session filter, the project picker or the store takes it away, so the panel always details a visible run. Everything from the store goes through esc(); finding titles and remediations go through md(), which was not widened. Two CSS rules added (.rowbtn, tbody tr.sel td) in existing token colours; no new console.error path, no new motion.",
+      "acceptance_refs": ["AC-82", "FR-121"]
+    },
+    {
+      "path": "exporters/derive.py",
+      "change_kind": "modify",
+      "why": "run_doc() now publishes a review round's own findings on its run document (an empty list when the round read a findings block and listed nothing; no key at all when nothing readable was reported). The per-project findings ledger cannot stand in for this: it is keyed by work item, so it holds nothing for a review that named no PBI id and cannot say which round a finding came from. agent_row() already derived the list for the ledger; only the publishing step is new, so no parser-version bump or cache invalidation is needed.",
+      "acceptance_refs": ["AC-82", "FR-121"]
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "change_kind": "modify",
+      "why": "Adds section 22, six checks for run detail, and the stub plumbing they need: the stub document now keeps the delegated click listeners the page registers (it dropped them before) and env() exposes click(attr, value). The ten-panel adapter-equivalence fixture gains a finished review round as the newest run, so the compared board's run detail panel carries a verdict, a duration and a finding on both sides, and the 'meaningful content' list now requires that finding to appear.",
+      "acceptance_refs": ["AC-82"]
+    },
+    {
+      "path": "tests/test_derive.py",
+      "change_kind": "modify",
+      "why": "Three tests pinning run_doc()'s three answers: a round's findings published, an empty list for a round that reported none, and no key for a round with no readable block or for any run outside the review lane.",
+      "acceptance_refs": ["AC-82"]
+    },
+    {
+      "path": "tests/test_export_sessions.py",
+      "change_kind": "modify",
+      "why": "test_run_documents_carry_no_findings_field pinned PBI-011's decision not to publish findings on the run document; PBI-014 is the work item that needs them, so it is replaced end to end by test_a_review_run_document_carries_its_own_findings (the exported run document holds the finding with its severity, title, file:line and remediation) plus test_a_review_round_with_no_readable_block_publishes_no_findings_key, which keeps the negative case asserted. No assertion was weakened or removed without an opposite assertion taking its place.",
+      "acceptance_refs": ["AC-82"]
+    }
+  ],
+  "tests": [
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "added",
+      "status": "pass",
+      "covers": "Section 22 run detail: the latest run of the shown scope is detailed until one is picked and the run log marks it; picking a run details it and a run with no readable findings says so and says no file is recorded for it; AC-82 -- a picked code-reviewer run shows outcome and verdict, every finding, the files they name and its duration; findings text is escaped with only bold and code spans rendered; a pick that leaves the scope or the store falls back; a round that listed no findings reads as none reported."
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "FR-97 adapter equivalence: the same board over the store adapter and the local API adapter, now with a review round as the newest run so the run detail panel is compared with real content and no panel is empty on either side."
+    },
+    {
+      "path": "tests/test_derive.py",
+      "kind": "added",
+      "status": "pass",
+      "covers": "run_doc() publishes a review round's findings, publishes [] for a round that reported none, and leaves the key out when no block was read or the run is not a review."
+    },
+    {
+      "path": "tests/test_export_sessions.py",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "End to end through the real exporter: a NO-GO round's run document carries its finding with severity, title, file:line and remediation; a round whose result carried no readable block carries no findings key."
+    },
+    {
+      "path": "local/tests",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "The record-shape conformance check drives the real exporters, so it confirms the run document with its new findings field is still an accepted run record, and the collector (which calls the same run_doc) still passes."
+    }
+  ],
+  "acceptance": [
+    {
+      "criterion": "AC-82 / FR-121, verdict summary: when the owner selects a code-reviewer run, the page shows that run's verdict summary.",
+      "met": "yes",
+      "evidence": "Page check 'AC-82: a picked code-reviewer run shows its verdict summary, each of its findings, the files they name and its duration' asserts the Outcome tile reads ['Changes required', 'CHANGES-REQUIRED'] in the detail panel, sliced from data-detail to the closing marker so the run log below cannot satisfy it."
+    },
+    {
+      "criterion": "AC-82 / FR-121, findings: the page shows the selected run's findings.",
+      "met": "yes",
+      "evidence": "Same check asserts every field of both findings (id, severity, title, file:line, remediation) in the detail panel, and the Findings tile reads 2. The data path is new: derive.run_doc() now publishes each review round's findings (tests/test_derive.py, tests/test_export_sessions.py). A round that read a block and listed nothing reads '0 / this round reported none'; a run with no readable block says 'No findings were reported in this run's result.'"
+    },
+    {
+      "criterion": "AC-82 / FR-121, files touched: the page shows the files the selected run touched.",
+      "met": "partial",
+      "evidence": "GAP, stated rather than narrowed quietly. No board data records which files a run changed: runs/<id> carries session, project, seq, lane, label, kind, verdict, tok, min, from/feeds, group, agentType and start, and the exporter reads only tool NAMES from a transcript (derive.response()), never tool inputs. The parent spec's exporters/** scope covers 'the derivations features 2 to 7 need' (run detail is feature 8) and PRD row 11 / A-33 resolves the source as 'the PRD defaults as written', which names none; deriving real edited paths would also publish absolute local paths that the spec's privacy section does not cover. So the panel shows the closest true thing, labelled as exactly that: 'Files its findings name: site/index.html, exporters/derive.py. The board keeps each run's result summary, so it does not record which files the run itself changed.' -- and, for a run with no findings, 'The board records no files for this run: it keeps each run's result summary, not the files it changed.' Pinned by the data-files assertions in the AC-82 check and in the no-findings check."
+    },
+    {
+      "criterion": "AC-82 / FR-121, duration: the page shows the selected run's duration.",
+      "met": "yes",
+      "evidence": "The Duration tile asserts ['7 min', 'started <time>'] for the review run and ['12 min', ...] for the builder run, in the same two page checks."
+    },
+    {
+      "criterion": "The run detail works through both data adapters and keeps the ten-panel equivalence check meaningful, with no panel empty on either side.",
+      "met": "yes",
+      "evidence": "The equivalence fixture's newest run is now a finished review round with a finding; the 'meaningful content' list requires 'A run-detail finding' to appear, and the deep-equal of all ten panels plus the pickers and header still passes over both adapters. The collector shares derive.run_doc(), so the local snapshot carries the same field."
+    },
+    {
+      "criterion": "One change event still causes one render pass, and no new console.error path is added.",
+      "met": "yes",
+      "evidence": "Picking a run calls the existing renderAll() once from the single delegated click handler; the pre-existing check 'the adapters cost the same work: one event, like one store snapshot, is one render pass' still passes, and the suite fails on any unexpected console.error -- 117 checks pass."
+    },
+    {
+      "criterion": "Everything rendered from store data goes through esc(); md() is not widened.",
+      "met": "yes",
+      "evidence": "Check 'run detail: findings text goes through the page's only markup path' asserts a finding title of 'A **bold** gap <img src=x onerror=alert(1)>' renders as <b>bold</b> with the img escaped, and a remediation code span as <code>. md() is unchanged; every other value in the panel (label, agent, agent type, kind, verdict, minutes, tokens, times, finding id, severity, location, file names) goes through esc()."
+    },
+    {
+      "criterion": "Worker close-out: the configured suites are green on the change.",
+      "met": "yes",
+      "evidence": "python -m unittest discover -s tests: 349 passed, 0 failed (baseline 345). node tests/page.test.mjs: 117 passed, 0 failed (baseline 111). python -m unittest discover -s local/tests: 304 passed, 0 failed (baseline 304). The code-review gate is not this agent's to declare."
+    }
+  ],
+  "not_done": [
+    {
+      "ref": "AC-82 / FR-121, 'files touched'",
+      "reason": "No board record carries the files a run changed, and the parent spec does not support adding one under this item: its exporters/** scope names the derivations features 2 to 7 need, the PRD's own resolution of the source (row 11 / A-33) names none, and reading a transcript's tool inputs would publish absolute local paths that the spec's session-privacy rules do not cover. The panel therefore shows the files the run's findings name, labelled as that and not as the files it changed. An owner or spec decision is needed to record files touched properly -- see follow_ups."
+    },
+    {
+      "ref": "CLAUDE.md store-path table, runs/<id> row",
+      "reason": "The run document now carries an optional findings field, but CLAUDE.md is outside this item's allowed_areas (site/**, tests/page.test.mjs, exporters/**, tests/test_*.py), so the table still describes the old shape. It must be caught up at close-out."
+    },
+    {
+      "ref": "local/records.py SHAPES['run']",
+      "reason": "The new field validates today (a SPEC's unlisted fields are allowed and kept), and local/tests is green, but findings is not listed as an optional run field. local/** is outside this item's allowed_areas, so it was not touched."
+    }
+  ],
+  "follow_ups": [
+    {
+      "ref": "owner / requirements-author: decide the real source for FR-121's 'files touched'",
+      "reason": "The honest options are the agent's own structured result (a code-writer change report names changes[].path) or the agent transcript's Write/Edit tool inputs. Either publishes file paths that the spec's privacy section does not yet cover, so it needs an owner decision and a spec row before an exporter derives it."
+    },
+    {
+      "ref": "close-out: CLAUDE.md runs/<id> row and local/records.py run shape",
+      "reason": "Record the optional findings field on the run document (list, possibly empty, only on a review round whose result carried a readable findings block) in the store-path table, and consider listing it in SHAPES['run'].optional."
+    },
+    {
+      "ref": "next refresh: every code-reviewer run document changes",
+      "reason": "The first refresh after this merges will re-push every cr-lane run document with its findings. That is an ordinary content change, not a mass delete, so the guards do not fire -- but the push will be larger than a usual tick."
+    },
+    {
+      "ref": "code-reviewer: judge one deliberate consistency call",
+      "reason": "A finding's file:line is rendered in the mono face (class=\"sub id\") in the run detail panel, exactly as the Findings ledger tab already renders the same field, rather than in the sans face the design rule asks for paths. Consistency with the existing findings rendering was chosen over changing only one of the two places; changing both would be outside this item's blast radius."
+    },
+    {
+      "ref": "optional: make the swimlane boxes selectable too",
+      "reason": "Selection is offered from the Run log only, which is keyboard-accessible; wiring the SVG boxes to the same data-run path would widen the diff beyond the acceptance criterion."
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-11",
+    "mode": "diff",
+    "scope": "Round 2 (final) of the uncommitted change in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-004 (branch pbi/PBI-004-shared-derivation, base 049f27e): git diff of exporters/export_board.py, export_catalogue.py and export_sessions.py, plus the untracked exporters/derive.py and tests/test_derive.py, re-read in full. Intent rung 2 (work-item AC): docs/backlog/pbi/PBI-004.md D-1 to D-5 and the close-out line, together with the round-1 findings (findings-r1.json) and the builder's round-2 claims (change-report-r2.json). Grounding: ran all three repo suites read-only; ran an in-process before/after probe (parse_session from the base 049f27e exporters, extracted to scratch, against the worktree's exporters) on every real main transcript under ~/.claude/projects with the same now; did an AST comparison of top-level names, base against new, for the three exporter modules; checked every object that agent_summary and session_result return for aliasing of the running state by reading the code. Security is reasoning-only (no Touchstone SARIF).",
+    "summary": "Change class: large (a ~800-line move of executable exporter code into a shared module; no behaviour change intended). 0 CRITICAL / 0 HIGH / 0 MEDIUM / 1 LOW (maintainability). Dimensions covered: correctness, security, maintainability, test-adequacy. Round-1 status: CR-PBI004-01 (MEDIUM) is resolved. agent_summary now returns a fresh resps list, and each entry is a copy with its own tools list. It also returns a copied rejects list. Its usage dict is replaced, never mutated, when a streamed response continues. session_result returns skillUses as per-skill dict copies. The rest of doc (usage_doc output, strings) is newly built, and rows/skipped are caller-owned, so nothing returned still aliases new_session/new_agent state. CR-PBI004-02 (LOW) is resolved: export_sessions.use_skill has been removed; a grep of exporters/, tests/ and local/ finds no reference, and D-3 does not name it. CR-PBI004-03 (LOW) is resolved for the items it headlined: carried, excluded, project_doc and a feed-derive-feed case, for both session_result and agent_summary. Each new test asserts behaviour: a deepcopy snapshot equals the first result, and the second result equals a one-shot parse. verdict_of on the ver lane and usage_doc limit grouping are still tested only through the exporter suites. That deferral is acceptable: those paths are covered and did not change. Output is unchanged: the before/after probe found 25 of 25 real sessions with identical parse_session results. That is consistent with the builder's claim of 157 of 157 files identical. Suites, run here: 300 OK, 89 passed, 90 OK. No pre-existing test was edited (only tests/test_derive.py is new). AC-alignment: D-1 to D-5 met; the close-out on the head commit cannot be verified until the change is committed. Security: no new input boundary and no I/O in derive. Flag-only: nothing was changed, staged, committed, pushed or deployed in the worktree.",
+    "sensitivity": "sensitive",
+    "verdict": "GO"
+  },
+  "findings": [
+    {
+      "id": "CR-PBI004-04",
+      "severity": "LOW",
+      "title": "export_sessions says everything it exported before is still importable, but use_skill no longer is, so a reader could trust the comment and reach for a name that is gone",
+      "subject": {"type": "file", "id": "exporters/export_sessions.py:50", "name": "export_sessions re-export comment"},
+      "evidence": [
+        {"field": "exporters/export_sessions.py:50", "value": "# Everything this module exported before derive.py held the parsing stays importable from here.", "sensitive": false},
+        {"field": "AST name diff, base 049f27e vs worktree", "value": "export_sessions no longer defines use_skill (removed in round 2 for CR-PBI004-02); besides use_skill, only stdlib imports are gone (re, math, fnmatch, datetime...), and no suite patches those", "sensitive": false}
+      ],
+      "impact": "Minor and not blocking. The comment is now slightly wrong, and D-3 still holds because no suite imports or patches use_skill.",
+      "remediation": "Reword the comment, for example 'Every name the suites and other exporters use from here stays importable', or name the exception (use_skill now lives only in derive).",
+      "refs": ["Code Commenting (comment accuracy)", "Consistency With Existing Code"],
+      "category": "maintainability"
+    }
+  ],
+  "not_audited": [
+    {"ref": "Close-out: suites green on the head commit", "reason": "The change is still uncommitted, so there is no head commit. The three suites were run on the working tree (300 / 89 / 90, all green). Re-run them on the commit."},
+    {"ref": "D-4 full exporter output on a frozen copy", "reason": "The builder's frozen-copy harness (157 files) was not re-run here. The round-2 changes touch only what agent_summary and session_result return, so they were re-checked at that seam instead: the base and worktree parse_session gave identical results on all 25 live main transcripts. project_doc, run_doc and the board and catalogue exporters did not change in round 2."},
+    {"ref": "Security dimension", "reason": "Touchstone SARIF was not provided, so the security pass is reasoning-only. derive opens no files, processes or sockets (the import-audit test passes), and the redaction patterns are unchanged."}
+  ],
+  "follow_ups": [
+    "Optional, for test-writer: add direct derive tests of verdict_of/verifier_outcome on the ver lane and of usage_doc limit grouping (the rest of round-1 LOW CR-PBI004-03; the exporter suites already cover these).",
+    "Before PBI-019: derive.carried (a run row going quiet) and export_board.carried (a tab kept with carriedSince) share a name; rename one before the collector imports both.",
+    "Carried over from round 1, for PBI-019: new_session state holds a set (skillCalls) and can use None as a dict key, so it cannot be serialised to JSON. Plan a state serialiser, or re-derive from stored records, if the collector must persist state across restarts."
+  ]
+}

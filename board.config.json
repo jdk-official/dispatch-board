@@ -30,7 +30,7 @@
       "name": "dispatch-board",
       "repoPath": "C:/Users/jdk/dispatch-board",
       "branch": "main",
-      "sessions": ["9562c312-123e-4f48-952b-32d375699bf7"],
+      "sessions": ["9562c312-123e-4f48-952b-32d375699bf7", "7e0c4f3c-b16d-44c4-974a-acec9aaba1b2"],
       "statusDoc": "status/dispatch-board",
       "docs": {
         "prd": "docs/prd/dispatch-board.md",

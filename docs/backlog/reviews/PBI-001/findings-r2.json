@@ -1,0 +1,182 @@
+{
+ "schema_version": "1",
+ "audit": {
+  "agent": "code-reviewer",
+  "as_of_date": "2026-09-11",
+  "mode": "diff",
+  "scope": "Round 2 (final configured round) of the uncommitted working-tree diff in C:/Users/jdk/dispatch-board-worktrees/PBI-001 (branch pbi/PBI-001-exporter-hardening, rebased onto origin/main d9de491): exporters/export_sessions.py, board_config.py, export_board.py, refresh.py, CLAUDE.md, tests/test_export_sessions.py, test_export_board.py, test_refresh.py, against round-1 findings-r1.json and change-report-r2.json. Intent rung 1 (plan): PBI-001.md under the approved spec, cross-checked against PRD FR-80/81/82/84/133, C-16, the verifier output contract (review-agents/agents/verifier.md:57-71) and local/records.py:98 (_SEGMENT). Grounding: repo suites run read-only from the worktree (tests/ 261 OK, node tests/page.test.mjs 57/57, local/tests 90 OK; git status identical before and after) plus throwaway probes in the session scratchpad: verdict_of worktree vs origin/main over 8 lanes x 14 texts, 15 verifier phrasings, later_items worktree vs origin/main on the real specs of both projects, runs.manual ids against Windows file-name rules and ntpath.join, public_remote/github_repo over 7 credential forms. Touchstone SARIF not provided: security is reasoning plus probes only.",
+  "summary": "Change class: standard. Round-1 status: CR-PBI001-01 (HIGH) resolved as specified; CR-PBI001-02 (MEDIUM) partially resolved; CR-PBI001-03 and -04 (LOW) resolved. New: 2 MEDIUM, 1 LOW, all correctness; security, maintainability and test-adequacy reviewed with no standalone finding. Regressions: none found. Other lanes read verdicts exactly as origin/main (0 differences over cr/plan/cw/tw/req/orch/human/other); only ver changed, by design. The ast drift test reads local/records.py as data and passes. Nested Later text leaves both real exports identical to origin/main (dispatch-board 10 and 9 ideas, platform-catalogue 0). The session-level carried() copy goes only into the export: the cache is written from the untouched hit, and the test pins it. Security: round 2 does not touch the remote-credential path; userinfo is still stripped for every form probed and gh --repo still comes from the stripped line. Verdict GO-WITH-CONDITIONS: no CRITICAL or HIGH remains; CR-PBI001-05 and -06 are the conditions. Flag-only: nothing changed, staged, committed, pushed, run against the real out/, or deployed.",
+  "sensitivity": "sensitive",
+  "verdict": "GO-WITH-CONDITIONS"
+ },
+ "findings": [
+  {
+   "id": "CR-PBI001-05",
+   "severity": "MEDIUM",
+   "title": "A verifier result with no labelled outcome is still published as exercised when a bare fallback-declared headline is followed by a bold or code-quoted exercised, so the board can claim verification that never ran",
+   "subject": {
+    "type": "change",
+    "id": "exporters/export_sessions.py:69-73,254-258",
+    "name": "VERIFIER_TIERS order in verifier_outcome()"
+   },
+   "evidence": [
+    {
+     "field": "code",
+     "value": "for tier in VERIFIER_TIERS: found = {...}; if found: return fallback-declared if it is in found, else exercised. The fallback preference applies only within one tier, so a tier-2 (bold/code/Verdict) exercised returns before the tier-3 bare fallback-declared is considered.",
+     "sensitive": false
+    },
+    {
+     "field": "probe",
+     "value": "verdict_of(text, ver): [fallback-declared (headless run infeasible; `exercised` needs a browser)] -> exercised; [fallback-declared: the flow could only be `exercised` in a browser] -> exercised; [fallback-declared. **Exercised** requires Playwright, which I lack.] -> exercised. With the JSON outcome key present, every case reads correctly.",
+     "sensitive": false
+    },
+    {
+     "field": "reach",
+     "value": "classify() reads the full task-notification result (export_sessions.py:296,305; the result tag at :544). A contract-conformant verifier always emits report.outcome (verifier.md:57-63), which tier 1 reads first, so only a result without the JSON outcome reaches this path.",
+     "sensitive": false
+    },
+    {
+     "field": "provenance",
+     "value": "The tier order is the one the round-1 remediation for CR-PBI001-01 prescribed (labelled, then bold/code/Verdict, then bare); the writer implemented it faithfully. The defect is in that ordering, not the implementation.",
+     "sensitive": false
+    }
+   ],
+   "impact": "FR-84 publishes the verifier word so the owner knows whether a change was really exercised; a false exercised is the worst failure the verifier contract names. The case needs a result without its mandated JSON block (truncated, abbreviated or non-conformant), so it is narrower than CR-PBI001-01. When it happens, though, it produces the same false claim.",
+   "remediation": "Keep tier 1 (the outcome key or Outcome: label) authoritative. Below it, let any un-negated fallback-declared in tiers 2 and 3 win over exercised, whatever tier each word came from: the risk is one-sided, and under-claiming is the safe direction. Add the three probe strings as VerdictOf tests.",
+   "refs": [
+    "FR-84",
+    "AC-61",
+    "CR-PBI001-01 (round 1)",
+    "Testing Discipline"
+   ],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-PBI001-06",
+   "severity": "MEDIUM",
+   "title": "On Windows a runs.manual id still escapes out/runs or crashes the export: a drive-qualified id such as d:notes is written to another drive, forbidden characters raise a traceback, and a leading-dot id is written but never pushed",
+   "subject": {
+    "type": "change",
+    "id": "exporters/board_config.py:27,129",
+    "name": "RUN_ID and its use in manual(); written at exporters/export_sessions.py:841"
+   },
+   "evidence": [
+    {
+     "field": "code",
+     "value": "RUN_ID (a copy of local _SEGMENT) refuses only a slash or backslash, C0/C1 control characters, empty, a single dot and two dots. export_sessions.py:841 writes os.path.join(out, runs, id + .json) after :823-825 have already emptied out/sessions, out/runs and out/projects.",
+     "sensitive": false
+    },
+    {
+     "field": "probe: drive escape",
+     "value": "board_config.manual accepts id d:notes; ntpath.join(worktree/out/runs, d:notes.json) gives d:notes.json, drive-relative on D:, which exists on this machine (C:, D:, E: and F: are present). An a:b write in scratch targeted A:/.b.json.TMP.tmp, outside the runs folder.",
+     "sensitive": false
+    },
+    {
+     "field": "probe: crash and silent loss",
+     "value": "Accepted by manual(), then write_json raises OSError [Errno 22] for a?b, a*b, a|b, a-less-than-b and an id holding a double quote. The id .x writes .x.json, which the *.json glob that refresh.py uses never picks up, so the row silently never reaches the board.",
+     "sensitive": false
+    },
+    {
+     "field": "doc claim",
+     "value": "CLAUDE.md:56 says the id must be one safe path segment because it becomes a file name under out/runs/. That is true on POSIX but not on win32, the platform the refresher runs on.",
+     "sensitive": false
+    }
+   ],
+   "impact": "Round 2 closed what round 1 named (../x, a/b, a backslash b, ., .., empty, controls) and pins it with tests and an ast drift guard, so CR-PBI001-02 is partially resolved. The file-name escape class remains on the actual platform. A drive-qualified id writes (and os.replace can overwrite) a JSON file in the current directory of another drive. Forbidden characters abort the export with a traceback after out/ has been emptied, which refresh.py treats as a failed export, so nothing is pushed. A leading-dot id vanishes silently (writer-disclosed gap 1). The rows come from trusted, hand-written config, and the real ids (orch-adrs-spec, orch-toolchain) are safe, hence MEDIUM, as in round 1.",
+   "remediation": "Keep RUN_ID equal to local _SEGMENT so the drift test stays meaningful, and add an exporter-only file-name check in manual(): for example also require board_config.ID, or refuse a colon, the Windows-forbidden characters (asterisk, question mark, less-than, greater-than, pipe, double quote), a leading dot, a trailing dot or space, and the Windows device names. The exporter set only has to be a subset of the local form, and a stricter exporter keeps every exported id valid for local to_row. So the concern in change-report-r2 that tightening would diverge from the local form does not apply, and nothing under local/** needs to change. Add ManualRows cases for d:x, a?b, .x and CON, and correct CLAUDE.md:56.",
+   "refs": [
+    "CWE-22 (defence in depth, trusted config)",
+    "CR-PBI001-02 (round 1)",
+    "Error Handling at Boundaries",
+    "Testing Discipline"
+   ],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-PBI001-07",
+   "severity": "LOW",
+   "title": "The new promise that nothing written under a Later idea is lost is untrue for text after a blank line, which is still dropped without a warning",
+   "subject": {
+    "type": "file",
+    "id": "exporters/export_board.py:88,100",
+    "name": "later_items() docstring and blank-line reset; mirrored at CLAUDE.md:32"
+   },
+   "evidence": [
+    {
+     "field": "code",
+     "value": "if not line.strip() or RULE.match(text): current = None  (a blank line ends the idea, so a following indented nested item or paragraph has no idea to join)",
+     "sensitive": false
+    },
+    {
+     "field": "probe",
+     "value": "Lines [- **A**: one] [    - nested] [] [    - after blank] [] [    more under A after a blank] [- **B**: two] give A: one - nested and B: two in both the worktree and origin/main; the two lines after the blanks disappear.",
+     "sensitive": false
+    }
+   ],
+   "impact": "The behaviour predates this change and neither real spec has such text today, but the round-2 docstring and CLAUDE.md now state the opposite. A spec author who writes a loose nested list (common Markdown style) loses the text silently, which is what CR-PBI001-03 set out to stop.",
+   "remediation": "Either keep an indented line after a blank line inside the current idea (reset only on a blank line followed by an unindented non-marker line or a new top-level marker), or narrow the wording in the docstring and CLAUDE.md to up to the next blank line. Pin the choice with a FutureIterations case.",
+   "refs": [
+    "CR-PBI001-03 (round 1)",
+    "PBI-001 Notes CR-018-01",
+    "Consistency With Existing Code"
+   ],
+   "category": "correctness"
+  }
+ ],
+ "not_audited": [
+  {
+   "ref": "Touchstone SARIF",
+   "reason": "Not provided; security is reasoning plus throwaway probes, not SAST."
+  },
+  {
+   "ref": "Real verifier transcripts",
+   "reason": "Two review-agents:verifier runs exist in out/runs of the main repo (verdicts stopped and finished under the origin/main parser). Their transcripts were not opened (sensitive), so how often real verifier results lack the JSON outcome (the reach of CR-PBI001-05) is not measured."
+  },
+  {
+   "ref": "Head-commit suite run",
+   "reason": "The change is uncommitted; the suites were verified on the working tree only (261 / 57 / 90). Re-run on the head commit once it exists."
+  },
+  {
+   "ref": "Drive-qualified write end-to-end",
+   "reason": "The CR-PBI001-06 escape is shown by ntpath.join and a scratch write attempt on a missing drive; nothing was written to another real drive on purpose."
+  },
+  {
+   "ref": "Page rendering of verifier words",
+   "reason": "site/** is outside the areas of this PBI and unchanged; how exercised and fallback-declared display on Dispatch was not judged."
+  }
+ ],
+ "follow_ups": [
+  {
+   "ref": "writer gap 2: verifier negation list",
+   "note": "Acceptable as a follow-up, not blocking. Phrasings like unable to be exercised or skipped rather than exercised read as exercised only when the result has neither the JSON outcome nor any fallback-declared word, which means the verifier broke its output contract twice. When CR-PBI001-05 is fixed, consider adding unable to (be), rather than and instead of to NEGATED."
+  },
+  {
+   "ref": "writer gap 1: leading-dot manual id",
+   "note": "Not a standalone follow-up: folded into CR-PBI001-06. The fix belongs on the exporter side only, as a subset of the local form, so local/** need not change."
+  },
+  {
+   "ref": "ver lane precedence",
+   "note": "By design, a ver-lane result such as Verdict: GO and exercised now reads exercised/done instead of GO/go (origin/main). Only review-agents:verifier maps to ver, so that is intended; noted so the verifier tile on the page is checked when site/** next changes."
+  },
+  {
+   "ref": "Tidy: negation window before a label",
+   "note": "For tier 1 the NEGATED check looks at the text before the outcome label, not before the word, so a line ending in not just before an Outcome: label skips the label. The bare tier still read the right word in the probe. Cosmetic."
+  },
+  {
+   "ref": "plan-defect: Later-list nesting rule",
+   "note": "Round-1 follow-up stands: update the spec rule to the CommonMark parent-content-column nesting rather than the 3-space rule; no code change."
+  },
+  {
+   "ref": "Round-1 follow-ups carried",
+   "note": "The kept pre-change git tab bytes check and the github_repo()/github_origin() duplication are unchanged and still optional."
+  },
+  {
+   "ref": "docs",
+   "note": "After the conditions land: close A-45, mark FR-80/81/82/84/133 met in the PRD and tick the PBI-001 ACs (docs/** is outside the areas of this PBI)."
+  },
+  {
+   "ref": "gate close-out",
+   "note": "Round 2 is the last configured round. The conditions are CR-PBI001-05 and -06, each with its tests; -07 can be fixed or reworded in the same pass. The orchestrator can check them without another full review round."
+  }
+ ]
+}

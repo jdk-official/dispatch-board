@@ -1,0 +1,145 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-11",
+    "mode": "pbi",
+    "change_class": "standard",
+    "scope": "PBI-024 (FR-190 / AC-125) in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-024, branch pbi/PBI-024-carried-marker from main d4023c6. Intent: when export_board keeps a project tab under FR-153, mark the kept document with carriedSince (ISO-8601 UTC with Z, the time the carry began). Acceptance: (1) set on the first carry; (2) stable while carried: first value kept and the file byte-identical run to run, test_kept_tabs_are_byte_identical updated to say so; (3) cleared when the source comes back; (4) never on a normally exported tab, no other document changes shape; (5) CLAUDE.md names carriedSince and when it is set and cleared; (6) local record shapes still accept the kept document and local/tests stays at 90 passing with no local/** change; stderr warning unchanged. Allowed: exporters/export_board.py, tests/test_export_board.py, CLAUDE.md. Grounding path: ran-suite (all three configured suites run from the worktree).",
+    "verdict": "NOT-DONE",
+    "summary": "3 files modified (exporters/export_board.py, tests/test_export_board.py, CLAUDE.md); 4 tests added and 3 existing keep-last tests updated to the new contract (exact equality with the marker, nothing weakened). Suites from the worktree: python -m unittest discover -s tests 271 run / 271 passed (267 before + 4 added); node tests/page.test.mjs 68/68 passed (exit 0); python -m unittest discover -s local/tests 90 run / 89 passed / 1 failed. The failure is local/tests/test_conformance.py:403 (ConformanceV1.test_alpha_tabs_are_the_ones_export_board_kept), which asserts the first carry is byte-identical to the original export, and AC-125 requires the first carry to add carriedSince. local/** is blocked, so it was not changed or weakened. Nothing staged, committed, pushed or deployed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "exporters/export_board.py",
+      "change_kind": "modify",
+      "why": "New carried(raw, since): on the first carry it parses the kept file, adds carriedSince and re-serialises it exactly as main() writes a rebuilt tab (json ensure_ascii=False, indent=1). A file that already has the marker, or is not a UTF-8 JSON object, is returned as its exact bytes, so later runs are byte-identical and a corrupt kept file cannot stop the whole export through main()'s ValueError handler. main() derives since from the existing injected stamp (the now parameter, else datetime.now(timezone.utc)), converted to UTC and formatted with a Z. Kept tabs now go through carried(). Rebuilt tabs are untouched, so they never carry the marker. The stderr warning text is unchanged. Module docstring updated.",
+      "acceptance_refs": ["AC-125 set on first carry", "stable while carried", "clears on recovery", "scope: normal tabs never marked"]
+    },
+    {
+      "path": "tests/test_export_board.py",
+      "change_kind": "modify",
+      "why": "Repos.run takes an optional now (default NOW) so tests control the run time; added the constants NOW_Z, CARRIED, CARRIED_Z and LATEST. Red-first tests for set, stable, cleared, never on a normal tab, and a non-JSON kept file. test_kept_tabs_are_byte_identical rewritten to state the stable-while-carried rule; the two keep-last tests that compare parsed documents now expect the prior document plus carriedSince, by exact equality.",
+      "acceptance_refs": ["AC-125 set on first carry", "stable while carried", "clears on recovery", "scope: normal tabs never marked"]
+    },
+    {
+      "path": "CLAUDE.md",
+      "change_kind": "modify",
+      "why": "The projectTabs store-table row's keep-last sentence and the Refresh procedure's keep-last sentence now name carriedSince: UTC with a Z, set on the first run that keeps the tab (one push), left unchanged byte for byte while the source stays missing, dropped when the source comes back, never on a normally exported tab.",
+      "acceptance_refs": ["docs: CLAUDE.md names carriedSince and when set/cleared"]
+    }
+  ],
+  "tests": [
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_a_kept_tab_is_marked_with_the_time_its_carry_began",
+      "kind": "added",
+      "status": "pass",
+      "covers": "AC-125: every kept tab equals its last export plus carriedSince in the Z form of the carrying run's time; the stderr warning 'project app: cannot rebuild ...; keeping the last export' is unchanged"
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_kept_tabs_are_byte_identical",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "Stable while carried: the first carry equals the original document plus carriedSince (CARRIED_Z); a later run at a later time (LATEST) leaves every kept file byte for byte as after the first carry, keeping the first carriedSince. Now covers every tab of the project, not only spec"
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_a_tab_whose_source_comes_back_is_rebuilt_without_carried_since",
+      "kind": "added",
+      "status": "pass",
+      "covers": "Clears on recovery: after the repo is moved back, no warning, and every tab is rebuilt (generatedAt = LATEST) without carriedSince"
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_a_tab_that_exports_normally_never_has_carried_since",
+      "kind": "added",
+      "status": "pass",
+      "covers": "Scope: a normal export marks nothing; with one project's spec renamed and another's repo moved, exactly the kept tabs are marked, and the rebuilt app.git is not"
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_a_kept_file_that_is_not_a_json_object_is_kept_as_it_was",
+      "kind": "added",
+      "status": "pass",
+      "covers": "Truncated JSON, a JSON array and non-UTF-8 bytes are kept byte for byte with exit 0; a readable kept tab beside them is still marked"
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_missing_repo_keeps_its_last_tabs_while_others_refresh",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "The moved project's tabs equal their last export plus carriedSince (NOW_Z), while the other project refreshes"
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_renamed_spec_keeps_the_tabs_built_from_it",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "The four spec-derived tabs equal their last export plus carriedSince (NOW_Z)"
+    },
+    {
+      "path": "local/tests/test_conformance.py::ConformanceV1::test_alpha_tabs_are_the_ones_export_board_kept",
+      "kind": "existing",
+      "status": "fail",
+      "covers": "Line 403 asserts tab_bytes('alpha') == first_tabs, i.e. the first carry is byte-identical to the original export. AC-125 makes the first carry add carriedSince, so the bytes differ by exactly that key (the assertion diff shows '\"carriedSince\": \"2026-09-11T12:00:00Z\"' inserted). File is in blocked local/**; not changed"
+    }
+  ],
+  "acceptance": [
+    {
+      "criterion": "AC-125: a tab kept under FR-153 carries carriedSince, ISO-8601 UTC with a Z, the time the carry began",
+      "met": "yes",
+      "evidence": "test_a_kept_tab_is_marked_with_the_time_its_carry_began passes; the value is the injected run time converted to Z (2026-09-11T08:30:00+00:00 -> 2026-09-11T08:30:00Z)"
+    },
+    {
+      "criterion": "Stable while carried: later runs keep the first carriedSince and the kept file is byte-identical run to run, so refresh.py plans no write after the first carry; test_kept_tabs_are_byte_identical updated to state this, not weakened",
+      "met": "yes",
+      "evidence": "The rewritten test_kept_tabs_are_byte_identical passes: every kept file after a second carry at a later time is byte-equal to the first carry, and the first carry parses to original + carriedSince"
+    },
+    {
+      "criterion": "Clears on recovery: the next export after the source comes back rebuilds the tab without carriedSince",
+      "met": "yes",
+      "evidence": "test_a_tab_whose_source_comes_back_is_rebuilt_without_carried_since passes"
+    },
+    {
+      "criterion": "Scope: a normally exported tab never has carriedSince, and no other store document changes shape",
+      "met": "yes",
+      "evidence": "test_a_tab_that_exports_normally_never_has_carried_since passes; the diff touches only the kept-tab path in export_board.py; export_sessions.py, export_catalogue.py and site/** are untouched, and page.test.mjs passes 68/68"
+    },
+    {
+      "criterion": "Docs: CLAUDE.md's projectTabs description and the keep-last sentence name carriedSince and say when it is set and cleared",
+      "met": "yes",
+      "evidence": "git diff CLAUDE.md: both sentences updated"
+    },
+    {
+      "criterion": "Warning on stderr kept as it is",
+      "met": "yes",
+      "evidence": "The warn() call is unchanged; test_a_kept_tab_is_marked_with_the_time_its_carry_began asserts its text"
+    },
+    {
+      "criterion": "Local record shapes still accept the kept document; python -m unittest discover -s local/tests still 90 passing with no local/** change",
+      "met": "partial",
+      "evidence": "Shapes accept it: the other 89 local tests pass, including the conformance check that validates every exported document (alpha's marked tabs among them). But the suite is 90 run / 89 passed / 1 failed: test_conformance.py:403 encodes the old byte-identical-at-first-carry contract, which AC-125 necessarily breaks. local/** is blocked, so it was not changed"
+    },
+    {
+      "criterion": "All three configured suites green (PBI close-out)",
+      "met": "no",
+      "evidence": "tests 271/271 OK; page 68/68 OK; local/tests 89/90 (1 failure above)"
+    }
+  ],
+  "not_done": [
+    {
+      "ref": "local/tests/test_conformance.py:403 ConformanceV1.test_alpha_tabs_are_the_ones_export_board_kept",
+      "reason": "The PBI's own premise (local/** not needed because record shapes accept extra fields) holds for the shape checks, but it missed this byte assertion. Line 403 requires the first carried export to be byte-identical to the original, and AC-125 requires the first carry to add carriedSince. Both cannot hold, and the file is in blocked_areas, so no honest in-scope fix exists. Weakening or skipping it is ruled out."
+    }
+  ],
+  "follow_ups": [
+    {
+      "ref": "PBI-024 scope decision (owner / orchestrator)",
+      "note": "Authorise a one-test change in local/tests/test_conformance.py by adding it to allowed_areas, then re-dispatch. One faithful rewrite: assert each alpha tab after the carry parses to its first_tabs document plus carriedSince (the Z form of NOW). Optionally also run export_board a third time and assert the bytes equal the second run's, pinning stable-while-carried in the conformance suite. local/tests would then stay at 90 tests. No local/records.py or local/schema.py change is needed."
+    },
+    {
+      "ref": "docs/prd/dispatch-board.md FR-153",
+      "note": "FR-153 still says the exporter 'shall keep that tab's last export unchanged'; with FR-190 the kept export gains carriedSince once. A docs-cluster writer or requirements owner may want FR-153 to reference FR-190. Not in this PBI's allowed areas."
+    },
+    {
+      "ref": "code-reviewer",
+      "note": "Once the local/tests conflict is resolved, hand the change to review-agents:code-reviewer for the GO / NO-GO gate. This report is not a quality verdict."
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-11",
+    "mode": "diff",
+    "scope": "Uncommitted diff in C:/Users/jdk/dispatch-board-worktrees/PBI-023 (branch pbi/PBI-023-pr-links vs fd7b926): exporters/export_board.py, site/index.html, tests/test_export_board.py, tests/page.test.mjs, CLAUDE.md. Intent rung 2 (work-item AC): PBI-023 AC-P1..AC-P6. Grounding: both suites run read-only (215 unittest OK, 55 page checks OK) plus scratch probes (link-guard mutation, GITHUB_URL forms, prState lookup) plus the gh CLI source plus reasoning; no Touchstone SARIF, no SAST.",
+    "summary": "Standard class. 0 CRITICAL / 0 HIGH / 2 MEDIUM / 1 LOW across correctness, test-adequacy and security (reasoning-only; no security finding). AC walk: P1 not met (ordering), P2-P6 met, P3 browser rendering not verifiable here. Failure paths, link guard, origin detection and token handling verified sound. Verdict GO-WITH-CONDITIONS.",
+    "sensitivity": "sensitive",
+    "verdict": "GO-WITH-CONDITIONS"
+  },
+  "findings": [
+    {
+      "id": "CR-PBI023-01",
+      "severity": "MEDIUM",
+      "title": "The PR list is the 20 most recently created, not updated, so older open PRs will fall off the board and out of Needs attention once the repo passes 20 PRs",
+      "subject": {
+        "type": "change",
+        "id": "exporters/export_board.py:287",
+        "name": "PR_LIST command / pulls() ordering"
+      },
+      "evidence": [
+        {
+          "field": "exporters/export_board.py:287",
+          "value": "PR_LIST = gh pr list --state all --limit 20 --json number,title,state,url,headRefName,updatedAt",
+          "sensitive": false
+        },
+        {
+          "field": "gh source pkg/cmd/pr/shared/lister.go",
+          "value": "pullRequests(first: $limit, orderBy: {field: CREATED_AT, direction: DESC})",
+          "sensitive": false
+        },
+        {
+          "field": "PBI-023 AC-P1",
+          "value": "Contents: the 20 most recently updated pull requests, in any state.",
+          "sensitive": false
+        }
+      ],
+      "impact": "Once there are more than 20 PRs, an older-created PR that is still open is left out of the panel and out of Needs attention (AC-P4). Latent today.",
+      "remediation": "Add '--search', 'sort:updated-desc' to PR_LIST; update GH_ARGS in tests, the comment and the CLAUDE.md row; keep the client-side sort as a safety net.",
+      "refs": [
+        "PBI-023 AC-P1",
+        "PBI-023 AC-P4"
+      ],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-PBI023-02",
+      "severity": "MEDIUM",
+      "title": "A lookalike-host regression in the page's only link guard would pass the suite: no test uses a github.com-prefixed non-GitHub URL",
+      "subject": {
+        "type": "file",
+        "id": "tests/page.test.mjs:536-541",
+        "name": "pull requests test data (PULLS)"
+      },
+      "evidence": [
+        {
+          "field": "site/index.html:278",
+          "value": "url.startsWith('https://github.com/')",
+          "sensitive": false
+        },
+        {
+          "field": "mutation probe",
+          "value": "startsWith('https://github.com') still passes all 55 page checks",
+          "sensitive": false
+        }
+      ],
+      "impact": "A future edit that drops the trailing slash or relaxes the check would ship an off-site link without failing the suite.",
+      "remediation": "Add rows with https://github.com.evil.example/..., http://github.com/..., https://github.com@evil.example/...; assert they render as text in the panel and Needs attention; re-run the mutation.",
+      "refs": [
+        "Testing Discipline",
+        "CWE-601"
+      ],
+      "category": "test-adequacy"
+    },
+    {
+      "id": "CR-PBI023-03",
+      "severity": "LOW",
+      "title": "A PR whose state is an inherited object key (constructor, __proto__, toString) makes the GitHub tab fail to draw",
+      "subject": {
+        "type": "file",
+        "id": "site/index.html:808",
+        "name": "prRow state lookup"
+      },
+      "evidence": [
+        {
+          "field": "site/index.html:808",
+          "value": "const [cls, label] = prState[x.state] || ['muted', x.state || '-'];",
+          "sensitive": false
+        }
+      ],
+      "impact": "The per-tab try/catch contains it, but the whole GitHub tab shows an error and the page logs console.error. Hard to reach.",
+      "remediation": "Guard with Object.hasOwn or a Map; add a page check with an inherited-key state.",
+      "refs": [
+        "Error Handling at Boundaries",
+        "CWE-1321"
+      ],
+      "category": "correctness"
+    }
+  ],
+  "not_audited": [
+    {
+      "ref": "real gh run",
+      "reason": "Not run, by instruction; the orchestrator ran it (5 PRs returned for dispatch-board; no pulls for platform-catalogue)."
+    },
+    {
+      "ref": "AC-P3 browser rendering / target=_blank in the artifact sandbox",
+      "reason": "Not viewed by the reviewer; the orchestrator's Browser-pane check passed; the live sandbox new-tab behaviour is checked after publish."
+    },
+    {
+      "ref": "security dimension",
+      "reason": "No SARIF or SAST; reasoning only (no finding)."
+    }
+  ],
+  "follow_ups": [
+    "Draft PRs show as 'PR #n awaiting your merge'; consider isDraft and leaving drafts out of Needs attention (logged in PBI-001).",
+    "An open PR left untouched while 20 others update drops out of Needs attention; a separate gh pr list --state open call could cover it (logged in PBI-001).",
+    "gh's base-repo choice may not be origin in a fork; consider --repo from the origin URL (logged in PBI-001).",
+    "Existing: git_tab publishes raw 'git remote -v' lines as remotes, so a credentialed origin URL would publish its token; strip userinfo (logged in PBI-001).",
+    "Transient gh failures drop pulls for one tick; amend AC-P2 if noisy."
+  ]
+}

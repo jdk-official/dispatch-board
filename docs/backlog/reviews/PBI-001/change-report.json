@@ -1,0 +1,55 @@
+{
+ "schema_version": "1",
+ "report": {
+  "agent": "code-writer",
+  "as_of_date": "2026-09-11",
+  "mode": "pbi",
+  "change_class": "standard",
+  "scope": "PBI-001 exporter hardening in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-001 (branch pbi/PBI-001-exporter-hardening, base 7fd96cb). Required: AC-57, AC-58, AC-59, AC-61, AC-86, the C-16 rule in CLAUDE.md, and the 7 Notes follow-ups (RecursionError in records(), a named test for a linked session outside the window, the snapshot sentence, Later list markers and nesting, userinfo stripped from remotes, runs.manual validation, meta/lastRefresh reserved). Optional: 8 (--repo) done; 9 (PBIs outside the spec table) not done. Grounding: ran-suite (full tests/, node page test, local/tests).",
+  "verdict": "DONE-WITH-CONDITIONS",
+  "summary": "8 files modified (4 exporters, 3 test files, CLAUDE.md), 37 tests added, 1 existing test expectation updated (GH_ARGS gains --repo o/app). Suites: tests/ 252 passed / 0 failed (baseline 215); node page test 57/57 (baseline 57); local/tests 90 passed / 0 failed (baseline 90). Nothing committed, staged, pushed or deployed; site/** and local/** untouched; no real gh, out/ or artifact touched.",
+  "sensitivity": "sensitive"
+ },
+ "changes": [
+  {"path": "exporters/export_sessions.py", "change_kind": "modify", "why": "records() also skips RecursionError; response() skips a usage record whose token counts are not finite numbers; the verifier words exercised/fallback-declared become the verdict with kind done; sessions/runs values are type-checked (exit 2 naming the key); manual rows come from board_config.manual; a carried-over running row becomes killed/no result once the window has passed since its end; PARSER_VERSION 4->5 so cached verdicts are re-derived", "acceptance_refs": ["AC-57", "AC-58", "AC-59", "AC-61", "follow-up 1"]},
+  {"path": "exporters/board_config.py", "change_kind": "modify", "why": "STATUS_DOC rejects meta/lastRefresh; RUN_LANES/RUN_KINDS copied from the local record shapes; manual() validates each runs.manual row and names the bad row and field", "acceptance_refs": ["follow-up 6", "follow-up 7"]},
+  {"path": "exporters/export_board.py", "change_kind": "modify", "why": "later_items() takes -, *, + and N. markers indented by up to 3 spaces, treats deeper list lines as nested items, and treats horizontal rules as breaks; git_tab strips userinfo from every remotes line; gh pr list gets --repo owner/name from the origin URL", "acceptance_refs": ["follow-up 4", "follow-up 5", "optional 8"]},
+  {"path": "exporters/refresh.py", "change_kind": "modify", "why": "plan() refuses any export holding an answers document (AnswersRefused, exit 2, collection named, pending plan discarded, not liftable by --allow-mass-delete)", "acceptance_refs": ["AC-86"]},
+  {"path": "CLAUDE.md", "change_kind": "modify", "why": "C-16 rule section; snapshot sentence corrected; documents the type checks, manual-row rules, reserved statusDoc, carried running rows, verifier verdicts, Later markers, stripped remotes, gh --repo and the answers guard", "acceptance_refs": ["C-16", "follow-up 3"]},
+  {"path": "tests/test_export_sessions.py", "change_kind": "modify", "why": "failing-first tests for AC-57/58/59/61, deep nesting, carried(), and a named FR-137/AC-90 test", "acceptance_refs": ["AC-57", "AC-58", "AC-59", "AC-61", "follow-up 1", "follow-up 2"]},
+  {"path": "tests/test_export_board.py", "change_kind": "modify", "why": "tests for Later markers and nesting, credentialed remotes, public_remote, github_repo and --repo, manual rows including a drift guard against local/records.shapes.json read as data, reserved statusDoc, committed manual rows", "acceptance_refs": ["follow-up 4", "follow-up 5", "follow-up 6", "follow-up 7", "optional 8"]},
+  {"path": "tests/test_refresh.py", "change_kind": "modify", "why": "tests for the answers refusal at plan() and CLI level", "acceptance_refs": ["AC-86"]}
+ ],
+ "tests": [
+  {"path": "tests/test_export_sessions.py", "kind": "added", "status": "pass", "covers": "Malformed: running agent that cannot be re-read killed after the window / kept running within it (AC-57); string and NaN token counts skip only that response (AC-58); deeply nested line with exclude on. ConfigTypes: 6 tests (AC-59 plus every documented type, non-object blocks, a bad manual row by name). Classify/Pipeline/VerdictOf: verifier words (AC-61). Records: nested line. Carried: 2 unit tests. Projects: linked session 30 days old exported with its project (FR-137/AC-90)"},
+  {"path": "tests/test_export_board.py", "kind": "added", "status": "pass", "covers": "FutureIterations: 4 marker/nesting/rule tests. Remotes + PublicRemote: tokens never published. GithubOrigin: github_repo and gh without --repo for an unparsable origin. ManualRows: 6 tests. ProjectList: meta/lastRefresh reserved. CommittedFiles: real manual rows validate"},
+  {"path": "tests/test_export_board.py", "kind": "modified", "status": "pass", "covers": "GH_ARGS now ends with --repo o/app, the command the exporter must run for the test origin"},
+  {"path": "tests/test_refresh.py", "kind": "added", "status": "pass", "covers": "Answers: plan() refuses with and without --allow-mass-delete, a stale pending plan is removed, sub-folder documents count; Cli: non-zero exit, answers named on stderr, no stdout, nothing pending"},
+  {"path": "tests/page.test.mjs", "kind": "existing", "status": "pass", "covers": "57 page checks, unchanged"},
+  {"path": "local/tests", "kind": "existing", "status": "pass", "covers": "90 local-app tests that import the exporters, unchanged"}
+ ],
+ "acceptance": [
+  {"criterion": "AC-57: a carried-over running row of an agent that cannot be re-read is exported killed / no result once the running window has elapsed since its end", "met": "yes", "evidence": "Malformed.test_a_running_agent_that_cannot_be_reread_is_killed_once_the_window_has_passed and ..._stays_running_within_the_window; Carried tests"},
+  {"criterion": "AC-58: a string usage.output_tokens does not stop the export of that session or any of its runs", "met": "yes", "evidence": "Malformed.test_a_string_token_count_skips_only_that_response (both runs exported, requests=3)"},
+  {"criterion": "AC-59: showFirstPrompt \"false\" or a string exclude makes the session exporter exit non-zero naming the key", "met": "yes", "evidence": "ConfigTypes tests: exit 2, stderr names sessions.showFirstPrompt / sessions.exclude, nothing written"},
+  {"criterion": "AC-61: a verifier run whose result states exercised records verdict exercised", "met": "yes", "evidence": "Pipeline.test_verifier_that_exercised_its_checks: lane ver, kind done, verdict exercised"},
+  {"criterion": "AC-86: an export with an answers document makes refresh.py exit non-zero, name answers on stderr, leave no pending plan", "met": "yes", "evidence": "Answers and Cli.test_an_answers_document_exits_non_zero_naming_the_collection"},
+  {"criterion": "C-16 rule added to CLAUDE.md", "met": "yes", "evidence": "new section 'Answers are the owner's' with the rule verbatim"},
+  {"criterion": "Follow-ups 1-7 (deep nesting, linked-session test, snapshot sentence, Later markers, remotes userinfo, manual rows, reserved path)", "met": "yes", "evidence": "tests listed above all pass; CLAUDE.md snapshot sentence corrected against commit fd7b926"},
+  {"criterion": "Optional 8: --repo from origin", "met": "yes", "evidence": "PullRequests test with GH_ARGS + GithubOrigin repo tests"},
+  {"criterion": "Optional 9: list PBI files outside the spec's PBI table", "met": "no", "evidence": "not attempted: see not_done"},
+  {"criterion": "Suites green: tests/, node page test, local/tests", "met": "yes", "evidence": "252 OK, 57/57, 90 OK"}
+ ],
+ "not_done": [
+  {"ref": "optional 9", "reason": "Needs the project's backlog-delivery.config (pbi_dir) or a new docs key, PBI frontmatter parsing, and a page change (site/**, blocked) to show 'added after the plan'. Not small."},
+  {"ref": "gate", "reason": "The code-review GO gate is still owed; this report is not an approval."}
+ ],
+ "follow_ups": [
+  {"ref": "code-reviewer", "note": "Review the working-tree diff in the PBI-001 worktree for GO / NO-GO."},
+  {"ref": "session-level carry", "note": "When a whole session cannot be parsed, export_sessions keeps its last result as-is, so a running row there is not reclassified; only the agent-level carry (the AC-57 case) is covered."},
+  {"ref": "nested-bullet rule", "note": "Per the brief, any marker with at most 3 leading spaces is a new idea, so a conventional 2-space nested bullet under '- a' becomes its own idea; nested items (4+ spaces) are dropped from the export until the page can render them as a list."},
+  {"ref": "verifier matching", "note": "exercised / fallback-declared use verdict_of's tiers (labelled, then bold/code, then bare). A bare 'not exercised' in a result with no labelled word would read as exercised."},
+  {"ref": "manual row ids", "note": "runs.manual ids are checked only as strings but become file names under out/runs/; consider the local app's run-id form."},
+  {"ref": "docs", "note": "Close A-45 and mark FR-80, FR-81, FR-82, FR-84 and FR-133 as met in docs/prd/dispatch-board.md, and tick the PBI-001 ACs; docs/** is outside this change's areas."}
+ ]
+}

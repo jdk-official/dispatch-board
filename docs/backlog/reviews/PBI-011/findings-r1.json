@@ -1,0 +1,147 @@
+{
+ "schema_version": "1",
+ "audit": {
+  "agent": "code-reviewer",
+  "as_of_date": "2026-09-12",
+  "mode": "diff",
+  "scope": "Uncommitted change on pbi/PBI-011-findings-ledger (base f2e58e6) in C:/Users/jdk/dispatch-board-worktrees/PBI-011: exporters/derive.py, exporters/export_sessions.py, site/index.html, tests/test_derive.py, tests/test_export_sessions.py, tests/page.test.mjs. Intent rung 1 (plan-grade): the firmed criteria F-1..F-4 in docs/backlog/pbi/PBI-011.md plus the parent-spec key decision (derivations live in exporters/derive.py and the collector imports them), with PRD FR-111/FR-112 and AC-77 as the requirement text; deviation assessment run. Grounding path: repo tests run read-only (all three configured suites in the worktree, plus sabotage runs and throwaway probes in a scratch copy) and reasoning; no Touchstone SARIF supplied.",
+  "summary": "1 HIGH, 5 MEDIUM, 2 LOW across correctness, maintainability and test-adequacy; no security finding (the change parses transcript text that is already treated as data, renders through esc()/md(), and adds no network, filesystem or credential path). Change class: standard. Suites verified by this reviewer: python -m unittest discover -s tests 322 OK; node tests/page.test.mjs 99 OK; python -m unittest discover -s local/tests 194 OK - the builder counts are accurate. No pre-existing test was weakened (the tests/ diff adds 157 lines and removes none). Flag-only review: nothing changed, committed, run against the live board or deployed.",
+  "sensitivity": "sensitive",
+  "verdict": "NO-GO"
+ },
+ "findings": [
+  {
+   "id": "CR-011-1",
+   "severity": "HIGH",
+   "title": "The ledger will be empty or will wrongly show findings as resolved on the real board: a new parsed row field was added without bumping PARSER_VERSION, so every cached session replays code-review rows that carry no findings",
+   "subject": {"type": "change", "id": "exporters/export_sessions.py:60", "name": "PARSER_VERSION vs the new agent_row findings field"},
+   "evidence": [
+    {"field": "exporters/export_sessions.py:60", "value": "PARSER_VERSION = 5  # bump when parsing changes, to drop cached results -- unchanged from base f2e58e6, although exporters/derive.py:490 now adds a new parsed field (the row findings list) to every cr-lane row", "sensitive": false},
+    {"field": "exporters/export_sessions.py:179 and :245", "value": "signature() returns [PARSER_VERSION, window] plus file mtimes; a cache hit reuses the cached result rows verbatim, so a session whose transcripts have not changed is never re-parsed and its rows keep no findings key", "sensitive": false},
+    {"field": "live cache probe (read-only) of C:/Users/jdk/dispatch-board/out/.cache/sessions.json", "value": "21 cached sessions, all signed [5, 600]; 43 cached cr-lane rows, 0 of which carry a findings key. With PARSER_VERSION still 5 every one of those signatures still matches, so all 43 existing review rounds would be read as rounds with zero findings.", "sensitive": true},
+    {"field": "exporters/derive.py:672", "value": "latest_ids is taken from the findings of runs[-1]; a cached latest round yields an empty latest_ids, so every finding seen in an earlier re-parsed round is published as resolved", "sensitive": false}
+   ],
+   "impact": "On the live board the feature silently under-reports or mis-reports rather than failing: review rounds from any session whose transcripts have stopped changing contribute no findings for good, while still counting toward rounds; where a re-parsed round is followed by a cached one, findings that were never fixed are published as Resolved - the exact claim AC-77 exists to protect. The suites miss it because they always parse fresh temporary transcripts, so no test exercises the cache-hit path with the new field.",
+   "remediation": "Bump PARSER_VERSION (5 to 6) in exporters/export_sessions.py so the new parse invalidates every cached session, as the comment on that constant requires. Add a test that a cached parse from the previous parser version is not reused for the findings ledger: write a cache entry whose rows lack findings, re-run the exporter with unchanged transcripts, and assert the findings document is rebuilt.",
+   "refs": ["Correctness: broken invariant (the documented cache-invalidation contract at export_sessions.py:60)", "PBI-011 F-1", "PRD FR-111"],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-011-2",
+   "severity": "MEDIUM",
+   "title": "A review round whose result carries no parseable findings block marks every outstanding finding Resolved, even when that round itself came back NO-GO - and reviewers in this repo are routinely asked to put their findings in a file rather than in the reply",
+   "subject": {"type": "change", "id": "exporters/derive.py:672", "name": "findings_doc latest-round rule"},
+   "evidence": [
+    {"field": "exporters/derive.py:663-678", "value": "every cr row with kind go/changes/nogo counts as a round, and latest_ids comes from runs[-1] unconditionally, so a round that listed no findings and a round whose findings could not be read are the same thing to this rule", "sensitive": false},
+    {"field": "probe (scratch copy)", "value": "derive.findings_of(\"NO-GO. 2 HIGH, 1 MEDIUM. Findings written to docs/reviews/findings.json\") returns []; a round-2 row built from that result flips the round-1 findings F1, F2 and F3 to resolved while the reviewer verdict is still NO-GO", "sensitive": false},
+    {"field": "workflow context", "value": "code-reviewer invocations in this project are told to write the findings JSON to docs/backlog/reviews/<PBI>/findings.json and reply in at most 8 lines, so their run results end with prose, not with a fenced findings block", "sensitive": false}
+   ],
+   "impact": "The headline claim of the ledger - what is still open - inverts on exactly the input this repo produces most often: a NO-GO or changes-required round with no embedded JSON publishes zero open findings and paints unfixed findings green. The AC-77 rule is listed in round n and absent from round n+1, not absent from a round we could not read.",
+   "remediation": "Distinguish a round that reported an empty findings list from a round whose result held no findings block: have findings_of (or agent_row) record whether a structured block was present, and in findings_doc take latest_ids from the most recent round that actually reported one, leaving rounds with no block counted in rounds but not authoritative for resolution. At minimum, never resolve findings on a round whose kind is changes or nogo and whose findings list is absent. Pin it with a test: round 1 lists F1 to F3, round 2 is NO-GO with no JSON block, and F1 to F3 stay open.",
+   "refs": ["Correctness: contract reasoning against AC-77", "PBI-011 F-1, F-3", "PRD FR-111, FR-112"],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-011-3",
+   "severity": "MEDIUM",
+   "title": "Any earlier fenced JSON object in a review result makes the parser swallow the whole reply and drop every finding silently: the regex takes the first fence, not the last, contrary to its own comment and docstring",
+   "subject": {"type": "file", "id": "exporters/derive.py:47", "name": "FENCE_JSON"},
+   "evidence": [
+    {"field": "exporters/derive.py:45-47", "value": "the comment says a fenced code block at the very end of its result, greedy so nested braces stay inside the capture; the pattern is a fence marker, an optional json word, a greedy braced capture, a closing fence and end-of-string", "sensitive": false},
+    {"field": "exporters/derive.py:632-634", "value": "the docstring says the last fenced code block, but re.search is leftmost-first, so the capture starts at the first fence followed by a brace and runs to the final brace of the text", "sensitive": false},
+    {"field": "probe (scratch copy)", "value": "a result shaped as prose, a fenced example JSON object, more prose, then the real findings block: findings_of returns [] and every finding is lost; the same text without the decoy fence reads the finding correctly", "sensitive": false}
+   ],
+   "impact": "A reviewer that quotes a JSON snippet, a config fragment or an example document above its findings block loses its entire findings list with no warning - and per CR-011-2 that silent loss then marks the previous round findings resolved. Stated behaviour (last block) and actual behaviour (first block that can reach the end) differ, so the comment misleads the next maintainer.",
+   "remediation": "Anchor to the last fence instead of the first: make the body non-greedy and require that no further fence follows, or scan the fenced blocks and take the last one that parses. Correct the comment and the docstring to describe what the code does, and add a test with a decoy fenced object before the findings block.",
+   "refs": ["Correctness: robustness and broken contract (docstring versus behaviour)", "Maintainability: Naming and Readability", "PBI-011 F-1"],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-011-4",
+   "severity": "MEDIUM",
+   "title": "The new document exists only by an unwritten exporter ordering: export_board.py wipes the whole projectTabs folder, so the findings document survives because refresh.py happens to run board first, and its deletion is owned by the other exporter",
+   "subject": {"type": "change", "id": "exporters/export_sessions.py:293", "name": "projectTabs ownership split across two exporters"},
+   "evidence": [
+    {"field": "exporters/export_board.py:274-275", "value": "shutil.rmtree(folder, ignore_errors=True) then os.makedirs(folder): out/projectTabs is replaced wholesale and only the five export_board TABS are rewritten", "sensitive": false},
+    {"field": "exporters/refresh.py:43", "value": "EXPORTERS is ordered export_board.py, export_sessions.py, export_catalogue.py - the only thing keeping the findings document alive; nothing in the suites asserts this order, and running export_board.py on its own (a documented standalone entry point) silently removes the findings document from out/", "sensitive": false},
+    {"field": "exporters/export_board.py:6-7 and the CLAUDE.md store-path table", "value": "both still state that out/projectTabs/<projectId>.<tab>.json is written by export_board.py, replacing that folder, for tab in spec, assumptions, decisions, backlog and git", "sensitive": false}
+   ],
+   "impact": "A second writer into a folder the first writer deletes is a hidden ordering invariant. Today it works; a reordered or independently run export_board leaves a findings-free export, refresh.py then issues a delete for the pushed document, and for a project whose only pushed projectTabs document is the findings one it trips the mass-delete guard with a message about repoPath and docs that has nothing to do with the cause. The positive side is real and worth keeping: because export_board clears the folder, a project that stops having review rounds does correctly lose its document rather than leaving a stale one - but that correct behaviour comes from a file this change does not touch and no test covers.",
+   "remediation": "Make the ownership explicit rather than incidental: either have export_sessions remove its own stale out/projectTabs/<pid>.findings.json when a project has no rounds (self-contained and order-independent), or record the dependency in the refresh.py and export_board.py docstrings and pin it with a test that runs the exporters in refresh order, asserting the findings document survives and is dropped when the rounds go.",
+   "refs": ["Maintainability: Consistency With Existing Code", "PBI-011 F-2"],
+   "category": "maintainability"
+  },
+  {
+   "id": "CR-011-5",
+   "severity": "MEDIUM",
+   "title": "The review-round attribution FR-111 asks for is not published: a finding in the ledger cannot be traced to the round that raised it, so the page can never say raised in round 1 and still open after 3",
+   "subject": {"type": "file", "id": "exporters/derive.py:674", "name": "findings_doc per-finding record"},
+   "evidence": [
+    {"field": "exporters/derive.py:673-678", "value": "the seen map keeps only the latest text of a finding; the published entry is id, severity, title, location and remediation, with no round number, first-seen round or last-seen round", "sensitive": false},
+    {"field": "docs/prd/dispatch-board.md:473 (FR-111)", "value": "shall record each finding id, severity, title, file:line and remediation against the run project, work item and review round", "sensitive": false},
+    {"field": "docs/backlog/pbi/PBI-011.md:41 (F-1)", "value": "records each finding id, severity, title, file:line and remediation, against that run project, work item and review round", "sensitive": false}
+   ],
+   "impact": "Project and work item are carried (document id and item key), but the round is used only internally to decide open versus resolved and is then discarded. An attribute the cited criterion enumerates explicitly is missing from the published document, and the page has no way to show how old a finding is in rounds - the thing that makes a ledger a ledger rather than a snapshot.",
+   "remediation": "Record the round with each finding in findings_doc: a round field (1-based index of the round that first listed it) and a lastSeen field, then show it in the ledger row. It is a small addition to the same loop and one more cell on the page.",
+   "refs": ["Correctness: unmet acceptance criterion (PBI-011 F-1)", "PRD FR-111"],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-011-6",
+   "severity": "MEDIUM",
+   "title": "The v1 conformance gate reports green on a document it would reject: the local tab whitelist has no findings entry, and the conformance fixture never produces a review round, so local/tests unchanged at 194 is not evidence of conformance",
+   "subject": {"type": "change", "id": "local/records.py:91", "name": "TAB_NAMES versus the new projectTabs id"},
+   "evidence": [
+    {"field": "probe (read-only)", "value": "records.store_path for the tab kind returns projectTabs/app.git for app.git, and raises ValueError (app.findings is not a valid tab id) for app.findings", "sensitive": false},
+    {"field": "local/records.py:91,103", "value": "TAB_NAMES is spec, assumptions, decisions, backlog, git, and the tab id form is built from it", "sensitive": false},
+    {"field": "local/tests/test_conformance.py:1-4,228", "value": "the stated purpose is that every document the exporters and refresh.plan() write validates against its record shape; the exporters do run for real, but the fixture transcripts contain no code-review run with a fenced findings block, so the new document is never produced and never validated", "sensitive": false}
+   ],
+   "impact": "Nothing breaks at runtime today (the exporters never call local/records, and the local collector does not derive findings), so this alone is not a reason to hold the merge - but the suite that exists to catch exactly this drift cannot see it, and it will fail the moment the conformance fixture gains a review round or the local app ingests a real export. The builder disclosed this as a condition; the disclosure is accurate, the stays-conformant evidence line in the change report is not.",
+   "remediation": "Keep local/** out of this change (it is outside the allowed areas of the work item) but land the follow-up before anything feeds the local app: add findings to local/records TAB_NAMES with the items field on the tab shape, and extend the local/tests/test_conformance.py fixture with a code-review round carrying a findings block so the gate covers the new document. Correct the F-2 and F-4 evidence lines in the change report to say the conformance suite does not exercise it.",
+   "refs": ["Testing Discipline", "PBI-011 F-2, F-4"],
+   "category": "test-adequacy"
+  },
+  {
+   "id": "CR-011-7",
+   "severity": "LOW",
+   "title": "The per-project bookkeeping in refresh.py does not know the findings tab, so a project whose only change is its findings ledger gets no updatedAt on its status document, and the mass-delete guard would blame the wrong source",
+   "subject": {"type": "file", "id": "exporters/refresh.py:45", "name": "refresh.TABS"},
+   "evidence": [
+    {"field": "exporters/refresh.py:45,168", "value": "TABS is spec, assumptions, decisions, backlog, git, and the per-project tab set is built from it, so the findings document is not in the set that decides whether a project live/updatedAt stamp moves", "sensitive": false},
+    {"field": "exporters/refresh.py:144-150", "value": "the mass-delete guard groups every pushed projectTabs document by project id, so it does count the findings document; for a project whose only pushed tab is the transcript-derived findings one, losing it refuses the whole refresh with a message telling the operator to check repoPath and docs in board.config.json - advice pointing at the wrong source", "sensitive": false}
+   ],
+   "impact": "Minor and narrow: in practice a findings change comes with a run change, which does move the status document, and the guard case needs a project with no exportable repo tabs. Both are inconsistencies introduced by publishing a transcript-derived document into a repo-derived tab namespace.",
+   "remediation": "Add findings to refresh.TABS - a one-word change that keeps the status-freshness rule true for the new document - and, if the guard message is to stay accurate, word it so a transcript-derived tab points at the transcripts rather than at repoPath. Note in the refresh.py docstring that projectTabs now has two writers.",
+   "refs": ["Correctness: broken invariant (the documented status-freshness rule in refresh.py)", "Maintainability: Consistency With Existing Code"],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-011-8",
+   "severity": "LOW",
+   "title": "The new tests pin the happy path well but leave the document lifecycle and the two-work-items attribution uncovered, so two behaviours the review focus asks about are asserted nowhere",
+   "subject": {"type": "change", "id": "tests/test_export_sessions.py:968-1010", "name": "Findings test class coverage"},
+   "evidence": [
+    {"field": "tests/test_export_sessions.py:968-1010", "value": "covers AC-77, the roundsToGo case, no document without a round, and run documents carrying no findings field - but not a project that had a findings document and no longer has any round (no stale document left behind), and not a second export over an existing out/", "sensitive": false},
+    {"field": "exporters/derive.py:669-670", "value": "each pbi code on a cr row appends that run to its own rounds list, so one review run whose label names two work items (for example a review of PBI-011 that mentions its PBI-004 dependency) copies its findings, its round count and its resolution effect into both ledgers; derive.pbis() is a label heuristic and nothing pins this multi-item behaviour", "sensitive": false},
+    {"field": "sabotage runs (scratch copy, read-only)", "value": "inverting the latest round (runs[-1] to runs[0]) fails 3 python checks; rendering an open finding with the --human token fails the page suite - the new checks do fail against the defects they claim to pin", "sensitive": false}
+   ],
+   "impact": "Not wrong behaviour but missing pins: the two properties the review focus asks about (no stale document once one existed; two work items in one session) hold today only by virtue of the export_board folder wipe and an untested label heuristic. A future change to either passes green.",
+   "remediation": "Add a test that exports twice, the second time with the review round gone, asserting the findings document is removed rather than left stale (running the exporters in refresh order, since export_board owns the wipe); and one pinning the intended behaviour when a single review run names two PBIs. Also consider dropping findings whose id is empty, since coercing a missing id to an empty string collapses every id-less finding into one entry.",
+   "refs": ["Testing Discipline"],
+   "category": "test-adequacy"
+  }
+ ],
+ "not_audited": [
+  {"ref": "Touchstone SARIF and SAST", "reason": "none provided and no SAST configured in this repo, so the security dimension is reasoning-only. The change adds no network call, no filesystem write driven by user input, no deserialization of untrusted bytes, no credential and no authz path; transcript text stays data (json.loads on one captured fenced block) and page output goes through esc()/md(), which escapes before allowing code spans and bold. No security finding raised."},
+  {"ref": "local/** (local/records.py, local/collector.py)", "reason": "outside the allowed areas of this work item; judged only for merge safety (see CR-011-6) and not re-audited."},
+  {"ref": "The published artifact and the live store", "reason": "read-only review: nothing was pushed, published or refreshed against the live board, so behaviour on the real store is reasoned from the exporter cache probe rather than observed."},
+  {"ref": "CLAUDE.md store-path table entry for the new findings document", "reason": "explicitly out of scope per the PBI-011 out-of-scope line (a follow-up docs chore); carried in follow_ups rather than raised as a finding."}
+ ],
+ "follow_ups": [
+  {"ref": "Rung-1 deviation assessment: F-2 says the board exporter writes the document, and the change has export_sessions.py write it. Classified problematic-departure, not justified-improvement: choosing export_sessions is right (only it reads transcripts), but it weakens the F-2 plan-protected property that refresh.py already manages the document - see CR-011-4 and CR-011-7. Fix in code, not in the plan."},
+  {"ref": "Rung-1 deviation assessment: no plan-defect found. F-1, F-3 and F-4 are implementable as written. The F-1 clause that a run whose result holds no such JSON contributes no findings and no error is implementable but under-specified about what such a round means for resolution; a plan clarification alongside the CR-011-2 code fix is worth recording."},
+  {"ref": "Criteria walk: F-1 met except the review-round attribution (CR-011-5) and the tolerance gaps (CR-011-2, CR-011-3). F-2 met in shape, with the ownership and lifecycle caveats (CR-011-4, CR-011-7). F-3 met: the page uses --changes for open and --go for resolved, never --human, renders every value through esc() or md(), keeps its per-tab try/catch, hides the tab outside a project view, and the empty case logs no console error (verified by running the page suite). F-4 met: the tests diff adds 157 lines and removes none, all three suites are green at 322/99/194, and no other exporter document changed."},
+  {"ref": "Page robustness (not a finding): the open and resolved counters in renderFindings index into an items entry without the null guard that itemPanel applies, so a malformed items entry would throw into the per-tab catch. Our own exporter cannot produce that; one Array.isArray or optional-chaining guard would match the rest of the page."},
+  {"ref": "Docs chore already logged by the builder: record the projectTabs findings document in the CLAUDE.md store-path table, noting it is written by export_sessions.py, not export_board.py."}
+ ]
+}

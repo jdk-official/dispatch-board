@@ -1,0 +1,145 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-11",
+    "mode": "pbi",
+    "change_class": "standard",
+    "scope": "Pull requests on the dispatch board (worktree C:/Users/jdk/dispatch-board-worktrees/PBI-023, branch pbi/PBI-023-pr-links off main fd7b926). AC-P1..AC-P6 plus docs. Grounding path: ran-suite (python -m unittest discover -s tests; node tests/page.test.mjs).",
+    "verdict": "DONE-WITH-CONDITIONS",
+    "summary": "5 files modified (exporters/export_board.py, site/index.html, CLAUDE.md, tests/test_export_board.py, tests/page.test.mjs); 10 Python tests added (215 passed) and 6 page checks added (55 passed). Real gh never called in tests (injected runner; default runner refuses). Mutation check: a page copy whose link helper drops the github.com guard fails the page suite. Nothing committed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "exporters/export_board.py",
+      "change_kind": "modify",
+      "why": "github_origin() and pulls() via an injected runner with a 15 s timeout; git.pulls only on success; warnings on failure; exit 0.",
+      "acceptance_refs": [
+        "AC-P1",
+        "AC-P2"
+      ]
+    },
+    {
+      "path": "site/index.html",
+      "change_kind": "modify",
+      "why": "ghLink() github.com-only links; Pull requests panel; Repository facts row; Needs attention 'PR #n awaiting your merge' in --human; token-only PR state tags.",
+      "acceptance_refs": [
+        "AC-P3",
+        "AC-P4",
+        "AC-P5"
+      ]
+    },
+    {
+      "path": "CLAUDE.md",
+      "change_kind": "modify",
+      "why": "git.pulls documented; gh prerequisite; privacy note; tests paragraph.",
+      "acceptance_refs": [
+        "Docs"
+      ]
+    },
+    {
+      "path": "tests/test_export_board.py",
+      "change_kind": "modify",
+      "why": "FakeGh runner, refuse_gh default; PullRequests and GithubOrigin classes.",
+      "acceptance_refs": [
+        "AC-P6"
+      ]
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "change_kind": "modify",
+      "why": "Section 10: panel, attention item, escaping, github.com-only links, empty and not-available states.",
+      "acceptance_refs": [
+        "AC-P6"
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "path": "tests/test_export_board.py::PullRequests",
+      "kind": "added",
+      "status": "pass",
+      "covers": "success, empty, gh missing, non-zero, timeout, malformed JSON, stale pulls dropped, non-GitHub origin"
+    },
+    {
+      "path": "tests/test_export_board.py::GithubOrigin",
+      "kind": "added",
+      "status": "pass",
+      "covers": "origin URL forms recognised and lookalikes rejected"
+    },
+    {
+      "path": "tests/page.test.mjs (section 10, 6 checks)",
+      "kind": "added",
+      "status": "pass",
+      "covers": "panel, attention item, escaping, link guard, empty and not-available states"
+    },
+    {
+      "path": "tests/ (full Python suite)",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "215 tests OK"
+    },
+    {
+      "path": "tests/page.test.mjs (sections 1-9)",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "49 pre-existing checks pass"
+    }
+  ],
+  "acceptance": [
+    {
+      "criterion": "AC-P1",
+      "met": "yes",
+      "evidence": "exact argv, cwd, timeout asserted; caveat: gh default order is by creation, re-sorted by updatedAt"
+    },
+    {
+      "criterion": "AC-P2",
+      "met": "yes",
+      "evidence": "failure-mode tests assert exit 0, warning, no pulls, intact git tab"
+    },
+    {
+      "criterion": "AC-P3",
+      "met": "yes",
+      "evidence": "page checks for the panel, link guard, not-available state"
+    },
+    {
+      "criterion": "AC-P4",
+      "met": "yes",
+      "evidence": "page checks for awaiting-merge items, open only"
+    },
+    {
+      "criterion": "AC-P5",
+      "met": "yes",
+      "evidence": "escaping checks; mutation check"
+    },
+    {
+      "criterion": "AC-P6",
+      "met": "yes",
+      "evidence": "unittest 215 OK; page 55 passed"
+    }
+  ],
+  "not_done": [
+    {
+      "ref": "live-gh-and-browser",
+      "reason": "Real gh not run and the page not viewed in a browser by the code-writer."
+    }
+  ],
+  "follow_ups": [
+    {
+      "ref": "sort-order",
+      "owner": "owner / orchestrator",
+      "note": "gh pr list --state all --limit 20 selects by creation; add --search 'sort:updated-desc' for strictly most recently updated."
+    },
+    {
+      "ref": "drafts",
+      "owner": "owner",
+      "note": "Draft PRs are OPEN in gh and appear as awaiting merge."
+    },
+    {
+      "ref": "code-review",
+      "owner": "code-reviewer",
+      "note": "GO / NO-GO gate."
+    }
+  ]
+}

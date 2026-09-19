@@ -1,0 +1,85 @@
+{
+ "schema_version": "1",
+ "audit": {
+  "agent": "code-reviewer",
+  "as_of_date": "2026-09-12",
+  "mode": "changeset",
+  "scope": "Round 2 (final round; code_review_max_rounds = 2) of the uncommitted working-tree change in C:/Users/jdk/dispatch-board-worktrees/PBI-025, base 5baa922. Ten paths: M exporters/derive.py, M exporters/export_board.py, M local/collector.py, M local/tests/collector_support.py, M local/tests/test_collector.py, M tests/test_derive.py, M tests/test_export_board.py, ?? local/tabs.py, ?? local/tests/test_tabs.py, ?? local/tests/test_tabs_equivalence.py. Intent rung 1 (plan-grade): docs/backlog/specs/pbi-025-local-tabs.md, now revision 4 (approved; revision 4 is the post-approval correction to section 4.4 row 4 that this reviewer round-1 follow-up caused), plus the round-1 findings.json as the conditions to verify and change-report-r2.json as the builder claim. Grounding path: repo-suites (all three configured suites re-run read-only from the worktree root by the reviewer) plus five independent mutation/injection probes and a malformed-input enumeration, plus reasoning. No Touchstone SARIF was provided, so the security dimension is reasoning-only.",
+  "summary": "Change class: large/sensitive -- reviewed at full four-dimension depth for the second time. 0 CRITICAL, 0 HIGH, 0 MEDIUM, 0 LOW: both round-1 conditions are verified applied and verified non-vacuous by the reviewer own probes, and this round introduces no new finding in correctness, security, maintainability or test-adequacy. Suites re-run by the reviewer from the worktree root: python -m unittest discover -s tests 345 OK; node tests/page.test.mjs 99 OK; python -m unittest discover -s local/tests 304 OK -- the builder 345/99/304 reproduce exactly, and the 303 to 304 delta is exactly one added case (test_tabs.py 31 to 32 methods, test_tabs_equivalence.py unchanged at 7, so 38 to 39 across the two new files). Flag-only: nothing was changed, staged, committed, pushed or deployed, and the live board was not refreshed.",
+  "sensitivity": "sensitive",
+  "verdict": "GO"
+ },
+ "findings": [],
+ "not_audited": [
+  {
+   "ref": "Touchstone aggregated SARIF / summary.json",
+   "reason": "Not provided and not present in this pipeline, and no SAST or linter is configured in the repo. The security dimension is reasoning-only. The round-2 delta adds no deserialization of untrusted data, no secret, no crypto, no network client and no authorization path; the one production line changed is a widened exception tuple. The network boundary was re-probed positively (see follow_ups)."
+  },
+  {
+   "ref": "Real-world non-UTF-8 git output (a repository built with a latin-1 i18n.commitEncoding)",
+   "reason": "Still not constructed. It is materially weaker as a gap than in round 1: the new test drives real bytes through FakeRun, which decodes them with the encoding the call itself passed (tabs._stdout passes encoding utf-8 with text=True), so the exception raised is the genuine UnicodeDecodeError subprocess.run would raise -- utf-8 codec cannot decode byte 0xe9 in position 37: invalid continuation byte -- which the reviewer observed directly in the reverted-fix probe. The error originates in git output, not in a hand-made exception object."
+  },
+  {
+   "ref": "Round-2 delta in exporters/derive.py, exporters/export_board.py, local/collector.py, tests/test_derive.py, tests/test_export_board.py",
+   "reason": "The builder reports these five unchanged since round 1. They are modified-vs-HEAD in both rounds and no round-1 snapshot of the working tree exists to diff against, so unchanged-this-round is corroborated rather than proven: the tests suite total is 345 in both rounds, the local suite moved by exactly +1, the new case is fully accounted for in test_tabs.py, and the round-1 result on these files (no findings) still holds on re-read of the current tree."
+  },
+  {
+   "ref": "Performance of the tab pass at the configured cadence",
+   "reason": "Unchanged from round 1. Spec Q-5 accepts ten git subprocesses per project per 60-second pass with no cadence key; the suites drive synthetic repositories, so they say nothing about wall-clock cost on the two real repositories. The reviewer own real-repository probe ran 12 git subprocesses for a two-repository fixture, consistent with the spec estimate but not a timing measurement."
+  }
+ ],
+ "follow_ups": [
+  {
+   "ref": "CR-025-01 verified -- the reviewer own re-measurement",
+   "reason": "tabs.GIT_ERRORS is now (OSError, subprocess.SubprocessError, UnicodeDecodeError) at local/tabs.py:42, with the adjacent comment rewritten to say which failure each member covers. Verified non-vacuous by reverting the fix at run time (tabs.GIT_ERRORS rebound to the round-1 two-member tuple) and re-running the new case: it fails with exactly the round-1 reproduction -- exit 1 and the line collector: pass failed (UnicodeDecodeError: ...); nothing written. With the fix in place the confinement holds as the spec requires: exit 0, the pass commits (observed as PRAGMA data_version moving on a second connection), alpha.git carried with carriedSince while alpha.spec stays fresh, the healthy project beta git tab rebuilt (branch work, no carriedSince), meta/lastRefresh written, and one warning naming the project and the exception class. The fix also covers stderr, which subprocess.run decodes under the same strict encoding."
+  },
+  {
+   "ref": "The same lens applied to READ_ERRORS and the rest of local/tabs.py -- no second escape found",
+   "reason": "Enumerated as a class rather than by example. (1) Read path, READ_ERRORS = (OSError, UnicodeDecodeError) around export_board.spec_tabs: twelve pathological project-document shapes were driven through tabs.build (empty spec, NUL bytes, malformed and single-column tables, 5000-deep list nesting, a 100 KB heading, a 20 KB bold span, CRLF plus BOM, frontmatter with a non-numeric revision, degenerate PBI and goal markers). All twelve degraded gracefully -- four spec tabs built, one confined warning -- and nothing outside READ_ERRORS escaped. (2) Git path: the residual is derive.git_doc three-way unpack of a log line split on the pipe, a ValueError GIT_ERRORS would not catch. Probed for reachability on a real repository: git folds a multi-line subject into one line for the subject placeholder (a two-line subject prints as one line joined by a space), so every log line carries exactly two pipes and the unpack cannot raise from git own output. It is also shared verbatim with export_board.git_tab, so the two sides cannot diverge. Not raised as a finding on either count. (3) is_repo, git_default, carry, owns, project_of and statuses are pure or total over their inputs."
+  },
+  {
+   "ref": "CR-025-02 verified -- the restored guard is strongly non-vacuous",
+   "reason": "local/tests/test_collector.py:43 now asserts that the set of stored status ids equals Env.configured in Case.tearDown, fed by a new Env.seen in local/tests/collector_support.py that reads each statusDoc through exporters/board_config.projects -- the same loader the pass uses, so the guard cannot drift from the collector own notion of a configured project. The reviewer own mutation probe (tabs.statuses wrapped to emit one extra status row for an unconfigured project) fails 57 of the 70 scenarios in that suite, and the failure was confirmed to arise in tearDown itself, not in a test body. It is exact in both directions, not a subset check: on a real-repository fixture the reviewer observed stored statuses meta/status, status/beta and status/gamma equal to Env.configured, so the guard is live on non-empty sets and not only on the empty-set scenarios. No weakening: for scenarios configuring no project it is equivalent to the old count-zero assertion; for scenarios that do configure projects the old assertion was falsified by the intended new behaviour, and this is the correct re-expression. collector_support.py duplicates nothing from test_conformance.py -- it is the pre-existing PBI-019 helper built on tes.Tree, its addition is 18 lines, and test_conformance.py is untouched (git diff --stat reports nothing for it)."
+  },
+  {
+   "ref": "change-report-r2.json accuracy -- confirmed true of the diff",
+   "reason": "The round-1 claim none-is-weakened-or-removed is now corrected. not_done[0] states plainly that two of the three test_collector.py edits were re-expressions (the kinds set and the summary regex) and the third, the statuses half of the tearDown guard, was a removal with no replacement. That is exactly what the diff showed in round 1, and the guard is restored in round 2, so the disclosure now matches the change. The report was validated the way the tooling note prescribes -- the module imported and validate(obj) called, not run as a script -- and returned an empty error list."
+  },
+  {
+   "ref": "Spec revision 4 amendment -- accurate, complete, and no acceptance criterion moved with it",
+   "reason": "Judged sound. Section 4.4 row 4 now reads: keep it in the intended set, returned unchanged; with a dated amendment note recording the exact mechanism the reviewer reproduced -- the old store-nothing wording drops the record from the intended set, section 6.2 computes deletions as stored minus intended, so the record becomes a deletion candidate and is deleted on the third carrying pass. That is the outcome reproduced in round 1 by substituting the literal reading into tabs.carry. The note is complete: it names the defect, the mechanism, the section it interacts with, the reading the code took, and why that reading satisfies both halves. The front matter is consistent (revision 4, and the status line records the correction as post-approval). No acceptance criterion changed: AC-TB3 still reads that a later carrying pass calls db.upsert zero times for that record, which is the observable the code satisfies and which both wordings were meant to produce, and section 7.3 four-pass carry bullet is consistent with it. The spec file is untracked in the board repo, so revisions 3 and 4 could not be diffed mechanically; the whole acceptance-criteria block and section 7.3 were read in full instead. tabs.carry is byte-identical to round 1, as the builder claims."
+  },
+  {
+   "ref": "The four spec-gate items, all re-confirmed on the moved tree",
+   "reason": "(1) No records.TAB_NAMES in any deletion, carry, intended or guard path: local/tabs.py imports os, subprocess, sys, datetime, derive and export_board, and never records. The tabs.owns mutation was re-run -- rebinding owns to read records.TAB_NAMES fails test_tabs.ForeignSuffixes on both cases (the findings record left byte-unchanged, and the findings-only project not tripping the emptied-tabs clause). (2) load_data outside the confined block with per-call handlers: local/tabs.py:101 sits before the first try at :102, and there are two separate scoped blocks -- :102-106 except READ_ERRORS around spec_tabs, :107-112 except GIT_ERRORS around is_repo and git_tab -- so row 4 ValueError still propagates unconfined; test_tabs.py:592 still asserts the whole-pass failure with db.upsert and db.delete counted at zero and the tables byte-identical. (3) The board own output still byte-identical: test_git_tab_equals_the_pre_move_implementation asserts keys, values and key order against the verbatim pre-move _reference_git_tab over four input sets through one shared fake git, and test_the_four_spec_tabs_are_byte_identical_to_the_committed_fixture passes; both ran, neither skipped. (4) Wrote-nothing still observed from a second connection: Watcher opens its own sqlite3 connection before the watched pass and reads row counts and the full id and doc text of every table from it; it is used both by the malformed-data-file case and by the new UnicodeDecodeError case."
+  },
+  {
+   "ref": "T-5 network boundary re-probed with the reviewer own patched subprocess",
+   "reason": "Re-run on the tree as it now stands, at two strengths. On the real-repository conformance fixture (HAS_GIT true, alpha carrying an origin on github.com so the exporter genuinely would call gh), a full collector pass with the real subprocess.run wrapped by the reviewer recorder made 12 subprocesses, every argv[0] equal to git, none of gh, curl, claude, wget or ssh, and no pulls key on either stored git tab. The new test fake opens no path to a real subprocess: FakeRun.__call__ either raises from self.raises, returns a CompletedProcess built from self.raw decoded with the caller encoding, or returns canned output -- it never calls subprocess.run, and the new case runs inside self.l.cli(), which swaps subprocess.run module-wide for the duration."
+  },
+  {
+   "ref": "Test integrity 303 to 304",
+   "reason": "Exactly one case added, none removed or weakened. Method counts: test_tabs.py 32 (Building 6, Carry 3, NoNetwork 1, Shapes 2, ForeignSuffixes 3, Status 7, Deletion 4, PerProjectFailures 5, PerRecordFailure 1) and test_tabs_equivalence.py 7 -- 39 against the 38 of round 1, with the +1 in PerProjectFailures, which is the new case. The only count-affecting edit in test_collector.py is a rename, whose assertion is strengthened to require the statuses table non-empty. Comment hygiene on the round-2 delta is clean: no TODO, no round or reviewer narration, and no reference to a document this repo does not ship."
+  },
+  {
+   "ref": "An OSError on a project data file fails the whole pass, which spec 4.2.1 row 4 does not state -- documentation, not a defect",
+   "reason": "load_data catches FileNotFoundError (returns an empty dict) and ValueError (re-raised with context), but a PermissionError or other OSError reading the projects data file propagates from outside the confined block and fails the pass, every 60 seconds, until fixed. Row 4 names only ValueError. Deliberately not raised as a finding: it is the same trade the row makes for the same stated reason -- the file holds the hand-kept build state, and treating it as absent would silently reset every PBI of that project to not-started -- and export_board behaves identically, since its main catches only ValueError too. Suggest widening the row 4 wording to any failure to read the data file other than its absence, at the next spec touch."
+  },
+  {
+   "ref": "spec pbi-025-local-tabs.md section 7 new-files-only -- stale, carried from round 1",
+   "reason": "Unchanged disposition, and this round exercises it: the fix touched a second existing test-support file, local/tests/collector_support.py, which is inside local/tests and so inside allowed areas, while test_conformance.py -- the file section 7.4 actually protects with a stop-and-report condition -- remains untouched. The rule existed only for parallel-safety with PBI-026, which merged at this PBI base commit. Recommend annotating section 7 as satisfied-by-merge."
+  },
+  {
+   "ref": "CLAUDE.md store-path table -- close-out or docs pass",
+   "reason": "Carried from round 1, still outside PBI-025 allowed areas and still correctly untouched. Once this lands, the collector writes every owned projectTabs record and every status record locally, which the conventions file does not yet say."
+  },
+  {
+   "ref": "owner -- spec Q-1, Q-2, Q-3",
+   "reason": "Carried forward unchanged: a config-sourced status block for title, message and metrics (Q-1); the FYI that restoring pull requests locally needs a process outside the collector (Q-2); and the local findings tab, which needs exporters/export_sessions.py and is outside these areas (Q-3)."
+  },
+  {
+   "ref": "tools/change_report_schema.py and cell_report_schema.py have no __main__ -- orchestrator",
+   "reason": "Confirmed by this reviewer. Invoking either as a script exits 0 on any input including garbage; a real check must import the module and call validate(obj), which returns a list of errors. run_report_schema.py and handover_schema.py do have working CLIs. The round-1 note that the module could not be found on this machine is superseded: it is under the agent-catalog marketplace tools folder, and change-report-r2.json validates clean through validate()."
+  }
+ ]
+}

@@ -1,0 +1,164 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-11",
+    "mode": "pbi",
+    "change_class": "standard",
+    "scope": "PBI-024 (FR-190 / AC-125), rounds 1 and 2, in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-024, branch pbi/PBI-024-carried-marker from main d4023c6. Intent: when export_board keeps a project tab under FR-153, it marks the kept document with carriedSince, the time the carry began, in ISO-8601 UTC with a Z. The value is kept byte-identical while the tab stays carried and is dropped when the tab is rebuilt. Round 2, after the owner approved the scope change ('approve adding local/tests/test_conformance.py to PBI-024'): update only ConformanceV1.test_alpha_tabs_are_the_ones_export_board_kept to the FR-190 contract without weakening it, then re-check the round-1 exporter change against every PBI-024 criterion. Allowed areas: exporters/export_board.py, tests/test_export_board.py, CLAUDE.md, local/tests/test_conformance.py. Grounding path: ran-suite, meaning all three configured suites were run from the worktree. Verification tier 3 (executable code); the canonical run is the three suites and has been done.",
+    "verdict": "DONE-WITH-CONDITIONS",
+    "summary": "Four files modified across the two rounds: exporters/export_board.py, tests/test_export_board.py, CLAUDE.md and local/tests/test_conformance.py. Round 2 changed only the one approved conformance test, 21 lines added and 1 removed. Round 1's exporter change was re-checked against every criterion and needed no edit. Suites, run from the worktree on the working tree: python -m unittest discover -s tests ran 271, all passed (OK); node tests/page.test.mjs passed all 68 page checks, exit 0; python -m unittest discover -s local/tests ran 90, all passed (OK), the count unchanged. Mutation check on the updated test: an exporter that keeps the old byte-identical first carry fails it, and one that re-stamps carriedSince on every run also fails it; the real exporter passes. Conditions: the close-out criterion needs the suites green on a head commit and a code-reviewer GO, and neither is this agent's to give. Nothing staged, committed, pushed or deployed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "exporters/export_board.py",
+      "change_kind": "modify",
+      "why": "Round 1, unchanged in round 2. New carried(raw, since) marks the kept file. On the first carry it parses the file, adds carriedSince and re-serialises it the way main() writes a rebuilt tab (ensure_ascii=False, indent=1). A file that already has the marker is returned as its exact bytes, which keeps later runs byte-identical. So is a file that is not a UTF-8 JSON object, which stops a corrupt kept file from failing every project's export. main() derives since from the existing run stamp (the now parameter, else datetime.now(timezone.utc)) in UTC with a Z. Rebuilt tabs never go through carried(). The stderr warning text is unchanged, and the module docstring was updated.",
+      "acceptance_refs": ["AC-125", "Stable while carried", "Clears on recovery", "Scope"]
+    },
+    {
+      "path": "tests/test_export_board.py",
+      "change_kind": "modify",
+      "why": "Round 1. Repos.run takes an optional now so tests control the run time, and the constants NOW_Z, CARRIED, CARRIED_Z and LATEST were added. Four tests added, red first: the marker is set, cleared on recovery, never on a normal tab, and a kept file that is not a JSON object is left as it was. MissingSources.test_kept_tabs_are_byte_identical was rewritten to state stable-while-carried and now covers every tab. The two keep-last tests that compare parsed documents now expect the prior document plus carriedSince, by exact equality.",
+      "acceptance_refs": ["AC-125", "Stable while carried", "Clears on recovery", "Scope"]
+    },
+    {
+      "path": "CLAUDE.md",
+      "change_kind": "modify",
+      "why": "Round 1. Both keep-last sentences now name carriedSince and say when it is set and cleared: the one in the projectTabs store-table row, and the Refresh procedure's export_board bullet. It is written in UTC with a Z, set on the first run that keeps the tab (one push), left byte for byte while the source stays missing, dropped once the source comes back, and never on a normally exported tab.",
+      "acceptance_refs": ["Docs"]
+    },
+    {
+      "path": "local/tests/test_conformance.py",
+      "change_kind": "modify",
+      "why": "Round 2, the one approved local/ change. Only ConformanceV1.test_alpha_tabs_are_the_ones_export_board_kept changed. The old line 403 asserted the first carry is byte-identical to the original export (FR-153's old contract). Now each alpha tab after the carry must parse to exactly its first export plus carriedSince '2026-09-11T12:00:00Z', the Z form of the fixture's NOW, and the first export must not already have the marker. export_board then runs once more at a later time (2026-09-12T09:00:00+00:00, alpha still moved) and the kept bytes must equal the previous run's. That third run works on a copy of out/projectTabs, the only part of out/ that export_board reads, so the out/ the class's other tests share is left alone. The stderr check, the expected tab set, and the beta and gamma checks are kept as they were. The Fixture, local/records*, local/schema* and local/records.shapes.json are untouched.",
+      "acceptance_refs": ["Local conformance test updated, not weakened"]
+    }
+  ],
+  "tests": [
+    {
+      "path": "local/tests/test_conformance.py::ConformanceV1::test_alpha_tabs_are_the_ones_export_board_kept",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "FR-190 in the conformance suite. It asserts the carried alpha tabs equal their first export plus carriedSince (NOW in Z form), and that a further carry at a later time is byte-identical to the previous run. The mutation check shows both asserts bite: keeping the old raw bytes fails the parse-equality check on alpha.assumptions.json, re-stamping every run fails the byte check, and the real exporter passes."
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_a_kept_tab_is_marked_with_the_time_its_carry_began",
+      "kind": "added",
+      "status": "pass",
+      "covers": "AC-125: every kept tab equals its last export plus carriedSince, in the Z form of the carrying run's time. The stderr warning is unchanged."
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_kept_tabs_are_byte_identical",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "Stable while carried: the first carry equals the original plus carriedSince (CARRIED_Z), and a later run at LATEST leaves every kept file byte for byte as it was, first carriedSince included."
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_a_tab_whose_source_comes_back_is_rebuilt_without_carried_since",
+      "kind": "added",
+      "status": "pass",
+      "covers": "Clears on recovery: once the repo is back there is no warning, and every tab is rebuilt (generatedAt = LATEST) without carriedSince."
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_a_tab_that_exports_normally_never_has_carried_since",
+      "kind": "added",
+      "status": "pass",
+      "covers": "Scope: a normal export marks nothing. With one project's spec renamed and another's repo moved, exactly the kept tabs are marked, and the rebuilt app.git is not."
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_a_kept_file_that_is_not_a_json_object_is_kept_as_it_was",
+      "kind": "added",
+      "status": "pass",
+      "covers": "Truncated JSON, a JSON array and non-UTF-8 bytes are kept byte for byte with exit 0, and a readable kept tab beside them is still marked."
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_missing_repo_keeps_its_last_tabs_while_others_refresh",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "The moved project's tabs equal their last export plus carriedSince (NOW_Z) while the other project refreshes."
+    },
+    {
+      "path": "tests/test_export_board.py::MissingSources::test_renamed_spec_keeps_the_tabs_built_from_it",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "The four spec-derived tabs equal their last export plus carriedSince (NOW_Z)."
+    },
+    {
+      "path": "local/tests (the other 89 tests)",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "Record shapes and conformance, including test_every_document_validates_against_its_kind, which validates the carried alpha tabs (with carriedSince) against the tab kind."
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "The page is unaffected: all 68 page checks pass, exit 0."
+    }
+  ],
+  "acceptance": [
+    {
+      "criterion": "AC-125: when the board exporter keeps a project tab from an earlier export, it writes carriedSince on that tab document (FR-190)",
+      "met": "yes",
+      "evidence": "test_a_kept_tab_is_marked_with_the_time_its_carry_began passes: 2026-09-11T08:30:00+00:00 becomes carriedSince 2026-09-11T08:30:00Z. The conformance test sees it too, with 2026-09-11T12:00:00Z on every alpha tab."
+    },
+    {
+      "criterion": "Stable while carried: on later runs while the source is still missing, carriedSince keeps its first value and the kept document stays byte-identical, so refresh.py plans no write for it after the first carry. MissingSources.test_kept_tabs_are_byte_identical is updated to say this, not weakened",
+      "met": "yes",
+      "evidence": "test_kept_tabs_are_byte_identical, rewritten to state the rule and extended to every tab, passes. The conformance test now also runs a later carry at 2026-09-12T09:00:00+00:00 and asserts the bytes equal the previous run's. An exporter that re-stamps on every run fails that assert (mutation check)."
+    },
+    {
+      "criterion": "Clears on recovery: when the tab's source comes back, the next export rebuilds the tab without carriedSince",
+      "met": "yes",
+      "evidence": "test_a_tab_whose_source_comes_back_is_rebuilt_without_carried_since passes. Rebuilt tabs come from spec_tabs() and git_tab() and never pass through carried()."
+    },
+    {
+      "criterion": "Scope: only tabs kept under FR-153 get the marker; a tab that exports normally never carries carriedSince, and no other store document changes shape",
+      "met": "yes",
+      "evidence": "test_a_tab_that_exports_normally_never_has_carried_since passes. carried() is called only in the kept-tab loop. git status shows only the 4 allowed files modified, and export_sessions.py, export_catalogue.py and site/** are untouched. Page suite 68/68, and the conformance check validates every other exported document unchanged."
+    },
+    {
+      "criterion": "Docs: CLAUDE.md's projectTabs description names carriedSince and when it is set and cleared",
+      "met": "yes",
+      "evidence": "git diff CLAUDE.md: the projectTabs row and the Refresh procedure's export_board bullet both name carriedSince, its Z form, that it is set on the first carry, kept unchanged while carried, dropped on recovery, and never on a normal export."
+    },
+    {
+      "criterion": "Out of scope: the page's warning (FR-191 / AC-126, PBI-002), and any change to export_sessions.py, export_catalogue.py or local/**, apart from the one approved test",
+      "met": "yes",
+      "evidence": "git status --short lists only CLAUDE.md, exporters/export_board.py, local/tests/test_conformance.py and tests/test_export_board.py. No site/**, other exporter, local/records*, local/schema* or local/records.shapes.json change. Within test_conformance.py only the one test method changed, and the Fixture is untouched."
+    },
+    {
+      "criterion": "Local conformance test updated, not weakened: test_alpha_tabs_are_the_ones_export_board_kept asserts each carried tab equals its first export plus carriedSince; the local suite stays at 90 tests, all passing",
+      "met": "yes",
+      "evidence": "The test asserts exact parsed equality with first export plus carriedSince, that the first export has no marker, and byte stability on a further run. Every earlier check (stderr warning, alpha tab set, beta set, gamma empty) is kept. python -m unittest discover -s local/tests ran 90 tests, OK. The mutation check shows the old byte-identical behaviour and a re-stamping exporter both fail it."
+    },
+    {
+      "criterion": "Worker close-out: the three configured suites are green on the head commit (tests 267 before plus the new tests, page 68, local/tests 90 unchanged), and the code-review gate passed (review-agents:code-reviewer GO)",
+      "met": "no",
+      "evidence": "The suites are green on the working tree: tests ran 271 (267 + 4 added), OK; page 68/68, exit 0; local/tests ran 90, OK. The criterion is not met yet because nothing is committed (code-writer never commits) and the code-review gate is still pending. Both belong to the orchestrator, the human and code-reviewer."
+    }
+  ],
+  "not_done": [
+    {
+      "ref": "PBI-024 close-out: suites green on the head commit, code-reviewer GO",
+      "note": "Re-run the three suites on the commit once the working-tree change is committed, and hand the change to review-agents:code-reviewer for GO / NO-GO.",
+      "reason": "code-writer never stages or commits and never grades its own change. The working-tree run is green (271/271, 68/68, 90/90), but the criterion asks for the head commit and a reviewer GO."
+    }
+  ],
+  "follow_ups": [
+    {
+      "ref": "review-agents:code-reviewer",
+      "note": "Review the four-file working-tree diff (git diff from d4023c6) for the GO / NO-GO gate. This report is not a quality verdict."
+    },
+    {
+      "ref": "docs/prd/dispatch-board.md FR-153",
+      "note": "Carried over from round 1. FR-153 still says the exporter 'shall keep that tab's last export unchanged', but under FR-190 the kept export gains carriedSince once. The requirements owner or a docs-cluster writer may want FR-153 to reference FR-190. That file is outside this PBI's allowed areas."
+    },
+    {
+      "ref": "docs/backlog/reviews/PBI-024/change-report.json",
+      "note": "The round-1 NOT-DONE report is still in the worktree. This round-2 report covers both rounds and supersedes it; the orchestrator can replace that copy with this one."
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-11",
+    "mode": "diff",
+    "scope": "Commit c9cc674 on pbi/PBI-021-store-cleanup against base 84fa3ee (six snapshot/tabs/*.json files), in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-021, plus context reads of site/index.html, exporters/refresh.py, tests/test_refresh.py, tests/page.test.mjs, the pre-switch exporter at e5f0fc6, the real out/.pushed.json and platform-catalogue git history. Intent rung 2 (work item with acceptance criteria: docs/backlog/pbi/PBI-021.md AC-S1..S3; outcomes only, no prescribed approach). Grounding path: repo tests run read-only (python unittest, node page test) plus git and python JSON checks in scratch; security is reasoning-only (no Touchstone SARIF).",
+    "summary": "0 CRITICAL / 0 HIGH / 0 MEDIUM / 0 LOW. Change class: trivial (data-only snapshot refresh; security and correctness floor plus the requested format and scope checks). Dimensions covered: correctness, security, test-adequacy (maintainability ceremony skipped for trivial class). AC-alignment: AC-S1 export-and-commit half met; the artifact-read half, AC-S2 and AC-S3 not verifiable here. Both suites green (197 unittest, 44 page checks). Flag-only: nothing was changed, committed, pushed, deployed or written to the store. Verdict GO.",
+    "sensitivity": "sensitive",
+    "verdict": "GO"
+  },
+  "findings": [],
+  "not_audited": [
+    {
+      "ref": "AC-S1 content equals the store",
+      "reason": "No store read access in this review; byte-equality of the six files with the store's current tabs/* could not be confirmed. Checked internal consistency instead (generatedAt monotonic; git.json head c8614cd matches platform-catalogue build/logic-core at export time). Needs a fresh read_db of the six compared to the committed files."
+    },
+    {
+      "ref": "AC-S1 artifact read",
+      "reason": "The published page being the project-first version rests on the orchestrator's 2026-09-11 read; not reproducible read-only here."
+    },
+    {
+      "ref": "AC-S2",
+      "reason": "Owner approval of the six-document delete batch not yet given; out of scope for this review."
+    },
+    {
+      "ref": "AC-S3",
+      "reason": "Delete batch not yet run; only the precondition (site/index.html:1000-1014 subscribes to no tabs/* path) was verified."
+    },
+    {
+      "ref": "Touchstone SARIF",
+      "reason": "Not provided; security dimension is reasoning-only (data-only diff, secret-pattern scan found nothing)."
+    }
+  ],
+  "follow_ups": [
+    "Before the delete batch: push pbi/PBI-021-store-cleanup (and preferably merge via PR). c9cc674 is on no remote branch, so after the deletes it would be the only copy of the store's latest tabs/* content.",
+    "The branch's upstream is origin/main (branch.pbi/PBI-021-store-cleanup.merge = refs/heads/main). push.default is unset (simple), so a bare push is refused; push with 'git push -u origin pbi/PBI-021-store-cleanup' for the PR (pr_required: true).",
+    "Immediately before the batch, re-read the six tabs/* documents from the store and confirm they still match snapshot/tabs/; no writer exists since 2742ca6, so this is expected to be a no-op.",
+    "Optional regression guard for AC-S3: assert in tests/page.test.mjs that the fake store's subs (lines 43-44) never gets a 'c:tabs' or 'd:tabs/' key.",
+    "CLAUDE.md says snapshot/ holds the store 'as of the move (2026-09-10)'; the tabs files are now 2026-09-10/11 copies. Outside PBI-021's allowed areas, so fix it in a later docs change.",
+    "Commit message says the prior snapshot was 18:25; the prior usage.json was stamped 2026-09-10T18:54:38Z. Informational only."
+  ]
+}

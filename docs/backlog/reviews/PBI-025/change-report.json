@@ -1,0 +1,135 @@
+{
+ "schema_version": "1",
+ "report": {
+  "agent": "code-writer",
+  "as_of_date": "2026-09-12",
+  "mode": "pbi",
+  "change_class": "standard",
+  "scope": "PBI-025 per docs/backlog/specs/pbi-025-local-tabs.md revision 3 (approved): the collector writes each project's five projectTabs records and its status record into the local SQLite database, with the git tab's pure half moved into the shared exporters/derive.py so the board and the local app derive one document from one implementation. Acceptance: T-1..T-6 from the PBI file plus AC-TB1..AC-TB14 from the spec. Grounding path: ran-suite (all three configured suites run from the worktree root).",
+  "verdict": "DONE",
+  "summary": "6 files modified, 3 files created (local/tabs.py and two new local test modules); 45 tests added (11 in tests/, 34 in local/tests/); suites: python -m unittest discover -s tests 345 passed / 0 failed (baseline 334), node tests/page.test.mjs 99 passed / 0 failed (baseline 99), python -m unittest discover -s local/tests 303 passed / 0 failed (baseline 265). Nothing committed, staged, pushed or deployed; the change is in the working tree of C:/Users/jdk/dispatch-board-worktrees/PBI-025 only.",
+  "sensitivity": "sensitive"
+ },
+ "changes": [
+  {
+   "path": "exporters/derive.py",
+   "change_kind": "modify",
+   "why": "The git tab's pure half moves into the shared module, per the parent spec's rule that all derivations live under exporters/ and the collector imports them: new git_default (the master/main/'' selection) and git_doc (the whole document from captured stdout, applying the ahead/shortstat emptiness rule itself so a caller cannot get the condition wrong), plus public_remote and its USERINFO pattern. No subprocess, no file read: derive's own contract is unchanged.",
+   "acceptance_refs": ["T-6", "AC-TB11"]
+  },
+  {
+   "path": "exporters/export_board.py",
+   "change_kind": "modify",
+   "why": "git_tab becomes a thin caller of derive.git_default and derive.git_doc, keeping its ten subprocess calls and their order; public_remote and USERINFO are re-exported through the existing `from derive import (...)` line, so no caller or test breaks. Output unchanged.",
+   "acceptance_refs": ["T-6", "AC-TB11"]
+  },
+  {
+   "path": "local/tabs.py",
+   "change_kind": "create",
+   "why": "The tab and status pass: the OWNED constant (the five export_board suffixes, never records.TAB_NAMES), build() over each configured project with the per-project failure boundary, carry() for keep-last and carriedSince, owns()/project_of() for the two-writer scoping, and statuses() for refresh.py's live/updatedAt rule with the merge db.upsert cannot do itself.",
+   "acceptance_refs": ["T-1", "T-2", "T-3", "T-4", "T-5", "AC-TB1", "AC-TB2", "AC-TB3", "AC-TB6", "AC-TB7", "AC-TB9", "AC-TB13", "AC-TB14"]
+  },
+  {
+   "path": "local/collector.py",
+   "change_kind": "modify",
+   "why": "Hooks the pass in: tabs.build before BEGIN IMMEDIATE (outside the write lock), tab and status added to the stored read, the stored tabs partitioned so a foreign suffix takes part in nothing, the carry rule applied inside the transaction, tab added to the deletion kinds, the guard's emptied-tabs clause added, and the status records written after the upserts and deletions from one clock reading shared with lastRefresh. Report gains tabs and statuses; summary gains ', N tabs'. run_pass gains data_dir and run.",
+   "acceptance_refs": ["T-1", "T-3", "AC-TB4", "AC-TB5", "AC-TB8", "AC-TB12", "AC-TB13"]
+  },
+  {
+   "path": "tests/test_derive.py",
+   "change_kind": "modify",
+   "why": "Added a Git case class: git_doc over captured output (byDir, the commit split on the first pipe, tracked, dirty, redacted remotes), the emptiness rule exercised through git_doc's own signature, git_default's master-wins precedence, public_remote, and the assertion that derive still has no subprocess attribute. No existing case changed.",
+   "acceptance_refs": ["T-6", "AC-TB11"]
+  },
+  {
+   "path": "tests/test_export_board.py",
+   "change_kind": "modify",
+   "why": "Added the in-run T-6 evidence: a verbatim pre-move _reference_git_tab driven through one shared fake git alongside the live git_tab over four input sets, compared on keys, values and key order; and byte-identity for the four deterministic spec tabs against a fixture captured from the pre-move code, with the test asserting none of the four holds the temporary root. No existing case changed.",
+   "acceptance_refs": ["T-6", "AC-TB11"]
+  },
+  {
+   "path": "local/tests/test_tabs.py",
+   "change_kind": "create",
+   "why": "The pass's own tests: building, carry, the network boundary, the shapes canary, the foreign-suffix protection, the status rule, deletion reasons, the guard observed from a second connection, per-project failure confinement and the per-record error.",
+   "acceptance_refs": ["T-2", "T-3", "T-4", "T-5", "AC-TB2", "AC-TB3", "AC-TB4", "AC-TB5", "AC-TB6", "AC-TB7", "AC-TB8", "AC-TB9", "AC-TB10", "AC-TB12", "AC-TB13", "AC-TB14"]
+  },
+  {
+   "path": "local/tests/test_tabs_equivalence.py",
+   "change_kind": "create",
+   "why": "The equivalence suite, built on test_conformance.Fixture consumed unmodified: tab documents equal after removing generatedAt and pulls, carriedSince equal on both sides, the findings document untouched by either writer, and refresh.plan's status documents agreeing with the collector's on live and on whether updatedAt moved.",
+   "acceptance_refs": ["T-1", "T-3", "AC-TB1", "AC-TB13"]
+  },
+  {
+   "path": "local/tests/test_collector.py",
+   "change_kind": "modify",
+   "why": "Three assertions in the existing suite encoded the pre-PBI truth that the collector writes no tab or status record, which this change makes false by design: the Case tearDown's zero-rows check on statuses, the kinds set in test_only_the_five_kinds_are_written (renamed), and the summary line's regex. Each is re-expressed to the new behaviour; none is weakened or removed, and the answers-table and empty-project_tabs checks are kept.",
+   "acceptance_refs": ["T-1", "T-3"]
+  }
+ ],
+ "tests": [
+  {"path": "tests/test_derive.py", "kind": "added", "status": "pass", "covers": "derive.git_doc, derive.git_default, derive.public_remote, the ahead/shortstat emptiness rule, and derive importing no subprocess (7 cases)"},
+  {"path": "tests/test_export_board.py", "kind": "added", "status": "pass", "covers": "git_tab against a verbatim pre-move reference over four input sets through one shared fake git; byte-identity of the four deterministic spec tabs; the public surface of the move (4 cases)"},
+  {"path": "local/tests/test_tabs.py", "kind": "added", "status": "pass", "covers": "building, keep-last and carriedSince, the git timeout, the network boundary, the shapes, the findings-record protection, the status rule, deletion reasons, the mass-delete guard, per-project failure confinement and the per-record error (31 cases)"},
+  {"path": "local/tests/test_tabs_equivalence.py", "kind": "added", "status": "pass", "covers": "tab, carry, ownership and status equivalence between the exporters and one collector pass over the same fixture (7 cases)"},
+  {"path": "local/tests/test_collector.py", "kind": "modified", "status": "pass", "covers": "PBI-019's collector pass, with three assertions re-expressed to the new record kinds"},
+  {"path": "local/tests/test_conformance.py", "kind": "existing", "status": "pass", "covers": "v1 conformance; consumed by the equivalence suite and NOT modified, per the spec's stop-and-report rule"},
+  {"path": "tests (whole suite)", "kind": "existing", "status": "pass", "covers": "345 passed / 0 failed (baseline 334)"},
+  {"path": "tests/page.test.mjs", "kind": "existing", "status": "pass", "covers": "99 passed / 0 failed (baseline 99); site/** untouched"},
+  {"path": "local/tests (whole suite)", "kind": "existing", "status": "pass", "covers": "303 passed / 0 failed (baseline 265)"}
+ ],
+ "acceptance": [
+  {"criterion": "T-1 Tab records match the exporter", "met": "yes", "evidence": "test_tabs_equivalence.TabEquivalence.test_one_pass_holds_the_documents_the_exporter_wrote: same ids and, after removing generatedAt and pulls, the same documents for a project with a spec and git, one with a spec and no git, and one with neither."},
+  {"criterion": "T-2 Keep-last and carriedSince", "met": "yes", "evidence": "test_tabs.Carry.test_the_full_carry_cycle (four passes) and test_the_local_carried_since_equals_the_exporters."},
+  {"criterion": "T-3 Status records", "met": "yes", "evidence": "Its first clause is a spec-authoring condition satisfied at the gate (spec §5.3: there is no local source). Its close-out half: test_tabs.Status (8 cases) and test_tabs_equivalence.StatusEquivalence (3 cases)."},
+  {"criterion": "T-4 Shapes, with no change to those shapes", "met": "yes", "evidence": "test_tabs.Shapes.test_every_record_written_validates_and_round_trips and test_the_shapes_the_pass_relies_on_are_unchanged; git status shows local/records*, local/records.shapes.json and local/schema* untouched."},
+  {"criterion": "T-5 Network boundary", "met": "yes", "evidence": "test_tabs.NoNetwork.test_a_full_pass_runs_git_and_nothing_else, with subprocess.run patched to record every argv. No gh exception is taken."},
+  {"criterion": "T-6 Behaviour unchanged for v1", "met": "yes", "evidence": "tests/test_export_board.GitTabUnchanged.test_git_tab_equals_the_pre_move_implementation (keys, values and key order over four input sets) and SpecTabBytes.test_the_four_spec_tabs_are_byte_identical_to_the_committed_fixture. No existing case in either exporter test file changed."},
+  {"criterion": "AC-TB1 tab documents equal after removing generatedAt and pulls, three project shapes", "met": "yes", "evidence": "TabEquivalence.test_one_pass_holds_the_documents_the_exporter_wrote; the pulls stripping is non-vacuous because TabEquivalence.test_the_exporter_listed_pull_requests_and_the_collector_did_not shows the exporter really wrote pulls for the same project."},
+  {"criterion": "AC-TB2 never-exported tab is neither written nor deleted; a missing repoPath warns", "met": "yes", "evidence": "test_tabs.Building.test_a_tab_that_never_existed_is_neither_written_nor_deleted and test_a_missing_repository_produces_no_tabs_and_a_warning."},
+  {"criterion": "AC-TB3 the four-pass carry cycle, zero upserts on a later carrying pass, carriedSince equal to the exporter's", "met": "yes", "evidence": "test_tabs.Carry.test_the_full_carry_cycle (db.upsert counted at zero for the tab kind on pass 3) and test_the_local_carried_since_equals_the_exporters."},
+  {"criterion": "AC-TB4 a tab goes only when its project leaves the config; every reason is other, none age", "met": "yes", "evidence": "test_tabs.Deletion.test_tabs_go_only_when_their_project_leaves_the_config_and_every_reason_is_other: the counted deletion set is asserted to contain at least the five owned ids before report['aged'] is checked at 0 and unchanged."},
+  {"criterion": "AC-TB5 the emptied-tabs guard, observed on the tables from a second connection", "met": "yes", "evidence": "test_tabs.Deletion.test_deleting_every_tab_of_a_project_is_refused_and_writes_nothing (row counts and full id, doc of every record table compared against a pre-pass snapshot read from a second connection, db.upsert/db.delete counted at zero, PRAGMA data_version from that second connection as a cross-check), test_allow_mass_delete_applies_the_deletions_from_the_command_line, test_deleting_some_of_a_projects_tabs_is_not_refused."},
+  {"criterion": "AC-TB6 status written at the statusDoc path, both forms, live from a running run", "met": "yes", "evidence": "test_tabs.Status.test_both_status_forms_are_written_with_live_and_updated_at and test_live_follows_a_running_run_of_that_project."},
+  {"criterion": "AC-TB7 updatedAt movement and the merge of title, message and metrics", "met": "yes", "evidence": "test_tabs.Status.test_updated_at_moves_for_the_project_that_changed_and_no_other, test_updated_at_moves_when_live_flips, test_updated_at_does_not_move_on_a_pass_whose_only_difference_is_generated_at, test_a_stored_title_message_and_metrics_survive_a_rewrite."},
+  {"criterion": "AC-TB8 no pass deletes a status record, non-vacuously", "met": "yes", "evidence": "test_tabs.Status.test_no_pass_deletes_a_status_record_even_for_a_project_removed_from_the_config: the record exists before the pass and its doc column is byte-unchanged after it, with db.delete counted at zero for the status kind."},
+  {"criterion": "AC-TB9 git and nothing else; no pulls; a git failure carries the stored tab", "met": "yes", "evidence": "test_tabs.NoNetwork.test_a_full_pass_runs_git_and_nothing_else (argv list asserted non-empty, every argv[0] git, the fixture's origin on github.com so github_origin is true) and test_tabs.Carry.test_a_git_call_that_times_out_carries_the_stored_git_tab."},
+  {"criterion": "AC-TB10 validate, TAB_NAMES containment, exact shapes and schema version", "met": "yes", "evidence": "test_tabs.Shapes.test_the_shapes_the_pass_relies_on_are_unchanged asserts set(records.TAB_NAMES) >= set(tabs.OWNED) and exact equality for SHAPES['tab'], SHAPES['status'], TABLES['tab'], TABLES['status'] and schema.SCHEMA_VERSION; TAB_NAMES itself is not pinned."},
+  {"criterion": "AC-TB11 git_tab equals the pre-move reference; the four spec tabs byte-identical; derive has no subprocess", "met": "yes", "evidence": "tests/test_export_board.GitTabUnchanged (3 cases) and SpecTabBytes; tests/test_derive.Git.test_derive_still_runs_no_subprocess."},
+  {"criterion": "AC-TB12 a tab that cannot be stored is skipped with a warning and its stored version kept", "met": "yes", "evidence": "test_tabs.PerRecordFailure.test_a_tab_that_cannot_be_stored_is_skipped_and_its_stored_version_kept, with records.to_row raising for one tab id after its source really changed."},
+  {"criterion": "AC-TB13 tabs.OWNED == export_board.TABS and a findings record is never touched", "met": "yes", "evidence": "test_tabs.ForeignSuffixes.test_owned_is_exactly_the_exporters_tabs, test_a_findings_record_is_left_exactly_as_it_is (doc column byte-unchanged, db.delete zero for its id, the five owned tabs still written), test_a_project_whose_only_stored_tab_is_findings_does_not_trip_the_guard, and test_tabs_equivalence.OwnershipEquivalence.test_neither_side_touches_the_findings_tab. A deliberate mutation of tabs.owns() to read records.TAB_NAMES was run and failed all three of these, so they are not vacuous."},
+  {"criterion": "AC-TB14 per-project failure confinement, and load_data's ValueError failing the whole pass", "met": "yes", "evidence": "test_tabs.PerProjectFailures: a PermissionError on the ADR folder (through the command line, exit code 0), a UnicodeDecodeError on the spec file, and a TimeoutExpired from a git call each leave the healthy project's five tabs written, the failing project's stored tabs carried, lastRefresh, sessions, runs, projects and the catalogue written, and a warning naming the failing project; a malformed projects/<pid>.json raises and writes nothing, observed on the tables from a second connection."},
+  {"criterion": "Close-out: the three configured suites green on the head commit", "met": "yes", "evidence": "python -m unittest discover -s tests 345 OK; node tests/page.test.mjs 99 OK; python -m unittest discover -s local/tests 303 OK. Run from the worktree root."},
+  {"criterion": "Code-review gate passed (review-agents:code-reviewer GO)", "met": "no", "evidence": "Not this agent's to assert. The change is handed to code-reviewer for the GO/NO-GO verdict."}
+ ],
+ "not_done": [],
+ "follow_ups": [
+  {
+   "ref": "local/tests/test_collector.py",
+   "reason": "Three assertions of the PBI-019 suite were re-expressed because they encoded 'the collector writes no tab or status record', which this change makes false by design. The spec's §7 said 'new files only', which was a parallel-safety statement about PBI-026 (already merged at this PBI's base commit 5baa922); local/tests/** is in this work item's allowed areas and test_conformance.py, the file §7.4 protects, is untouched. Reviewer should confirm this reading."
+  },
+  {
+   "ref": "run_pass signature",
+   "reason": "run_pass gained two optional parameters the spec did not name, data_dir and run, so the tests can point the pass at a fixture's data folder and drive git without a repository; run mirrors export_board.main's existing run parameter. The command line passes neither, so its behaviour is the documented default."
+  },
+  {
+   "ref": "tabs.carry, §4.4 row 4",
+   "reason": "A record that already carries carriedSince is returned unchanged in the intended set rather than omitted from it. Omitting it, as the row's 'store nothing' reads in isolation, put it in the deletion set and deleted it on the third pass; the unchanged-record check in _Pass.store still means db.upsert is not called, so both §4.4's 'db.upsert is not called' and §6.2's 'a tab goes only when its project leaves the config' hold. Caught by the carry-cycle test before it could reach the reviewer."
+  },
+  {
+   "ref": "tabs.is_repo",
+   "reason": "Where export_board.is_repo answers False when git cannot be run, the local one lets the OSError reach build's git handler, so a machine without git warns once per project per pass and carries the stored git tab, per §4.2.1 row 3. The documents are identical either way."
+  },
+  {
+   "ref": "owner, Q-1 and Q-3 (spec §9)",
+   "reason": "Two follow-up work items the spec recommends and this change does not cover: a config-sourced status block for title/message/metrics, and the local findings tab (which needs exporters/export_sessions.py, outside these areas). Q-2 carries an FYI to the owner that restoring pull requests locally would need a process outside the collector."
+  },
+  {
+   "ref": "board.config.json, exporters/board_config.py",
+   "reason": "Both are in the work item's allowed areas and both are deliberately untouched: the spec settles on no cadence key and no gh key (Q-5, Q-13). An unused allowed area is not a defect."
+  },
+  {
+   "ref": "tools/change_report_schema.py",
+   "reason": "No copy of the schema module was found on this machine, so this report was written to the documented shape by hand and its validate() was NOT run."
+  }
+ ]
+}

@@ -1,0 +1,158 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-11",
+    "mode": "changeset",
+    "scope": "Six untracked files in C:/Users/jdk/dispatch-board-worktrees/PBI-003 (branch pbi/PBI-003-records-schema, base fd7b926). Intent rung 1: docs/backlog/specs/pbi-003-records-schema.md revision 4, deviation assessment against sections 2-6 and AC-D1..AC-D7. Grounding: the three suites run in the worktree, in-memory and temp-file probes, a scratch commit-and-clone under autocrlf, and reasoning. No SARIF or SAST.",
+    "summary": "1 HIGH, 0 MEDIUM, 4 LOW. Spec fidelity: SHAPES, validate, id forms, store_path, TABLES, to_row/from_row and create_schema match sections 3-4; the transaction mechanism is correct in all five connection modes. The one problematic departure is the byte-exact shapes-copy assertion, which fails on a git checkout with autocrlf (AC-D7). Verdict NO-GO.",
+    "sensitivity": "sensitive",
+    "verdict": "NO-GO"
+  },
+  "findings": [
+    {
+      "id": "CR-PBI003-01",
+      "severity": "HIGH",
+      "title": "The local suite fails after merge: the shapes-copy test compares bytes, and git checks the JSON out as CRLF",
+      "subject": {
+        "type": "file",
+        "id": "local/tests/test_records.py:235-238",
+        "name": "ShippedCopy.test_the_committed_json_copy_equals_shapes"
+      },
+      "evidence": [
+        {
+          "field": "repo line-ending config",
+          "value": "core.autocrlf=true; no .gitattributes; 95 of 95 tracked files i/lf w/crlf",
+          "sensitive": false
+        },
+        {
+          "field": "scratch commit+clone probe",
+          "value": "json.loads(text) == SHAPES True; exact text equal False; has CRLF True",
+          "sensitive": false
+        }
+      ],
+      "impact": "After merge the local suite goes red in the main checkout; AC-D7 unmet.",
+      "remediation": "Keep the json.loads equality; normalise newlines before the canonical-text comparison.",
+      "refs": [
+        "AC-D7",
+        "spec section 3.4 / T1"
+      ],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-PBI003-02",
+      "severity": "LOW",
+      "title": "to_row and from_row can raise TypeError, AttributeError or KeyError instead of ValueError; 1e999 comes back as inf",
+      "subject": {
+        "type": "change",
+        "id": "local/records.py:225-228, 252-258",
+        "name": "to_row / from_row error contract"
+      },
+      "evidence": [
+        {
+          "field": "probes",
+          "value": "set/bytes/mixed keys -> TypeError; bytes/None/tuple -> AttributeError; mapping without doc -> KeyError; '{\"a\": 1e999}' -> inf",
+          "sensitive": false
+        }
+      ],
+      "impact": "A collector catching ValueError per record would crash on a malformed doc.",
+      "remediation": "Re-raise TypeError as ValueError; accept only str or mapping with str doc; parse_float hook rejecting non-finite values.",
+      "refs": [
+        "spec section 4",
+        "Error Handling at Boundaries"
+      ],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-PBI003-03",
+      "severity": "LOW",
+      "title": "Double-quoted column names let SQLite build an index on a constant, so create_schema marks a broken file as version 1",
+      "subject": {
+        "type": "file",
+        "id": "local/schema.py:21-23",
+        "name": "DDL generation"
+      },
+      "evidence": [
+        {
+          "field": "probe",
+          "value": "CREATE TABLE runs (x); create_schema succeeds, user_version 1; the index is on the constant 'session'",
+          "sensitive": false
+        }
+      ],
+      "impact": "A loud failure and rollback becomes a silent useless index on a foreign or corrupted file.",
+      "remediation": "Emit identifiers unquoted, or check PRAGMA table_info before setting user_version.",
+      "refs": [
+        "spec section 4 healing limits"
+      ],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-PBI003-04",
+      "severity": "LOW",
+      "title": "No test pins SHAPES to section 3.1",
+      "subject": {
+        "type": "file",
+        "id": "local/tests/test_records.py:75-85",
+        "name": "T1 required and type tests"
+      },
+      "evidence": [
+        {
+          "field": "self-referential tests",
+          "value": "tests iterate records.SHAPES; TABLES is pinned literally, SHAPES is not",
+          "sensitive": false
+        }
+      ],
+      "impact": "Loosening a type or dropping a required field passes the suite.",
+      "remediation": "Assert SHAPES equals a literal copy of section 3.1.",
+      "refs": [
+        "Testing Discipline",
+        "AC-D1"
+      ],
+      "category": "test-adequacy"
+    },
+    {
+      "id": "CR-PBI003-05",
+      "severity": "LOW",
+      "title": "Each conformance run leaves its temp folder behind (read-only git objects defeat rmtree ignore_errors on Windows)",
+      "subject": {
+        "type": "file",
+        "id": "local/tests/test_conformance.py:270-271",
+        "name": "Fixture.cleanup"
+      },
+      "evidence": [
+        {
+          "field": "leftovers",
+          "value": "four %TEMP%/conformance-test-* folders, 10 read-only files each",
+          "sensitive": false
+        }
+      ],
+      "impact": "Hygiene only.",
+      "remediation": "rmtree with onexc/onerror that chmods and retries.",
+      "refs": [
+        "Testing Discipline (hermetic tests)"
+      ],
+      "category": "test-adequacy"
+    }
+  ],
+  "not_audited": [
+    {
+      "ref": "security dimension",
+      "reason": "No SARIF or SAST; reasoning only; nothing found."
+    },
+    {
+      "ref": "Python below 3.14",
+      "reason": "Only 3.14.5 available; the datetime rule needs 3.11+."
+    },
+    {
+      "ref": "T2 git-tab case without git",
+      "reason": "git present; the no-git branch was not exercised."
+    }
+  ],
+  "follow_ups": [
+    "Spec: section 3.1 says only 'enums' may be omitted from a SPEC, but its nested catalogue specs omit 'optional' too; amend the spec text.",
+    "PBI-006: 'datetime' follows Python's fromisoformat, which a JavaScript reader cannot reproduce; pin a portable definition (a regex) before PBI-006 validates against records.shapes.json.",
+    "PBI-005: records has no inverse of store_path; test_conformance reimplements it and COLLECTION puts 'meta' under both lastRefresh and status. If the snapshot check needs it, the PBI that adds it needs local/records* in its areas.",
+    "PBI-019: to_row accepts strings holding a lone surrogate, which then fail at INSERT with UnicodeEncodeError (v1 exporters behave the same); the collector's error handling should expect it.",
+    "A-2 chore: declare the minimum Python version (3.11 or later) when adding the local suite to [test_commands]."
+  ]
+}

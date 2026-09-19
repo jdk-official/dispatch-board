@@ -1,0 +1,49 @@
+{
+ "schema_version": "1",
+ "audit": {
+  "agent": "code-reviewer",
+  "as_of_date": "2026-09-11",
+  "mode": "diff",
+  "scope": "Round 2 (final configured round) of the uncommitted diff in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-002 (branch pbi/PBI-002-page-fixes, base origin/main 12c197a): site/index.html +100/-67 and tests/page.test.mjs +394/-17, rounds 1 and 2 together. Judged against round-1 findings-r1.json (CR-PBI002-01, CR-PBI002-02) and change-report-r2.json. Intent rung 2 (work-item AC): PBI-002 AC-60, AC-62, AC-126, the row 13 design fixes, the token relabel and the Notes follow-ups, plus the CLAUDE.md design rules. Grounding path: repo suites run read-only from the worktree (node tests/page.test.mjs: all 89 page checks passed; python -m unittest discover -s tests: Ran 267, OK; python -m unittest discover -s local/tests: Ran 90, OK); git diff --check clean. Six scratch-only mutants of the page were run through the page suite via PAGE_HTML, and the worktree was not touched. Security is reasoning-only (no Touchstone SARIF).",
+  "summary": "0 CRITICAL / 0 HIGH / 0 MEDIUM / 0 LOW. Correctness, security, maintainability and test-adequacy were all reviewed. Change class: standard. CR-PBI002-01 is resolved. sessionLive takes an optional now, and isLive and scopeLive pass it on. renderHeader defaults to renderNow and is only ever called from renderAll or the minute timer, which passes its own single reading. Every tile and clockState uses the one reading. The only callers left on Date.now() are fillPickers/projectLive, which the writer excepted on purpose and which the timer redraws on every tick. Mutant M1, clockState reading the clock again, fails the new straddle check with 'the next minute tick finds the drawn tile out of date and redraws it'. CR-PBI002-02 is resolved: usageChart maps each leaf to Number(x) || 0, and mutant M5 (map removed) fails with 'no NaN in the chart markup'. No regressions: the pipeline arrows and the header pulse now key on agentRunning(), and mutants M3 and M7 fail their checks. The project header and legend still read live from agentRunning() || status.live, as before, and the Other-sessions semantics are unchanged. Verdict GO. Flag-only: nothing was changed, staged, committed, pushed or deployed.",
+  "sensitivity": "sensitive",
+  "verdict": "GO"
+ },
+ "findings": [],
+ "not_audited": [
+  {
+   "ref": "AC-62",
+   "reason": "Not verifiable here, carried from round 1: the 20-load fresh-tab Chrome check on the published page is orchestrator-owned at close-out."
+  },
+  {
+   "ref": "Close-out criterion: suites green on the head commit",
+   "reason": "Nothing is committed yet. The suites are green on the working tree (89 / 267 / 90, re-run by this review), so re-run them on the head commit at close-out."
+  },
+  {
+   "ref": "Real-browser rendering",
+   "reason": "Not observed. The page suite uses a stub DOM, so the arrow motion, the header pulse and the chart drawn from normalised hours were verified only as markup."
+  },
+  {
+   "ref": "usage.hourly negative or non-finite leaves",
+   "reason": "Not a finding. A negative main/sub passes the Number(x) || 0 normalisation, and niceCeil(v <= 0) gives 1, so it would draw a negative-height rect rather than NaN. The input is trusted and exporter-written, and the exporter writes non-negative token counts. JSON cannot carry Infinity."
+  },
+  {
+   "ref": "Touchstone SARIF",
+   "reason": "Not provided, so the security pass is reasoning-only. The round-2 edits add no new data sink: the chart values are numbers, the class strings are constants, and every rendered value still goes through esc()."
+  }
+ ],
+ "follow_ups": [
+  {
+   "ref": "FU-renderNow-pin",
+   "note": "Optional test hardening. Mutants M4 and M6, where the Overview or Dispatch 'Running now' tile reads Date.now() itself instead of renderNow, pass all 89 checks. They survive because endsWhileDrawn flips the clock only when the panel's innerHTML is assigned, which happens after the tile has read the clock. Both fail safe: the time only moves forward, so a later reading can only show idle early, and the next tick redraws. A harness that flips the clock after renderAll's first reading would pin the renderers too."
+  },
+  {
+   "ref": "FU-pipeline-filter",
+   "note": "Behaviour note, not a defect. Under a project session filter, agentRunning() counts the project's runs, so the pipeline arrows move while another session of the project runs an agent, even when the filtered pipeline shows no running node. This matches the header's documented 'live whichever session the filter shows' rule. Change it only if the owner wants the arrows scoped to the filter."
+  },
+  {
+   "ref": "FU-fonts-preconnect / FU-store-hang / FU-accumulators",
+   "note": "Still open from round 1, out of scope for this PBI: preconnect to fonts.gstatic.com; a timeout note for a never-settling claude.use and the unguarded e.code in fail; own-key guards or Maps for the data-keyed accumulators."
+  }
+ ]
+}

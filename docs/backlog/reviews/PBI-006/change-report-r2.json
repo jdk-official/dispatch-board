@@ -1,0 +1,144 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-12",
+    "mode": "finding",
+    "change_class": "standard",
+    "scope": "Apply all six code-review conditions from docs/backlog/reviews/PBI-006/findings.json (verdict GO-WITH-CONDITIONS: 1 MEDIUM, 5 LOW) to the uncommitted PBI-006 change in the worktree C:/Users/jdk/dispatch-board-worktrees/PBI-006, branch pbi/PBI-006-adapter-seam. Allowed areas site/** and tests/page.test.mjs only; exporters/** and local/** blocked and untouched. Acceptance criteria, derived from the six findings and stated so the definition of done is unambiguous: (1) the FR-97 equivalence check runs on a fixture where all ten panels of the compared view carry real content on both sides - pull requests, a carriedSince tab, a findings tab, a running agent, assumptions awaiting a human, work items in more than one state - and still passes, while reversing the local comparator still fails it; (2) a 200 whose JSON is not a snapshot takes the same honest degrade path as a refusal - Offline, the exact cannot-reach sentence, the footer, no stream, console.warn not console.error - while a genuinely empty records map stays a legitimate empty board; (3) a marker missing either the snapshot or the events URL falls back to the store adapter, so undefined?since=N can never be opened; (4) a marker whose snapshot or events URL is not same-origin, or is a javascript: or data: URL, falls back to the store adapter, with relative URLs resolved against the document's own origin rather than rejected; (5) one change event causes one render pass, with no timer-based debounce and no timing-dependent check; (6) the write-only version residue is gone or genuinely used, without breaking PBI-005's S-4 reconnect guarantee. Non-regression: the published artifact path keeps the same eight store subscriptions in the same shape, and the throwing fetch/EventSource stubs still prove the artifact half makes no HTTP reach. Grounding path: ran-suite - all three configured suites run from the worktree root on Windows with Node 24.16 and Python 3.14, plus an eight-mutant mutation sweep of site/index.html through PAGE_HTML to prove each new check bites.",
+    "verdict": "DONE",
+    "summary": "2 files modified (site/index.html, tests/page.test.mjs), 0 created, 0 deleted; +422/-18 lines. 3 page checks added (108 -> 111) and 5 existing checks strengthened rather than replaced; no assertion weakened, skipped, xfailed or deleted. Suites from the worktree root: python -m unittest discover -s tests = 334 passed / 0 failed (OK); node tests/page.test.mjs = 111 passed / 0 failed; python -m unittest discover -s local/tests = 261 passed / 0 failed (OK). The 261 matches the stated baseline for this worktree, which predates the PBI-026 merge that took main to 265. Mutation sweep: 8 of 8 mutants killed, including the reversed local comparator, which still dies on the FR-97 deep-equal. Nothing committed, staged, pushed, merged or deployed; the working tree holds the change and git status shows only the two modified files.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "site/index.html",
+      "change_kind": "modify",
+      "why": "Four behaviour changes in the data-adapter seam plus one render-scheduling hook. (a) localAdapter read() now throws when the body's records field is missing, not an object, or an array, so a 200 of the wrong shape draws the out-of-reach board instead of a plausible-looking empty one; an empty records object is still kept, because a collector that has not written yet is a real state. (b) The adapter-choice guard now requires both marker URLs, so a marker naming a snapshot but no events URL can no longer open a stream at the literal path undefined. (c) A new sameOrigin() helper resolves each marker URL against the document's own address and accepts it only when the origin matches, so a relative path works as the local server injects it while a cross-origin, protocol-relative, other-port, javascript: or data: URL falls back to the store adapter. (d) A counted holdRender() hold around renderAll(), used by the local adapter's notify(), makes one pushed event cost one render pass instead of one per registered reader; it is synchronous and has no timer, so the live-push checks stay deterministic. (e) The write-only version residue is gone: read() now returns the version it read, the stream is joined once at the snapshot's own version, and the post-open reassignments are removed, with the reconnect rule stated in the comment so the next reader knows the browser's Last-Event-ID and the server's larger-of-the-two rule carry resumption.",
+      "acceptance_refs": ["CR-006-02", "CR-006-03", "CR-006-04", "CR-006-05", "CR-006-06"]
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "change_kind": "modify",
+      "why": "Enriches the FR-97 equivalence fixture so no panel is compared empty to empty, adds a page address to the stub environment so same-origin can be judged, and adds or strengthens the checks that pin each of the six conditions. The equivalence fixture gains five dispatch-board project tabs (spec, assumptions with a row awaiting a human, decisions carrying carriedSince, backlog with work items in all four states plus a Later idea, and a findings tab with open and resolved findings including an img-onerror fragment) and a git tab carrying an OPEN and a MERGED pull request, and the check now asserts that no panel of either side renders an empty state before comparing the two. Fixture values are deliberately neutral so the suite carries no ticket or review-round metadata.",
+      "acceptance_refs": ["CR-006-01", "CR-006-02", "CR-006-03", "CR-006-04", "CR-006-05", "CR-006-06"]
+    }
+  ],
+  "tests": [
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "FR-97 equivalence on a board where every panel has content: the check now asserts no panel of the store side or the local side renders class=\"empty\", and that the compared board shows a pull request, a carried tab, an open finding, a running agent, an assumption awaiting a human and a partly-built work item, before the existing deepEqual of all ten panels plus statusText, crumb, asOf and foot. Mutant M1, reversing the local comparator, still kills it (CR-006-01)."
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "The degrade loop grew from 3 cases to 9: a body that is null, an array, an object with no records, records as a string, records as null and records as an array now join the refused connection, the 503 and the unreadable JSON. Each asserts Offline, the exact \"This view cannot reach the local server.\" sentence in the Overview and the catalogue tab, the footer sentence, zero streams opened and a console.warn carrying an Error; the suite's own guard proves no console.error was logged. Mutants M2 and M2b are killed (CR-006-02)."
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "added",
+      "status": "pass",
+      "covers": "A snapshot whose records map is genuinely empty stays an empty board: not Offline, empty footer, the stream still joined, no cannot-reach text. Mutant M6, refusing an empty records map, is killed (CR-006-02, the other side of the guard)."
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "The adapter-choice check became a loop over nine bad markers: no snapshot URL, no events URL, a non-string events URL, a cross-origin snapshot URL, a cross-origin events URL, protocol-relative URLs on another host, another port on the same host, javascript: URLs and data: URLs. Each asserts no snapshot request, no stream, and that the store adapter ran instead. A sibling check pins the marker the local server really injects - two paths relative to the page - as still accepted, with no store subscription. Mutants M3, M3b and M4 are killed (CR-006-03, CR-006-04)."
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "added",
+      "status": "pass",
+      "covers": "Render fan-out, counted on real innerHTML writes with one page alive at a time: one store snapshot draws panel-dispatch once, one change event draws it once, one event touching four paths across four collections is still one pass, and a reset is one more. Deterministic and synchronous - no timer is involved. Mutant M5, removing the hold, is killed and the check reports 9 writes where 1 is required (CR-006-05)."
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "The stream is opened exactly once, at the snapshot's own version (/api/events?since=7), and is never reopened - not after a reset, not after a transient drop, and not after the browser gave up retrying. This is what pins the removal of the write-only version residue: the page holds no resume position of its own that could regress (CR-006-06)."
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "Artifact-path non-regression, unchanged and still green: with no marker the page opens exactly the eight store subscriptions asserted by key, and the throwing fetch and EventSource stubs prove it makes no HTTP reach. The retired-tabs guard across every env() also still passes."
+    },
+    {
+      "path": "tests",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "The exporter suite, 334 tests, untouched by this change and re-run to confirm no regression."
+    },
+    {
+      "path": "local/tests",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "The local-app record and schema suite, 261 tests, a blocked area that was not touched, re-run to confirm no regression."
+    }
+  ],
+  "acceptance": [
+    {
+      "criterion": "CR-006-01 (MEDIUM) - the FR-97 equivalence evidence must not rest on comparing emptiness to emptiness: all ten panels carry real content on both sides, the check still passes, and reversing the comparator still fails it.",
+      "met": "yes",
+      "evidence": "EQ_TABS now carries dispatch-board.spec, .assumptions, .decisions (with carriedSince), .backlog and .findings, and a dispatch-board.git tab with an OPEN and a MERGED pull request. The check asserts emptyPanels(store) and emptyPanels(local) are both [] before the deepEqual, and that the compared board shows a pull request, a carried-tab callout, an open finding, a running agent, an assumption awaiting a human and a partly-built work item. It passes. Mutant M1 (comparator reversed from a - b to b - a) fails the deepEqual at tests/page.test.mjs:1472, so the check still bites on the richer data."
+    },
+    {
+      "criterion": "CR-006-02 (LOW) - a 200 with a non-snapshot body must take the same honest degrade path as a refusal, and must not log console.error; a genuinely empty records map must remain a legitimate empty board.",
+      "met": "yes",
+      "evidence": "read() throws unless body.records is a non-array object. Six wrong-shape cases join the existing three in the degrade loop; all nine assert Offline, the exact sentence, the footer, zero streams and a console.warn with an Error, and the suite fails on any unexpected console.error, so the absence of one is pinned by the harness. A separate check pins the empty-records board as not Offline, footer empty, stream still joined. Mutants M2, M2b and M6 all die."
+    },
+    {
+      "criterion": "CR-006-03 (LOW) - a marker carrying a snapshot URL but no events URL must fall back to the store adapter, exactly as a marker naming no snapshot already does.",
+      "met": "yes",
+      "evidence": "The guard is now local && sameOrigin(local.snapshot) && sameOrigin(local.events). The marker {snapshot:'/api/snapshot'} and the marker {snapshot:'/api/snapshot', events:7} each assert no snapshot request, no stream and a store adapter that ran instead. Mutant M3 (guard reduced to the snapshot URL alone) dies on 'no events URL: no snapshot is requested'."
+    },
+    {
+      "criterion": "CR-006-04 (LOW) - the page must refuse a marker whose snapshot or events URL is not same-origin, and must refuse a javascript: or data: URL outright, while resolving relative URLs against the document's own origin rather than rejecting them.",
+      "met": "yes",
+      "evidence": "sameOrigin() resolves each URL against new URL(location.href) and compares origins, so a relative path is accepted and an opaque-origin scheme can never match. Six hostile markers are pinned: cross-origin snapshot, cross-origin events, protocol-relative on another host, another port on the same host, javascript: and data:. The marker the local server actually injects ({snapshot:'/api/snapshot', events:'/api/events', version:1}) is still accepted, with no store subscription. Mutants M3b (string check only) and M4 (sameOrigin always true) both die. The URLs are validated but still passed to fetch and EventSource verbatim, so the existing assertions on the requested path and the stream URL stand unweakened."
+    },
+    {
+      "criterion": "CR-006-05 (LOW) - one change event must cause one render pass, with no timer-based debounce and no timing-dependent check.",
+      "met": "yes",
+      "evidence": "A counted, synchronous holdRender() marks renderAll() as pending while the adapter tells every reader, then draws once on release; the release sits in the finally, so a reader that throws still leaves the board showing what arrived. notify() is the only caller. Counting real innerHTML writes on panel-dispatch: one store snapshot = 1, one change event = 1, one event touching four paths across four collections = 1, a reset = 1. Mutant M5 (hold removed) reports 9 writes for one event and dies. No setTimeout, microtask or debounce was introduced."
+    },
+    {
+      "criterion": "CR-006-06 (LOW) - version must be genuinely used or removed, without breaking PBI-005's S-4 guarantee that reset carries id: <version> and the server resumes from the larger of since and Last-Event-ID.",
+      "met": "yes",
+      "evidence": "Taken the first remediation option: read() now returns the version it read, the stream is joined once at that version, and both post-open reassignments are gone, so no write-only residue remains and the surviving read is the one that builds the stream URL. The comment states the reconnect rule in full and self-contained - the browser replays the id of the last event it saw as Last-Event-ID and the server resumes from whichever of that and the query position is further on - so a future reader cannot mistake the page for the holder of the resume position. Nothing in local/server.py was touched, so the server half of S-4 is untouched by construction, and the page never builds a second stream URL: the check asserts exactly one stream at /api/events?since=7 after a reset, a transient drop and a give-up."
+    },
+    {
+      "criterion": "Non-regression: the published artifact path must keep the eight store subscriptions unchanged in shape, and the throwing fetch/EventSource stubs must still prove the artifact half makes no HTTP reach.",
+      "met": "yes",
+      "evidence": "The store-adapter branch, the eight adapter.collection/adapter.doc calls and the snapshot mapper are untouched by this round. The existing check asserting the exact eight subscription keys passes, the throwing stubs are still installed whenever no marker is present, and the retired-tabs guard across every env() passes. sameOrigin() is reached only when a marker exists, so the artifact path gained no new dependency on location."
+    },
+    {
+      "criterion": "Scope: touch only site/** and tests/page.test.mjs; commit, stage, push and deploy nothing.",
+      "met": "yes",
+      "evidence": "git status --short reports exactly ' M site/index.html' and ' M tests/page.test.mjs'; git diff --cached is empty. exporters/** and local/** were read only. No git add, commit, push, merge or publish was run, and the live artifact was not refreshed."
+    }
+  ],
+  "not_done": [],
+  "follow_ups": [
+    {
+      "ref": "code-reviewer, the conditions round",
+      "note": "This is a self-verified build, not an approval. All six conditions are applied and every claim above was measured, but the GO / NO-GO on the round belongs to code-reviewer, not to the builder."
+    },
+    {
+      "ref": "The reviewer's two surviving mutants (findings.json follow_ups, 'Mutation coverage of two defensive guards')",
+      "note": "Not addressed, and deliberately so: it was recorded as a follow-up rather than a condition, and neither guard is a defect. The id tiebreak in the local comparator and the document-shape guard in the local adapter's entry lookup could still be deleted without the suite noticing. The enriched fixture makes covering them cheap now - one check each, pinning that two records sharing an order value keep a stable order, and that a record whose doc is a string, null or missing is ignored rather than spread into the board. Worth a small follow-up item."
+    },
+    {
+      "ref": "tests/page.test.mjs, the single-global-document harness caveat",
+      "note": "Each env() replaces globalThis.document, so a page's renderers follow the newest env and an older page driven afterwards writes into the newer page's elements. The render-fan-out check works around this by keeping one page alive at a time, and the existing suite already notes it in the AC-SV7 block. Not a defect in the page, and out of scope here, but the harness would be less surprising if env() captured its own document rather than sharing the global - worth a test-writer item if the suite grows more multi-page checks."
+    },
+    {
+      "ref": "local/server.py, the marker it injects",
+      "note": "No change needed today: the server already injects both URLs as paths relative to the page, which is exactly what the new guard accepts. Recorded so that anyone changing _wrap_page() knows the page will now refuse a marker that drops either key or names another origin, and will fall back to the store adapter rather than failing loudly. local/** was a blocked area this round in any case."
+    }
+  ]
+}

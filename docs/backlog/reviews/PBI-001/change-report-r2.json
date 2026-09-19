@@ -1,0 +1,66 @@
+{
+ "schema_version": "1",
+ "report": {
+  "agent": "code-writer",
+  "as_of_date": "2026-09-11",
+  "mode": "finding",
+  "change_class": "standard",
+  "scope": "PBI-001 round 2 in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-001 (branch pbi/PBI-001-exporter-hardening, rebased onto main d9de491): fix the code-reviewer round-1 NO-GO findings CR-PBI001-01 (HIGH, verifier outcome), -02 (MEDIUM, manual row ids), -03 (LOW, nested Later items) and -04 (LOW, session-level carry), test-first, plus the review follow-up aligning CLAUDE.md's runs-table lane list. Round-1 acceptance rows carried forward. Grounding: ran-suite (tests/, node page test, local/tests).",
+  "verdict": "DONE-WITH-CONDITIONS",
+  "summary": "Round 2: 4 files modified on top of round 1 (exporters/export_sessions.py, exporters/board_config.py, exporters/export_board.py, CLAUDE.md) and 2 test files (tests/test_export_sessions.py, tests/test_export_board.py). 9 tests added, 1 round-1 test rewritten for the new nested-item behaviour, 1 existing test extended with one more assertion. Every new or changed test failed first for the right reason (13 failures in test_export_sessions, 11 failures + 1 error in test_export_board), then passed. Suites from the worktree: tests/ 261 passed / 0 failed (252 + 9); node tests/page.test.mjs 57/57; local/tests 90 passed / 0 failed. Nothing committed, staged, pushed or deployed; site/**, local/**, docs/** and tests/page.test.mjs untouched.",
+  "sensitivity": "sensitive"
+ },
+ "changes": [
+  {"path": "exporters/export_sessions.py", "change_kind": "modify", "why": "CR-PBI001-01: new verifier_outcome() reads the lane ver outcome through VERIFIER_TIERS: an outcome label (JSON outcome key or Outcome:), then a Verdict-labelled, bold or code word, then a bare word. Case-insensitive; a word after a negation (NEGATED) is skipped; fallback-declared wins when a tier holds both words. verdict_of() tries it first on lane ver only; the verifier words leave TOKEN, so other lanes read as before and ver still falls back to the review tokens. CR-PBI001-04: when a session parse raises and its cached result is reused, the export gets a copy whose rows pass through carried(); the cache entry (signature and rows) is left as read, so the session is re-read next run", "acceptance_refs": ["CR-PBI001-01", "CR-PBI001-04", "AC-61", "AC-57"]},
+  {"path": "exporters/board_config.py", "change_kind": "modify", "why": "CR-PBI001-02: RUN_ID copies local/records.py _SEGMENT (fullmatch; non-empty, no / or \\, no C0/C1 control characters, not . or ..); manual() raises the same named ValueError (row index, id, field) for an id outside it", "acceptance_refs": ["CR-PBI001-02", "follow-up 6"]},
+  {"path": "exporters/export_board.py", "change_kind": "modify", "why": "CR-PBI001-03: later_items() keeps a nested item (list line indented 4+ spaces or a tab) and its continuation lines in its idea's description as joined text, marker included, instead of dropping them; the nested flag is removed", "acceptance_refs": ["CR-PBI001-03", "follow-up 4"]},
+  {"path": "CLAUDE.md", "change_kind": "modify", "why": "runs-table lane list gains other (review follow-up) and states how a verifier's word is read; backlog later text documents nested items kept in the description; refresh step 1 documents the manual id form and the session-level running-row carry", "acceptance_refs": ["CR-PBI001-01", "CR-PBI001-02", "CR-PBI001-03", "CR-PBI001-04"]},
+  {"path": "tests/test_export_sessions.py", "change_kind": "modify", "why": "failing-first tests for the verifier outcome (fallback headline + not exercised, JSON outcome block, any case, negations, bare preference) and the session-level carry", "acceptance_refs": ["CR-PBI001-01", "CR-PBI001-04"]},
+  {"path": "tests/test_export_board.py", "change_kind": "modify", "why": "failing-first tests for unsafe manual ids, dotted ids that stay valid, a drift guard reading local/records.py as data via ast, and nested Later items kept in the description", "acceptance_refs": ["CR-PBI001-02", "CR-PBI001-03"]}
+ ],
+ "tests": [
+  {"path": "tests/test_export_sessions.py", "kind": "added", "status": "pass", "covers": "VerdictOf: test_a_fallback_headline_that_goes_on_to_say_not_exercised_stays_fallback_declared, test_a_json_outcome_is_read_before_the_prose, test_the_verifier_words_are_read_in_any_case (Outcome: Exercised), test_a_negated_verifier_word_is_never_the_outcome (8 negations), test_the_first_bare_verifier_word_leads_but_a_bare_fallback_is_preferred. Malformed: test_a_running_row_in_a_session_that_cannot_be_parsed_is_killed_once_the_window_has_passed (killed / no result, session running 0, cache still holds the running row)"},
+  {"path": "tests/test_export_sessions.py", "kind": "modified", "status": "pass", "covers": "Classify.test_verifier_result_words_are_the_verdict_and_the_kind_stays_done gains the fallback-declared-then-not-exercised case; no assertion removed"},
+  {"path": "tests/test_export_sessions.py", "kind": "existing", "status": "pass", "covers": "Pipeline.test_verifier_that_exercised_its_checks (plain exercised case, AC-61) and VerdictOf/Classify tests for other lanes, unchanged"},
+  {"path": "tests/test_export_board.py", "kind": "added", "status": "pass", "covers": "ManualRows: test_an_id_that_is_not_one_safe_path_segment_is_refused (../x, a/b, a\\b, ., .., empty, NUL, embedded and trailing newline, C1), test_ids_that_only_contain_dots_among_other_characters_are_accepted, test_the_id_form_matches_the_local_run_id_form (ast read of local/records.py: _SEGMENT pattern equals RUN_ID and _ID_FORMS['run'] is _SEGMENT)"},
+  {"path": "tests/test_export_board.py", "kind": "modified", "status": "pass", "covers": "FutureIterations: the round-1 nested test renamed to test_deeper_indented_list_lines_are_nested_items_kept_in_their_ideas_description; it now expects the nested text in the description and pins the reviewer's probe (one - nested back to A?)"},
+  {"path": "tests/page.test.mjs", "kind": "existing", "status": "pass", "covers": "57 page checks, unchanged"},
+  {"path": "local/tests", "kind": "existing", "status": "pass", "covers": "90 local-app tests, unchanged"}
+ ],
+ "acceptance": [
+  {"criterion": "CR-PBI001-01 (HIGH): lane ver records the verifier's real outcome: labelled outcome first, then bold/code/Verdict-labelled, then bare; case-insensitive; never a negated word; fallback-declared preferred when both appear bare; other lanes unchanged", "met": "yes", "evidence": "the four required cases pass: fallback headline + not exercised gives fallback-declared; JSON outcome fallback-declared + not exercised gives fallback-declared; Outcome: Exercised gives exercised; Pipeline plain exercised still exercised. Negation, bare preference and Classify cases pass; all pre-existing VerdictOf/KindOf/Classify tests for cr/plan/cw/tw pass unchanged"},
+  {"criterion": "CR-PBI001-02 (MEDIUM): runs.manual ids must be a single safe path segment of the local run-id form, with a named ValueError; drift-guarded", "met": "yes", "evidence": "ManualRows tests refuse ../x, a/b, a\\b, ., .., empty (plus control characters) naming runs.manual[i] and the id; the drift test reads local/records.py with ast (the form is not in records.shapes.json) and matches RUN_ID.pattern; CommittedFiles.test_repo_config_manual_rows_are_well_formed still passes on the real board.config.json"},
+  {"criterion": "CR-PBI001-03 (LOW): nested Later sub-items do not vanish silently; behaviour chosen, pinned and documented", "met": "yes", "evidence": "chose keeping them in the idea's description as joined text (marker included); FutureIterations nested test pins it including the reviewer's probe; CLAUDE.md backlog later text updated"},
+  {"criterion": "CR-PBI001-04 (LOW): a reused result of a session that cannot be parsed has its rows mapped through carried() into a copy, the cache left alone", "met": "yes", "evidence": "Malformed.test_a_running_row_in_a_session_that_cannot_be_parsed_is_killed_once_the_window_has_passed: killed / no result, session running 0, cache file still holds the running row with the old signature"},
+  {"criterion": "Review follow-up: CLAUDE.md runs-table lane list includes other", "met": "yes", "evidence": "lane list now orch/req/plan/cw/tw/cr/ver/human/other, matching RUN_LANES and the exporter's other fallback"},
+  {"criterion": "AC-57: a carried-over running row of an agent that cannot be re-read is exported killed / no result once the running window has elapsed since its end", "met": "yes", "evidence": "round-1 Malformed and Carried tests still pass; now also on the session-level path (CR-PBI001-04)"},
+  {"criterion": "AC-58: a string usage.output_tokens does not stop the export of that session or any of its runs", "met": "yes", "evidence": "Malformed.test_a_string_token_count_skips_only_that_response passes"},
+  {"criterion": "AC-59: showFirstPrompt \"false\" or a string exclude makes the session exporter exit non-zero naming the key", "met": "yes", "evidence": "ConfigTypes tests pass"},
+  {"criterion": "AC-61: a verifier run whose result states exercised records verdict exercised", "met": "yes", "evidence": "Pipeline.test_verifier_that_exercised_its_checks passes; fallback-declared is now also recorded honestly when the result says not exercised"},
+  {"criterion": "AC-86: an export with an answers document makes refresh.py exit non-zero, name answers on stderr, leave no pending plan", "met": "yes", "evidence": "test_refresh Answers and Cli tests pass (unchanged this round)"},
+  {"criterion": "C-16 rule added to CLAUDE.md", "met": "yes", "evidence": "the 'Answers are the owner's' section is intact after the rebase"},
+  {"criterion": "Follow-up 1: RecursionError in records()", "met": "yes", "evidence": "Records nested-line and Malformed deep-nesting tests pass"},
+  {"criterion": "Follow-up 2: named test for a linked session outside the window", "met": "yes", "evidence": "Projects FR-137/AC-90 test passes"},
+  {"criterion": "Follow-up 3: snapshot sentence", "met": "yes", "evidence": "CLAUDE.md snapshot sentence as corrected in round 1, unchanged"},
+  {"criterion": "Follow-up 4: Later list markers and nesting", "met": "yes", "evidence": "FutureIterations tests pass; nesting now keeps nested text (CR-PBI001-03)"},
+  {"criterion": "Follow-up 5: userinfo stripped from remotes", "met": "yes", "evidence": "Remotes and PublicRemote tests pass"},
+  {"criterion": "Follow-up 6: runs.manual validation", "met": "yes", "evidence": "ManualRows tests pass; ids now also checked against the run-id form (CR-PBI001-02)"},
+  {"criterion": "Follow-up 7: meta/lastRefresh reserved", "met": "yes", "evidence": "ProjectList reserved-statusDoc test passes"},
+  {"criterion": "Optional 8: --repo from origin", "met": "yes", "evidence": "PullRequests and GithubOrigin tests pass"},
+  {"criterion": "Optional 9: list PBI files outside the spec's PBI table", "met": "no", "evidence": "not attempted, as in round 1: see not_done"},
+  {"criterion": "Suites green from the worktree: tests/, node page test, local/tests", "met": "yes", "evidence": "tests/ Ran 261 OK; node: all 57 page checks passed; local/tests Ran 90 OK"}
+ ],
+ "not_done": [
+  {"ref": "optional 9", "reason": "Unchanged from round 1: needs pbi_dir config, PBI frontmatter parsing and a site/** change (blocked). Not small."},
+  {"ref": "gate", "reason": "The code-reviewer round-2 GO/NO-GO is still owed; this report is not an approval."},
+  {"ref": "head-commit run", "reason": "The suites ran on the uncommitted working tree; the close-out run on the head commit is owed once the human commits."}
+ ],
+ "follow_ups": [
+  {"ref": "code-reviewer", "note": "Re-review the working-tree diff in the PBI-001 worktree for round 2 (CR-PBI001-01..04)."},
+  {"ref": "leading-dot manual ids", "note": "RUN_ID matches local _SEGMENT exactly, so an id such as .x is accepted by both forms, yet it writes out/runs/.x.json, which refresh.py's dotfile-skipping glob never pushes. Tightening it would diverge from the local form; decide in both places together (local/** is outside this PBI's areas)."},
+  {"ref": "verifier negation list", "note": "NEGATED covers not, never, no, cannot, without and n't, optionally followed by be/been/being/yet/fully/actually/really. Phrasings such as 'unable to be exercised' or 'skipped rather than exercised' are not caught and read as a bare exercised (still beaten by any bare or labelled fallback-declared); widen the list only if real verifier transcripts show them."},
+  {"ref": "plan-defect: Later-list nesting rule", "note": "Reviewer follow-up stands: the PBI rule (up to 3 leading spaces is a new idea) differs from CommonMark's parent-content-column rule; update the spec rule, not the code."},
+  {"ref": "Kept git tab bytes / minor tidy", "note": "Reviewer follow-ups on persisted pre-change git tabs and the github_repo()/github_origin() duplication were not in this round's ask; left as they are."},
+  {"ref": "docs", "note": "Close A-45, mark FR-80/81/82/84/133 met in docs/prd/dispatch-board.md and tick the PBI-001 ACs after the gate; docs/** is outside this PBI's areas."}
+ ]
+}

@@ -1,0 +1,17 @@
+{
+  "schema_version": "1",
+  "report": {
+    "pbi_id": "PBI-002",
+    "head_sha": "d10aa68",
+    "command": "backend: python -m unittest discover -s tests; frontend: node tests/page.test.mjs; local: python -m unittest discover -s local/tests",
+    "exit_code": 0,
+    "counts": {
+      "passed": 446,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "verdict": "PASS",
+    "as_of": "2026-09-11T17:28:54Z"
+  }
+}

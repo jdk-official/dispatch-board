@@ -1,0 +1,69 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-11",
+    "mode": "task",
+    "change_class": "trivial",
+    "scope": "Intent: resolve the brief's stale open question 'Is the snapshot of build data in a public repo acceptable long term?', which the owner answered at the plan gate on 2026-09-11 ('Make the repo private'; spec ledger row 3, CONFIRMED). Acceptance: (1) the question leaves 'Open questions still unanswered'; (2) it is recorded as answered, following the brief's existing convention, with the answer, the date and the row-3 citation; (3) the question's text is kept; (4) nothing else changes, and only docs/brief/raw-notes.md is edited. Grounding path: ran-suite.",
+    "verdict": "DONE",
+    "summary": "1 file modified (docs/brief/raw-notes.md: +4 / -1 in this pass), no tests added (documentation-only, no behaviour change). Before: unittest 197 OK, page 44/44 passed. After: unittest 197 OK, page 44/44 passed (exit 0). Nothing committed, staged, pushed or deployed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "docs/brief/raw-notes.md",
+      "change_kind": "modify",
+      "why": "Moved the answered public-repo snapshot question out of 'Open questions still unanswered' and into the brief's existing 'Owner's answers (2026-09-11)' section. The question is quoted verbatim, with the answer, the date and the row-3 ledger citation. It is an unnumbered bullet so the brief's 12-18 numbering, which the PRD maps to D-12..D-18, stays intact.",
+      "acceptance_refs": ["AC1", "AC2", "AC3", "AC4"]
+    }
+  ],
+  "tests": [
+    {
+      "path": "tests/",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "python -m unittest discover -s tests: 197 tests OK before and after"
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "node tests/page.test.mjs: all 44 page checks passed before and after"
+    }
+  ],
+  "acceptance": [
+    {
+      "criterion": "AC1: the question no longer appears under 'Open questions still unanswered'",
+      "met": "yes",
+      "evidence": "git diff: '-- Is the snapshot of build data in a public repo acceptable long term?' removed from that section; the refresher question remains"
+    },
+    {
+      "criterion": "AC2: recorded as answered in the brief's existing convention, with the answer, the date and the row-3 citation",
+      "met": "yes",
+      "evidence": "New bullet at the end of '## Owner's answers (2026-09-11)': answered at the plan gate (2026-09-11), 'Make the repo private', row 3 of the Assumptions ledger in docs/backlog/specs/dispatch-board.md, CONFIRMED"
+    },
+    {
+      "criterion": "AC3: the question's text is not deleted",
+      "met": "yes",
+      "evidence": "The question is quoted verbatim in bold at the start of the new bullet"
+    },
+    {
+      "criterion": "AC4: nothing else changes; only docs/brief/raw-notes.md is edited; evidence/ and prd/ untouched; nothing committed",
+      "met": "yes",
+      "evidence": "git status: only ' M docs/brief/raw-notes.md' plus the orchestrator's untracked docs/backlog/evidence/; git diff --cached empty; the brief's other hunks are the earlier correction's, unchanged in this pass"
+    }
+  ],
+  "follow_ups": [
+    {
+      "ref": "scope-wording",
+      "owner": "orchestrator",
+      "note": "Spec line 223 and PBI-022 allowed_areas limit raw-notes.md to 'the one \"public on GitHub\" line'. The brief now differs from main in three places (heading, decision 1, this open question), as this dispatch asked. Reconcile that wording, or record the widening, before the PR."
+    },
+    {
+      "ref": "prd-open-question-mirror",
+      "owner": "PRD agent (docs/prd/)",
+      "note": "Drop or mark answered any PRD open-question row that mirrors this brief line; the brief no longer lists it as unanswered."
+    }
+  ]
+}

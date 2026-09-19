@@ -1,0 +1,212 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-11",
+    "mode": "diff",
+    "scope": "Uncommitted working-tree diff in C:/Users/jdk/dispatch-board-worktrees/PBI-013 (branch pbi/PBI-013-usage-forecast from 7fd96cb): site/index.html (+34/-6: limitsOf, timeOf, FORECAST_HOW, forecastOf, forecastTile, three tile placements, the Usage limits method note, four readers moved to limitsOf) and tests/page.test.mjs (+92: section 11). Intent rung 1 (plan): the approved parent spec docs/backlog/specs/dispatch-board.md (revision 5), which prescribes the PBI areas and data source (usage.limits[].resetsAt) and, through ledger row 11 and PRD A-34, the method: the PRD default as written. Also read: PBI-013 AC-80, PRD FR-117, FR-118 and S-18, brief feature 6 (raw-notes.md:192-193), and the exporter limits and hourly shapes (exporters/export_sessions.py:360-381, 519-580). Grounding path: repo test suites run read-only (node tests/page.test.mjs 63 passed; python -m unittest discover -s tests 215 OK; python -m unittest discover -s local/tests 90 OK), plus a read-only scratch probe that ran forecastOf, extracted verbatim from site/index.html, against the real exported usage in C:/Users/jdk/dispatch-board/out/projects and out/sessions. No Touchstone SARIF or SAST: security was judged by reasoning only.",
+    "summary": "Change class: standard. 0 CRITICAL, 0 HIGH, 1 MEDIUM, 4 LOW, across correctness and test-adequacy. The security and maintainability passes found nothing. Deviation assessment against the plan: the method choice fills a plan-defect (ledger row 11 and PRD A-34 defer to a PRD default that the PRD never writes), sent to follow_ups for the owner. Reading hourly[0] and firstAt as well as resetsAt is a justified-improvement. Moving every usage.limits reader to limitsOf is a justified-improvement with no behaviour change for well-formed data. Both AC-80 outcomes are met. No path found that throws or logs console.error. The verification claimed (tier 3, all three suites) matches what the diff requires. The one material issue is method quality: idle time after a reset is counted as time to the next hit, which pushes the forecast late by hours on the real exported data. Verdict GO-WITH-CONDITIONS. Flag-only: nothing changed, staged, committed, pushed or deployed.",
+    "sensitivity": "sensitive",
+    "verdict": "GO-WITH-CONDITIONS"
+  },
+  "findings": [
+    {
+      "id": "CR-PBI013-01",
+      "severity": "MEDIUM",
+      "title": "Forecast is pushed late by idle time: each hit is timed from the reset, not from when work resumed, so an overnight pause counts as usage time",
+      "subject": {
+        "type": "change",
+        "id": "site/index.html:869-873",
+        "name": "forecastOf gap baseline"
+      },
+      "evidence": [
+        {
+          "field": "site/index.html:872",
+          "value": "const gaps = hits.map(f => f - Math.max(...starts.filter(s => s < f))).filter(Number.isFinite);",
+          "sensitive": false
+        },
+        {
+          "field": "site/index.html:862-865 (comment)",
+          "value": "Each hit is timed from when work last resumed before it: the latest reset before it, or the start of the recorded hourly usage.",
+          "sensitive": false
+        },
+        {
+          "field": "real data, out/projects/platform-catalogue.json (scratch probe)",
+          "value": "hit 2026-09-10T20:26Z: timed from the 06:40Z reset = 13.8 h, but the first hour with usage after that reset is 17:00Z, so 3.4 h. Gaps 2.0 / 0.9 / 13.8 h give a mean of 5.6 h and a forecast of 2026-09-11T03:03Z; timed from resumption, the gaps 2.0 / 0.9 / 3.4 h give 2.1 h and about 23:36Z.",
+          "sensitive": true
+        },
+        {
+          "field": "exporters/export_sessions.py:377, 548",
+          "value": "the hourly series starts at max(first activity hour, end - 167 h): a truncation point, not a resumption",
+          "sensitive": false
+        }
+      ],
+      "impact": "The only number the feature produces is biased late by any idle period after a reset. Overnight and between-session gaps are the normal pattern, and on the real platform-catalogue data one idle stretch more than doubles the mean (2.1 h to 5.6 h). The comment and the UI note (It assumes use goes on at the pace seen so far) describe a resumption- and pace-based estimate that the code does not compute. The estimate label keeps S-18 intact, but it shows a time that is hours later than the data supports. For a project combined over a week, the first hit baseline is also the 168-hour cutoff or the earliest session start, which is arbitrary.",
+      "remediation": "Measure each gap from the first hourly bucket with usage (main + sub > 0) at or after the latest reset (or the series start), taking the later of that bucket start and the reset. u.hourly already carries this, so no exporter change is needed. Alternatively, count only active hours between the baseline and the hit. Keep FORECAST_HOW and the forecastOf comment matched to whatever is computed. Add a page check with an idle gap between a reset and the next hit whose expected time differs from the reset-anchored answer.",
+      "refs": [
+        "PRD FR-117 (estimated time of the next limit hit)",
+        "Brief feature 6 (raw-notes.md:192-193, from the current rate of use)",
+        "PRD S-18"
+      ],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-PBI013-02",
+      "severity": "LOW",
+      "title": "A latest hit with no reset time is used as the anchor, so the forecast can land before the limit could even reset, and the test pins that",
+      "subject": {
+        "type": "change",
+        "id": "site/index.html:873",
+        "name": "forecastOf anchor"
+      },
+      "evidence": [
+        {
+          "field": "site/index.html:873",
+          "value": "const at = gaps.length ? Math.max(...hits, ...resets) + gaps.reduce((a, g) => a + g, 0) / gaps.length : NaN;",
+          "sensitive": false
+        },
+        {
+          "field": "tests/page.test.mjs:652, 657",
+          "value": "the 13:00 hit has resetsAt null; SEVERAL_AT = 2099-01-01T16:00:00Z (13:00 + 3 h)",
+          "sensitive": false
+        },
+        {
+          "field": "exporters/export_sessions.py:365-371",
+          "value": "a refusal without quota detail that is in no known window becomes a limit with resetsAt None, which is typically the most recent one",
+          "sensitive": false
+        }
+      ],
+      "impact": "Each gap is measured from a reset, but when the latest limit has no known reset the mean gap is added to the hit itself. Work cannot resume until that limit resets (up to a five-hour window later), so the forecast can be early by up to the window length. This is inconsistent with how the gaps are measured. Rare in the current data, because every recorded limit has a resetsAt.",
+      "remediation": "When the anchor is a hit with no resetsAt, say the reset time is unknown (for example: after the current limit resets, then about N h), or leave that hit out of the anchor. Update the SEVERAL fixture expectation, or give its last hit a reset, so the test does not pin the inconsistent case.",
+      "refs": [
+        "PRD FR-117",
+        "Testing Discipline"
+      ],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-PBI013-03",
+      "severity": "LOW",
+      "title": "The passed-with-no-hit-since marker is only evaluated on a store change, so an idle board keeps showing a passed time as if it were still ahead",
+      "subject": {
+        "type": "change",
+        "id": "site/index.html:880",
+        "name": "forecastTile passed flag"
+      },
+      "evidence": [
+        {
+          "field": "site/index.html:880",
+          "value": "the passed marker is added only when f.at is before Date.now() at render time",
+          "sensitive": false
+        },
+        {
+          "field": "site/index.html:1056",
+          "value": "setInterval(() => { renderHeader(); fillPickers(); }, 60000);",
+          "sensitive": false
+        }
+      ],
+      "impact": "The panels re-render only when the store changes, and refresh.py writes only when data changed. When the owner is idle, which is exactly when a forecast passes, the tile keeps the plain time without the passed marker until the next write. The shown time is still correct; only the qualifier is stale.",
+      "remediation": "Re-render the forecast tiles, or the active panel, from the existing 60-second interval. Or phrase the tile so that it does not depend on the current time (for example: expected about [time]), with the passed marker added only at render.",
+      "refs": [
+        "PRD S-18 (an estimate, never presented as more than it is)"
+      ],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-PBI013-04",
+      "severity": "LOW",
+      "title": "Three forecast labels can say something untrue: no limit hit recorded when usage was never exported, a wrong reason for no forecast, and a hit count that differs from the Limit hits tile",
+      "subject": {
+        "type": "change",
+        "id": "site/index.html:470, 879-880, 958",
+        "name": "forecast labels"
+      },
+      "evidence": [
+        {
+          "field": "site/index.html:469-470",
+          "value": "the Claude usage tile says not exported yet when docs.usage is missing, while forecastTile(docs.usage) beside it says no forecast: no limit hit recorded",
+          "sensitive": false
+        },
+        {
+          "field": "site/index.html:958",
+          "value": "state unknown (a timed hit with nothing recorded before it) shows: No forecast until a limit hit with a readable time is recorded.",
+          "sensitive": false
+        },
+        {
+          "field": "site/index.html:880",
+          "value": "estimate from the last N limit hits, where N = gaps.length (hits that produced a gap), not the hit count, and not a recent subset",
+          "sensitive": false
+        }
+      ],
+      "impact": "These are small honesty gaps in a feature whose whole point is to label its limits accurately. The Overview can say no hit was recorded when the page has no usage data at all. The note gives the wrong reason for no forecast. The last 2 limit hits can sit beside a Limit hits tile showing 3.",
+      "remediation": "Show no forecast: usage not exported yet when usage is absent (the FR-118 text stays for exported-with-no-hits). Give the unknown state its own note (no hit has a recorded start or reset before it). Say from N of the M recorded limit hits when N < M, or just from N limit hits.",
+      "refs": [
+        "PRD FR-118",
+        "PRD S-18",
+        "Naming & Readability"
+      ],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-PBI013-05",
+      "severity": "LOW",
+      "title": "The expected times are right, but the fixtures do not pin the method: mean and median agree, and the idle-gap, partial-count and idle-truncation cases are untested",
+      "subject": {
+        "type": "file",
+        "id": "tests/page.test.mjs:649-661",
+        "name": "section 11 fixtures"
+      },
+      "evidence": [
+        {
+          "field": "tests/page.test.mjs:649-657",
+          "value": "gaps 4 h, 2 h, 3 h: mean 3 h = median 3 h; the hand calculation to 2099-01-01T16:00Z checks out",
+          "sensitive": false
+        },
+        {
+          "field": "tests/page.test.mjs:658-661",
+          "value": "ONE: 11:30 - 08:00 = 3.5 h, added to the 13:00 reset = 16:30Z; the hand calculation checks out and is deterministic, since the date is fixed in the past",
+          "sensitive": false
+        },
+        {
+          "field": "tests/page.test.mjs:724-727",
+          "value": "the untimed cases cover all or none; no fixture mixes timed and untimed hits (N < hit count)",
+          "sensitive": false
+        }
+      ],
+      "impact": "A change to median, an idle-aware baseline, or dropping hits without a baseline would pass unchanged. The suite locks in the happy path and the out-of-order handling, but not the parts of the method most likely to be revised under CR-PBI013-01 and 02.",
+      "remediation": "Make one fixture skewed (for example gaps of 1 h, 1 h, 7 h) so that mean differs from median. Add a mixed fixture with one hit having no preceding start, and assert both the time and the N-of-M wording. Add the idle-gap fixture from CR-PBI013-01.",
+      "refs": [
+        "Testing Discipline"
+      ],
+      "category": "test-adequacy"
+    }
+  ],
+  "not_audited": [
+    {
+      "ref": "visual-render",
+      "reason": "The tile and note were not seen in a browser. Layout of a sixth or seventh tile in the Overview and usage tile rows was judged from the HTML only; a preview of site/index.html from the dispatch-board project would settle it."
+    },
+    {
+      "ref": "security-sast",
+      "reason": "Touchstone SARIF not provided and no SAST in the repo: security is reasoning-only. All new store-derived output goes through esc() (when(f.at), f.n); FORECAST_HOW is a constant; no new sinks."
+    },
+    {
+      "ref": "mixed-limit-types",
+      "reason": "Not judged against real data. All recorded limits are five_hour; how a seven_day reset should anchor or weigh the average is an owner method question (see follow_ups)."
+    }
+  ],
+  "follow_ups": [
+    {
+      "ref": "plan-defect: spec ledger row 11 / PRD A-34",
+      "note": "The plan defers the method to the PRD default as written, but the PRD writes no default method (FR-117 says only: method accepted by row 11). Record the chosen method in PRD A-34 / ledger row 11 as an owner decision, including whether the brief feature 6 phrase current rate of use calls for a usage-rate model rather than elapsed time. This is a plan update, not a code change."
+    },
+    {
+      "ref": "justified-improvement: limitsOf widening",
+      "note": "Moving the chart, usage panel and both Limit hits tiles onto limitsOf leaves well-formed data (a list of objects) unchanged, and stops a null or non-object entry from throwing in usageChart. It is not a finding. The follow-up in the change report on a non-list usage.hourly (usageChart hours.map) still stands."
+    },
+    {
+      "ref": "docs",
+      "note": "CLAUDE.md does not describe the forecast tile or its method; route to the docs writers once the method is settled."
+    }
+  ]
+}

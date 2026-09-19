@@ -1,0 +1,41 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-11",
+    "mode": "pbi",
+    "change_class": "standard",
+    "scope": "PBI-018 in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-018 (branch pbi/PBI-018-later-group, base 84fa3ee). Intent: show a spec's Future iterations as a 'Later' group on the Backlog tab. AC-L1: export_board.py reads each bullet under '### Future iterations (not planned)' into backlog.later as {title: first bold span, description: rest less leading colon}, robust to CRLF, the section end and bullets without a bold span. AC-L2: site/index.html shows later as a separate Later group of neutral idea cards below the PBIs, never counted in the PBI totals, the Overview 'Work items built' tile, the backlog cells or Needs attention. AC-L3: a spec without the heading gives no Later group and no error. Plus tests in both suites and the CLAUDE.md backlog shape. Grounding: ran-suite (python unittest + node page test, both full).",
+    "verdict": "DONE-WITH-CONDITIONS",
+    "summary": "5 files modified (exporters/export_board.py, site/index.html, CLAUDE.md, tests/test_export_board.py, tests/page.test.mjs). Added 8 Python tests (FutureIterations) and 5 page checks (section 9). python -m unittest discover -s tests: 205 run, OK (0 failures, 0 errors). node tests/page.test.mjs: all 49 page checks passed, exit 0, no unexpected console.error. git diff --check clean. Real specs parsed read-only: dispatch-board.md (CRLF) gives 9 later items, platform-catalogue.md gives 0 with no error. Condition: the page was not viewed in a browser (the orchestrator later checked it in the Browser pane: 9 cards below Work items, neutral --rule-2 tone bar, no errors). Nothing committed, staged, pushed or deployed; refresh.py not run; no out/ folder or artifact touched.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {"path": "exporters/export_board.py", "change_kind": "modify", "why": "New later_items(spec) parser for the '### Future iterations (not planned)' section; the backlog document gains 'later'.", "acceptance_refs": ["AC-L1", "AC-L3"]},
+    {"path": "site/index.html", "change_kind": "modify", "why": "renderBacklog draws a 'Later' panel (data-later) of .tile.idea cards below the Work items panel, only when later has items; neutral default tile bar; md() for text; never merged into pbis.", "acceptance_refs": ["AC-L2", "AC-L3"]},
+    {"path": "CLAUDE.md", "change_kind": "modify", "why": "The projectTabs row gives the backlog document's shape, including later [{ title, description }]; the page-test line mentions the Later group.", "acceptance_refs": ["Docs"]},
+    {"path": "tests/test_export_board.py", "change_kind": "modify", "why": "FUTURE/LATER fixtures and the FutureIterations test class.", "acceptance_refs": ["AC-L1", "AC-L3", "Tests"]},
+    {"path": "tests/page.test.mjs", "change_kind": "modify", "why": "Section 9, the Backlog's Later group: render, placement, escaping, neutrality, exclusion from counts, absent or malformed later.", "acceptance_refs": ["AC-L2", "AC-L3", "Tests"]}
+  ],
+  "tests": [
+    {"path": "tests/test_export_board.py::FutureIterations", "kind": "added", "status": "pass", "covers": "8 tests: end-to-end export, no heading, CRLF, section end at level 3 or higher, #### sub-heading kept, heading at end of file, heading without bullets, blank bold span"},
+    {"path": "tests/page.test.mjs (section 9, 5 checks)", "kind": "added", "status": "pass", "covers": "Later group render and placement, escaping, neutrality, exclusion from counts, absent or malformed later"},
+    {"path": "tests/ (python -m unittest discover -s tests, 205 tests)", "kind": "existing", "status": "pass", "covers": "full Python suite, OK"},
+    {"path": "tests/page.test.mjs (49 checks)", "kind": "existing", "status": "pass", "covers": "full page suite, exit 0, no unexpected console.error"}
+  ],
+  "acceptance": [
+    {"criterion": "AC-L1: each bullet under '### Future iterations (not planned)' becomes a backlog 'later' item", "met": "yes", "evidence": "FutureIterations tests pass; the real CRLF dispatch-board spec gives its 9 items"},
+    {"criterion": "AC-L2: Later group of neutral idea cards below the PBIs, never counted", "met": "yes", "evidence": "page.test.mjs section 9 passes; Browser-pane check by the orchestrator: 9 cards, tone bar = --rule-2, not --human"},
+    {"criterion": "AC-L3: no heading gives no Later group and no error", "met": "yes", "evidence": "test_spec_without_the_heading_has_no_later_items_and_no_error; platform-catalogue spec parses to []"},
+    {"criterion": "Tests: both suites green", "met": "yes", "evidence": "unittest 205 OK; node page test 49 checks passed"},
+    {"criterion": "Docs: CLAUDE.md documents 'later'", "met": "yes", "evidence": "CLAUDE.md projectTabs row updated"}
+  ],
+  "not_done": [
+    {"ref": "visual-check", "reason": "Not viewed in a browser by the code-writer; the orchestrator's Browser-pane check covered it afterwards (light theme)."}
+  ],
+  "follow_ups": [
+    {"ref": "code-reviewer", "owner": "review-agents:code-reviewer", "note": "GO/NO-GO quality gate."},
+    {"ref": "interpretation-subheading", "owner": "owner/code-reviewer", "note": "The section ends at the next heading of level 3 or higher; bullets under a #### sub-heading are kept."},
+    {"ref": "publish", "owner": "orchestrator/owner", "note": "After merge, push the new backlog field and republish site/index.html."}
+  ]
+}
