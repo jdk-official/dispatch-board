@@ -1420,8 +1420,7 @@ const EQ_PROJECT_TABS = [
     pbis: [{ id: 'PBI-001', title: 'Built one', dependsOn: '—', state: 'done', group: 'g', risk: 'Medium', review: 'GO', open: '', commit: 'abc1234' },
       { id: 'PBI-002', title: 'Conditions one', dependsOn: '[PBI-001]', state: 'conditions', group: 'g', risk: 'Low', review: 'GO-WITH-CONDITIONS', open: 'two findings' },
       { id: 'PBI-003', title: 'Partial one', dependsOn: '[PBI-001]', state: 'partial', group: 'g', risk: 'High', review: '—', open: 'half built' },
-      { id: 'PBI-004', title: 'Not started one', dependsOn: '[PBI-002]', state: 'todo', group: 'g', risk: 'Low', review: '—', open: '' },
-      { id: 'PBI-005', title: 'No evidence one', dependsOn: '—', state: 'todo', group: 'g', risk: 'Low', review: '—', open: '' }] },
+      { id: 'PBI-004', title: 'Not started one', dependsOn: '[PBI-002]', state: 'todo', group: 'g', risk: 'Low', review: '—', open: '' }] },
   { id: 'dispatch-board.findings', source: 'DBFIND',
     items: {
       'PBI-001': { rounds: 2, roundsToGo: 2, open: [],
@@ -1447,14 +1446,7 @@ const EQ_DOCS = {
   'catalogue/index': { kind: 'catalogue', id: 'index', doc: EQ_CAT },
   'meta/lastRefresh': { kind: 'lastRefresh', id: 'lastRefresh', doc: EQ_LAST },
 };
-// dispatch-board's document carries derived work-item state, so the Backlog is compared with every shadow outcome in
-// it: PBI-001 agrees, PBI-002 is hand-kept ahead, PBI-003 is named by no run, PBI-004 is runs ahead and PBI-005 has
-// no evidence. Its last activity is a fixed time, so the last-active sentence is compared too.
-const EQ_PROJECTS = PROJECTS.map(p => p.id !== 'dispatch-board' ? p : { ...p, last: '2026-09-12T18:40:00Z', workItemStatus: 'shadow', unattributedRounds: 1,
-  workItems: { 'PBI-001': { state: 'done', rounds: 2, verdict: 'GO', latestRound: 'r5', builds: 1, runs: ['r3', 'r5'] },
-    'PBI-002': { state: 'partial', rounds: 1, verdict: 'NO-GO', latestRound: 'gone', builds: 0, runs: ['gone'] },
-    'PBI-004': { state: 'done', rounds: 1, verdict: 'GO', latestRound: 'r5', builds: 0, runs: ['r5'] } } });
-const EQ_RECORDS = () => recordsOf(EQ_SESSIONS, EQ_PROJECTS, EQ_RUNS, EQ_TABS, EQ_DOCS);
+const EQ_RECORDS = () => recordsOf(EQ_SESSIONS, PROJECTS, EQ_RUNS, EQ_TABS, EQ_DOCS);
 // Everything the page draws, so "both adapters render the same board" is checked on the whole board, not a corner.
 const rendered = e => Object.fromEntries([
   ...tabNames.map(n => ['panel-' + n, e.el('panel-' + n).innerHTML]),
@@ -1466,7 +1458,7 @@ const VIEW = { 'board-view': 'p:dispatch-board' };
 const overStore = async () => {
   const e = env(VIEW);
   await tick();
-  e.fire('c:projects', EQ_PROJECTS); e.fire('c:sessions', EQ_SESSIONS); e.fire('c:runs', EQ_RUNS); e.fire('c:projectTabs', EQ_TABS);
+  e.fire('c:projects', PROJECTS); e.fire('c:sessions', EQ_SESSIONS); e.fire('c:runs', EQ_RUNS); e.fire('c:projectTabs', EQ_TABS);
   e.fire('d:meta/status', EQ_DOCS['meta/status'].doc); e.fire('d:status/dispatch-board', EQ_DOCS['status/dispatch-board'].doc);
   e.fire('d:catalogue/index', EQ_CAT); e.fire('d:meta/lastRefresh', EQ_LAST);
   return e;
@@ -1493,9 +1485,7 @@ const overStore = async () => {
   const seen = rendered(l);
   for (const [what, re] of [['a pull request', /pbi\/the-open-one/], ['a carried tab', /data-carried/],
     ['an open finding', /Still open/], ['a running agent', /class="flow"/], ['a detailed run\'s findings', /A run-detail finding/],
-    ['an assumption awaiting a human', /Which port\?/], ['work items in four states', /class="cell partial"/],
-    ...['agrees', 'runs-ahead', 'handkept-ahead', 'unnamed', 'no-evidence'].map(o => [`the shadow outcome ${o}`, new RegExp(`<tr data-shadow="${o}">`)]),
-    ['the linked sessions\' last activity', /were last active /]]) {
+    ['an assumption awaiting a human', /Which port\?/], ['work items in four states', /class="cell partial"/]]) {
     assert.ok(Object.values(seen).some(h => re.test(h)), `the compared board shows ${what}`);
   }
   for (const [what, re] of WAITING_PROBES) assert.match(seen['panel-overview'], re, `the compared Overview shows ${what}`);
@@ -1970,261 +1960,23 @@ const overStore = async () => {
   ok('without any recorded figure, the trend says none was recorded');
 }
 
-// ---- 25. the shadow period (feature 4, FR-113, FR-175, FR-176, AC-78, AC-110, AC-111): each work item's state derived
-// from the runs that name it, shown beside the hand-kept state, differences flagged by direction, and a work item no run
-// names never counted as agreeing
+// ---- 25. derived work-item state is exported for the exporters' own consumers, but the page draws none of it: no
+// Shadow period panel, no derived tiles, no per-item mark, whatever workItemStatus and workItems carry
 {
-  const pbi = (id, state, extra = {}) => ({ id, title: 'Item ' + id, dependsOn: '—', state, group: 'g', risk: 'Low', review: '—', open: '', commit: '', ...extra });
-  const item = (state, extra = {}) => ({ state, rounds: 1, verdict: 'GO', latestRound: null, builds: 0, runs: [], ...extra });
-  // A project view whose backlog is pbis and whose project document gains over (workItems, workItemStatus, last, ...).
-  const load = async ({ pid = 'dispatch-board', pbis, over = {}, runs = RUNS, sessions = SESSIONS, projects = PROJECTS }) => {
-    const e = env({ 'board-view': 'p:' + pid });
+  const withDerived = p => p.id !== 'platform-catalogue' ? p : { ...p, workItemStatus: 'derived',
+    workItems: { 'PBI-001': { state: 'partial', rounds: 1, verdict: 'GO', latestRound: 'r2', builds: 1, runs: ['r1', 'r2'] } } };
+  const load = async projects => {
+    const e = env({ 'board-view': 'p:platform-catalogue' });
     await tick();
-    e.fire('c:projects', projects.map(p => p.id === pid ? { ...p, ...over } : p));
-    e.fire('c:sessions', sessions); e.fire('c:runs', runs);
-    e.fire('c:projectTabs', [...TABS.filter(t => t.id !== pid + '.backlog'), { id: pid + '.backlog', generatedAt: now, source: 'x', board: '', pbis }]);
+    e.fire('c:projects', projects); e.fire('c:sessions', SESSIONS); e.fire('c:runs', RUNS); e.fire('c:projectTabs', TABS);
     return e;
   };
-  const B = e => e.el('panel-backlog').innerHTML, O = e => e.el('panel-overview').innerHTML;
-  // Backlog table rows by work item: { outcome, cells } where cells are Item, Delivers, Depends on, Hand-kept, From runs,
-  // Shadow, Review and Still open.
-  const shadowRows = H => Object.fromEntries([...H.matchAll(/<tr data-shadow="([^"]+)">([\s\S]*?)<\/tr>/g)]
-    .map(m => [m[2].match(/<span class="id">([^<]*)<\/span>/)[1], { outcome: m[1], cells: cells(m[2]) }]));
-  const withOutcome = (H, o) => Object.entries(shadowRows(H)).filter(([, r]) => r.outcome === o).map(([id]) => id).sort();
-  const groupOf = (H, key) => (H.match(new RegExp(`<div data-group="${key}"[\\s\\S]*?</ul></div>`)) || [''])[0];
-  const itemsIn = g => [...g.matchAll(/data-item="([^"]+)"/g)].map(m => m[1]).sort();
-  const panelOf = H => { const i = H.indexOf('data-shadow-panel'); assert.ok(i >= 0, 'the shadow panel is drawn'); return H.slice(i, H.indexOf('<h3>Dependencies</h3>', i)); };
-  const attention = H => text((H.match(/<h3>Needs attention<\/h3>[\s\S]*?<\/ul>/) || [''])[0]);
-
-  // The 2026-09-12 staleness, as the exporter derives it from STALE_2026_09_12 in tests/test_derive.py: five work items
-  // merged and reviewed while the hand-kept state still said Not started.
-  const LAST = '2026-09-12T18:40:00Z';
-  const stale = (id, m, lane, kind, verdict, label) => ({ id, session: 's2', project: 'dispatch-board', seq: m + 1, lane, kind, verdict, label, start: `2026-09-12T10:${String(m).padStart(2, '0')}:00Z` });
-  const STALE_RUNS = [
-    stale('s05p2', 1, 'plan', 'go', 'APPROVE-WITH-NOTES', 'Spec gate review PBI-005 round 2'), stale('s05r1', 4, 'cr', 'nogo', 'NO-GO', 'Code-review PBI-005'),
-    stale('s05r2', 6, 'cr', 'go', 'GO', 'Code-review PBI-005 round 2'), stale('s06r2', 10, 'cr', 'go', 'GO', 'Code-review PBI-006 round 2'),
-    stale('s11r2', 14, 'cr', 'go', 'GO', 'Code-review PBI-011 round 2'), stale('s25r2', 18, 'cr', 'go', 'GO', 'Code-review PBI-025 round 2'),
-    stale('s26r1', 20, 'cr', 'go', 'GO', 'Code-review PBI-026'), stale('s03r1', 21, 'cr', 'go', 'GO', 'Code-review PBI-003'),
-    stale('s17r1', 23, 'cr', 'go', 'GO-WITH-CONDITIONS', 'Code-review PBI-017'), stale('sr2', 24, 'cr', 'go', 'GO', 'Code review round 2'),
-  ];
-  const STALE_2026_09_12 = {
-    pbis: [pbi('PBI-003', 'done'), pbi('PBI-005', 'todo'), pbi('PBI-006', 'todo'), pbi('PBI-010', 'todo'), pbi('PBI-011', 'todo'),
-      pbi('PBI-017', 'done'), pbi('PBI-025', 'todo'), pbi('PBI-026', 'todo')],
-    over: { last: LAST, unattributedRounds: 1, workItemStatus: 'shadow', workItems: {
-      'PBI-005': item('done', { rounds: 2, latestRound: 's05r2', builds: 2, runs: ['s05b', 's05r1', 's05f', 's05r2'] }),
-      'PBI-006': item('done', { rounds: 2, latestRound: 's06r2', builds: 2, runs: ['s06b', 's06r1', 's06f', 's06r2'] }),
-      'PBI-011': item('done', { rounds: 2, latestRound: 's11r2', builds: 2, runs: ['s11b', 's11r1', 's11f', 's11r2'] }),
-      'PBI-025': item('done', { rounds: 2, latestRound: 's25r2', builds: 2, runs: ['s25b', 's25r1', 's25f', 's25r2'] }),
-      'PBI-026': item('done', { rounds: 1, latestRound: 's26r1', builds: 1, runs: ['s26b', 's26r1'] }),
-      'PBI-003': item('done', { rounds: 1, latestRound: 's03r1', runs: ['s03r1'] }),
-      'PBI-017': item('conditions', { rounds: 1, verdict: 'GO-WITH-CONDITIONS', latestRound: 's17r1', builds: 1, runs: ['s17b', 's17r1'] }),
-    } },
-    runs: [...RUNS, ...STALE_RUNS],
-  };
-
-  {
-    const e = await load({ pid: 'platform-catalogue', pbis: [pbi('PBI-001', 'todo')], over: { workItems: { 'PBI-001': item('done', { verdict: 'GO' }) } } });
-    const row = shadowRows(B(e))['PBI-001'];
-    assert.equal(row.outcome, 'runs-ahead');
-    assert.equal(row.cells[3], 'Not started');
-    assert.equal(row.cells[4], 'Review passed');
-    assert.ok(!row.cells[4].includes('Built and reviewed'));
-    ok('AC-78: a GO naming PBI-001 in a platform-catalogue linked session, with no hand-kept state listing it, shows PBI-001 as Review passed beside the hand-kept Not started, flagged runs-ahead');
-  }
-  {
-    const e = await load({ pbis: [pbi('PBI-001', 'partial')], over: { workItems: { 'PBI-001': item('done') } } });
-    const row = shadowRows(B(e))['PBI-001'];
-    assert.deepEqual([row.outcome, row.cells[3], row.cells[4]], ['runs-ahead', 'Partly built', 'Review passed']);
-    assert.match(text(groupOf(B(e), 'runs-ahead')), /^Runs are ahead of the hand-kept state/);
-    assert.deepEqual(itemsIn(groupOf(B(e), 'runs-ahead')), ['PBI-001']);
-    ok('AC-110: in the shadow period a work item derived done and hand-kept partial shows both states and is flagged under "Runs are ahead of the hand-kept state"');
-  }
-  {
-    const review = async (hk, it) => shadowRows(B(await load({ pbis: [pbi('PBI-001', 'conditions', hk)], over: { workItems: it ? { 'PBI-001': it } : {} } })))['PBI-001'].cells[6];
-    const three = item('done', { rounds: 3, verdict: 'GO' });
-    const kept = await review({ review: 'GO-WITH-CONDITIONS (round 2)' }, three);
-    assert.equal(kept, 'GO-WITH-CONDITIONS (round 2)');
-    assert.ok(!kept.includes('Round 3'));
-    assert.equal(await review({ review: '—' }, three), 'Round 3: GO');
-    ok('AC-111: a hand-kept review is shown in place of the derived review summary; a hand-kept "—" shows the summary');
-    assert.equal(await review({ review: undefined }, three), 'Round 3: GO');
-    assert.equal(await review({}, item('partial', { rounds: 0, verdict: null, builds: 2 })), '2 build run(s), no review yet');
-    assert.equal(await review({}, null), '—');
-    ok('AC-DS17: without a hand-kept review, the Review column shows the latest round and its verdict, else the build runs, else —');
-  }
-  {
-    const e = await load(STALE_2026_09_12), H = B(e);
-    assert.deepEqual(withOutcome(H, 'runs-ahead'), ['PBI-005', 'PBI-006', 'PBI-011', 'PBI-025', 'PBI-026']);
-    assert.deepEqual(withOutcome(H, 'handkept-ahead'), ['PBI-017']);
-    assert.deepEqual(withOutcome(H, 'agrees'), ['PBI-003']);
-    assert.deepEqual(withOutcome(H, 'no-evidence'), ['PBI-010']);
-    ok('AC-DS5: the 2026-09-12 staleness is runs-ahead for exactly the five merged work items; PBI-017 hand-kept ahead; only PBI-003 agrees; PBI-010, which no run names, is no evidence');
-    const P = panelOf(H);
-    assert.deepEqual(tileOf(P, 'Agree'), ['1', 'backed by a run']);
-    assert.equal(tileOf(P, 'Runs ahead of the hand-kept state')[0], '5');
-    assert.equal(tileOf(P, 'Hand-kept state ahead of the runs')[0], '1');
-    assert.equal(tileOf(P, 'Not named by any run')[0], '0');
-    assert.deepEqual(tileOf(P, 'No evidence'), ['1', 'no run names it; hand-kept Not started']);
-    assert.equal(tileOf(P, 'Review rounds naming no work item')[0], '1');
-    assert.doesNotMatch(P, /<div class="tl">Cannot compare<\/div>/, 'the Cannot compare tile is drawn only when one cannot be compared');
-    ok('the shadow tiles count each outcome, and the No evidence tile is apart from Agree');
-    assert.deepEqual(itemsIn(groupOf(H, 'no-evidence')), ['PBI-010']);
-    assert.match(text(groupOf(H, 'no-evidence')), /^No evidence either way/);
-    for (const g of ['runs-ahead', 'handkept-ahead', 'unnamed']) assert.ok(!itemsIn(groupOf(H, g)).includes('PBI-010'), g);
-    assert.ok(H.indexOf('data-group="no-evidence"') > H.indexOf('data-group="handkept-ahead"'), 'no evidence is drawn after the difference groups');
-    const ev = text((groupOf(H, 'runs-ahead').match(/<li[^>]*data-item="PBI-025"[\s\S]*?<\/li>/) || [''])[0]);
-    assert.ok(ev.includes('PBI-025 · Item PBI-025 — hand-kept: Not started; from runs: Review passed'), ev);
-    assert.ok(ev.includes('latest review: Code-review PBI-025 round 2 · GO · ' + whenStr('2026-09-12T10:18:00Z')), ev);
-    ok('each flagged work item shows its evidence: the latest review run\'s label, verdict and time; PBI-010 is listed only under "No evidence either way"');
-    const A = attention(O(e));
-    assert.ok(A.includes('5 work items: runs are ahead of the hand-kept state'), A);
-    assert.ok(A.includes('not proof of merge'), A);
-    assert.match(O(e), /<div class="cell todo" data-shadow="runs-ahead" title="PBI-005: Item PBI-005; hand-kept and derived state differ">/);
-    assert.match(O(e), /<div class="cell done" title="PBI-003: Item PBI-003">/);
-    ok('Needs attention counts the work items the runs are ahead of, saying a passed review is not proof of merge; a flagged Overview cell says the two states differ');
-    assert.ok(text(P).includes('Shadow period: each work item\'s state is derived from the code-writer, test-writer and code-reviewer runs in this project\'s 1 linked session(s) whose task names it, and shown beside the hand-kept state.'));
-    assert.ok(text(P).includes('were last active ' + whenStr(LAST) + '.'));
-    assert.ok(text(P).includes('so a work item no run names is shown as no evidence, never as agreement.'));
-    ok('AC-DS24: the shadow sentence states how many linked sessions were read and when they were last active');
-    for (const [heading, line] of [['runs-ahead', 'Runs are ahead of the hand-kept state: out-of-date entries, work in flight, or reviews awaiting merge Review passed means the latest code review passed. It is not proof of merge, so this group can include work still being built or a passed review whose pull request has not merged, as well as a hand-kept entry that is out of date.'],
-      ['handkept-ahead', 'The hand-kept state is ahead of the runs Runs show review verdicts only. They cannot show that conditions were applied, that a pull request was merged, or work done in a session not linked to this project.']]) {
-      assert.ok(text(groupOf(H, heading)).startsWith(line), heading);
-    }
-    ok('AC-DS15, AC-DS25: the group headings and their fixed lines are worded as the spec words them');
-    const forbidden = ['var(--human)', 'var(--nogo)', 'var(--changes)', 'class="tag nogo"', 'class="tag changes"', 'class="tag human"', 'callout warn'];
-    const rows = [...H.matchAll(/<tr data-shadow="[^"]+">[\s\S]*?<\/tr>/g)].map(m => m[0]);
-    assert.equal(rows.length, 8);
-    for (const part of [P, ...rows]) for (const f of forbidden) assert.ok(!part.includes(f), f);
-    ok('AC-DS15: the shadow panel and every compared row use no --human, --nogo or --changes tone, and no warning callout');
-  }
-  {
-    const e = await load({ ...STALE_2026_09_12, over: { ...STALE_2026_09_12.over, last: null } });
-    const P = panelOf(B(e));
-    assert.ok(text(P).includes('Those sessions have no recorded activity.'));
-    assert.ok(!P.includes('were last active'));
-    ok('AC-DS24: with no recorded activity the shadow sentence says so, rather than a time');
-  }
-  {
-    const e = await load({ pbis: [pbi('PBI-001', 'done'), pbi('PBI-002', 'conditions'), pbi('PBI-003', 'partial'), pbi('PBI-004', 'todo')],
-      over: { workItems: { 'PBI-001': item('done'), 'PBI-002': item('conditions', { verdict: 'GO-WITH-CONDITIONS' }), 'PBI-003': item('partial', { verdict: 'NO-GO' }) } } });
-    const H = B(e), P = panelOf(H);
-    for (const o of ['runs-ahead', 'handkept-ahead', 'unnamed']) assert.deepEqual(withOutcome(H, o), [], o);
-    assert.deepEqual(withOutcome(H, 'no-evidence'), ['PBI-004']);
-    assert.deepEqual(withOutcome(H, 'agrees'), ['PBI-001', 'PBI-002', 'PBI-003']);
-    assert.ok(!H.includes('Where hand-kept and derived state differ'));
-    assert.ok(text(P).includes('Hand-kept and derived state agree for all 3 work items that a run names.'));
-    assert.ok(text(P).includes('1 work item(s) named by no run and hand-kept Not started have no evidence and are not counted as agreeing.'));
-    assert.ok(!text(P).includes('agree for all 4'));
-    assert.ok(text(P).includes('Shadow period: each work item'));
-    assert.deepEqual([tileOf(P, 'Agree')[0], tileOf(P, 'No evidence')[0], tileOf(P, 'Runs ahead of the hand-kept state')[0],
-      tileOf(P, 'Hand-kept state ahead of the runs')[0], tileOf(P, 'Not named by any run')[0]], ['3', '1', '0', '0', '0']);
-    assert.ok(!attention(O(e)).includes('runs are ahead'));
-    ok('AC-DS6: when all agree it is said in real text, counting only the three a run backs; the Not started item no run names is no evidence, not a fourth agreement');
-  }
-  {
-    const e = await load({ pbis: ['PBI-001', 'PBI-002', 'PBI-003', 'PBI-004'].map(id => pbi(id, 'todo')), over: { workItems: {}, unattributedRounds: 2 } });
-    const H = B(e), P = panelOf(H);
-    assert.equal(tileOf(P, 'Review rounds naming no work item')[0], '2');
-    assert.deepEqual(withOutcome(H, 'no-evidence'), ['PBI-001', 'PBI-002', 'PBI-003', 'PBI-004']);
-    assert.deepEqual(withOutcome(H, 'agrees'), []);
-    assert.deepEqual([tileOf(P, 'Agree')[0], tileOf(P, 'No evidence')[0]], ['0', '4']);
-    assert.ok(Object.values(shadowRows(H)).every(r => r.cells[4] === 'No run names it'));
-    assert.ok(text(P).includes('No run in the linked sessions names any of these 4 work items, so there is nothing to compare. None is counted as agreeing.'));
-    ok('AC-DS6, AC-DS7: review rounds naming no work item are counted in their own tile and give no work item a state; with nothing to compare, nothing agrees');
-  }
-  {
-    const e = await load({ pbis: [pbi('PBI-001', 'done'), pbi('PBI-002', 'todo')], over: { workItems: { 'PBI-000': item('done') } } });
-    const H = B(e), P = panelOf(H);
-    assert.deepEqual(withOutcome(H, 'unnamed'), ['PBI-001']);
-    assert.deepEqual(itemsIn(groupOf(H, 'unnamed')), ['PBI-001']);
-    assert.match(text(groupOf(H, 'unnamed')), /^Not named by any run No code-writer, test-writer or code-reviewer run in the linked sessions names these work items\./);
-    assert.ok(text(P).includes('Named by runs but not in the PBI list: PBI-000'));
-    assert.equal(Object.keys(shadowRows(H)).length, 2);
-    assert.match(H, /<h3>Work items<\/h3><span class="faint">2<\/span>/);
-    assert.equal(tileOf(H, 'Built and reviewed')[0], '1');
-    ok('AC-DS8: a hand-kept done no run names is flagged under "Not named by any run"; a run-named id outside the PBI list is listed as text and counted nowhere');
-  }
-  {
-    const e = await load({ pbis: [pbi('PBI-001', 'constructor')], over: { workItems: { 'PBI-001': item('__proto__') } } });
-    const H = B(e), P = panelOf(H), row = shadowRows(H)['PBI-001'];
-    assert.deepEqual([row.outcome, row.cells[5]], ['unknown', 'Cannot compare']);
-    assert.equal(tileOf(P, 'Cannot compare')[0], '1');
-    for (const t of ['Agree', 'Runs ahead of the hand-kept state', 'Hand-kept state ahead of the runs', 'Not named by any run', 'No evidence']) assert.equal(tileOf(P, t)[0], '0', t);
-    ok('AC-DS19: a hand-kept "constructor" against a derived "__proto__" is Cannot compare, counted in no agree or differ tile, and logs nothing');
-  }
-  {
-    // Revision 3, N-3: checking Cannot compare first stops an unrecognised hand-kept state with no derived item
-    // from falling through to "Not named by any run", which would otherwise treat an unknown state as a difference
-    // the runs could explain rather than one the page cannot read at all.
-    const e = await load({ pbis: [pbi('PBI-001', 'weird-state')], over: { workItems: {} } });
-    const H = B(e), P = panelOf(H), row = shadowRows(H)['PBI-001'];
-    assert.deepEqual([row.outcome, row.cells[5]], ['unknown', 'Cannot compare']);
-    assert.deepEqual(withOutcome(H, 'unnamed'), []);
-    assert.equal(tileOf(P, 'Cannot compare')[0], '1');
-    assert.equal(tileOf(P, 'Not named by any run')[0], '0');
-    ok('AC-DS19: an unrecognised hand-kept state with no derived item is Cannot compare, not Not named by any run');
-  }
-  {
-    const evil = { id: 'evil', session: 's2', project: 'dispatch-board', seq: 9, lane: 'cr', kind: 'go', label: '<img src=x onerror=alert(1)>', start: now };
-    const e = await load({ pbis: [pbi('PBI-001', 'todo', { open: '<b>z</b>' })], runs: [...RUNS, evil],
-      over: { workItems: { 'PBI-001': item('done', { verdict: '`x` **y**', latestRound: 'evil' }) } } });
-    const H = B(e);
-    assert.ok(!H.includes('<img') && !H.includes('<b>z</b>') && !H.includes('<code>x</code>') && !H.includes('<b>y</b>'));
-    assert.ok(H.includes('&lt;img src=x onerror=alert(1)&gt;') && H.includes('&lt;b&gt;z&lt;/b&gt;') && H.includes('`x` **y**'));
-    ok('AC-DS16: a run label, a verdict and a hand-kept open item are escaped, and never read as markdown');
-  }
-  {
-    const e = await load({ pbis: [pbi('PBI-001', 'todo')], over: { workItems: { 'PBI-001': item('done', { rounds: 2, latestRound: 'gone' }) } } });
-    assert.ok(text(groupOf(B(e), 'runs-ahead')).includes('latest review: round 2, GO'));
-    const b = await load({ pbis: [pbi('PBI-001', 'todo')], over: { workItems: { 'PBI-001': item('partial', { rounds: 0, verdict: null, builds: 1 }) } } });
-    assert.ok(text(groupOf(B(b), 'runs-ahead')).includes('1 build run(s), no finished review'));
-    ok('evidence whose run is not on the board reads the round and verdict; without a round it counts the build runs');
-  }
-  {
-    const two = PROJECTS.map(p => p.id === 'dispatch-board' ? { ...p, sessions: ['s2', 's5'] } : p);
-    const sessions = [...SESSIONS, { id: 's5', title: 'DB build II', project: 'dispatch-board', last: old, start: old, running: 0, usage: usage('S5', 3) }];
-    const e = await load({ ...STALE_2026_09_12, projects: two, sessions, runs: [...RUNS, ...STALE_RUNS.map(r => ({ ...r, session: 's5' }))] });
-    const before = B(e);
-    assert.ok(before.includes('Code-review PBI-025 round 2'));
-    e.change('session', 's2');
-    assert.equal(B(e), before);
-    ok('AC-DS20: the session filter leaves the Backlog as it was; the evidence comes from every linked session\'s runs');
-  }
-  {
-    const P = [pbi('PBI-001', 'todo', { open: '' }), pbi('PBI-002', 'done', { review: 'GO (round 2)', commit: 'abc1234', open: 'two notes' }), pbi('PBI-003', 'todo')];
-    const e = await load({ pbis: P, over: { workItemStatus: 'derived', last: LAST,
-      workItems: { 'PBI-001': item('conditions', { verdict: 'GO-WITH-CONDITIONS', latestRound: 'x' }), 'PBI-003': item('done', { rounds: 2 }) } } });
-    const H = B(e);
-    assert.deepEqual([tileOf(H, 'Review passed')[0], tileOf(H, 'Conditions open')[0], tileOf(H, 'Partly built')[0], tileOf(H, 'No run names it')[0]], ['1', '1', '0', '1']);
-    assert.ok(!/<div class="tl">(Built and reviewed|Not started)<\/div>/.test(H));
-    assert.ok(!H.includes('data-shadow') && !H.includes('<th>Hand-kept</th>') && !H.includes('Shadow period'));
-    assert.equal((H.match(/<th>State<\/th>/g) || []).length, 1);
-    const retired = text((H.match(/<p[^>]*data-retired[\s\S]*?<\/p>/) || [''])[0]);
-    assert.ok(retired.startsWith('The hand-kept state is retired for this project (the owner set workItemStatus to derived).'), retired);
-    assert.ok(retired.includes('not proof the change merged'), retired);
-    assert.ok(retired.includes('last active ' + whenStr(LAST)), retired);
-    assert.equal(tileOf(H, 'Review rounds naming no work item')[0], '0');
-    const rowText = id => text((H.match(new RegExp(`<tr><td[^>]*><span class="id">${id}</span>[\\s\\S]*?</tr>`)) || [''])[0]);
-    assert.ok(rowText('PBI-001').includes('Conditions open') && rowText('PBI-002').includes('No run names it') && rowText('PBI-003').includes('Review passed'));
-    assert.ok(!H.includes('Built and reviewed'));
-    assert.equal(String(e.el('c-backlog').textContent), '1');
-    assert.match(O(e), /<div class="cell conditions" title="PBI-001: /);
-    assert.match(O(e), /<div class="cell todo" title="PBI-002: /);
-    assert.ok(attention(O(e)).includes('PBI-001 review conditions'));
-    ok('AC-DS10: derived mode draws the derived state in the tiles, table, badge and Overview, with no shadow panel or columns; a GO-WITH-CONDITIONS item adds a "review conditions" attention item');
-    assert.ok(rowText('PBI-002').includes('GO (round 2)') && rowText('PBI-002').includes('abc1234') && rowText('PBI-002').includes('two notes'));
-    assert.ok(rowText('PBI-003').includes('Round 2: GO'));
-    ok('AC-DS10, FR-176: in derived mode the hand-kept review, open items and commit still override');
-  }
-  {
-    const P = [pbi('PBI-001', 'done'), pbi('PBI-002', 'conditions', { open: 'fix it' })];
-    const plain = await load({ pbis: P }), before = [B(plain), O(plain), plain.el('c-backlog').textContent];
-    const derived = await load({ pbis: P, over: { workItemStatus: 'derived' } });
-    assert.deepEqual([B(derived), O(derived), derived.el('c-backlog').textContent], before);
-    assert.ok(!before[0].includes('Shadow period') && !before[0].includes('data-shadow') && !before[1].includes('data-shadow'));
-    assert.equal((before[0].match(/<th>State<\/th>/g) || []).length, 1);
-    ok('AC-DS18: a project document without derived state draws the Backlog and Overview as before, whatever the switch says');
-  }
+  const derived = await load(PROJECTS.map(withDerived)), plain = await load(PROJECTS);
+  const B = derived.el('panel-backlog').innerHTML, O = derived.el('panel-overview').innerHTML;
+  assert.ok(!B.includes('Shadow period') && !B.includes('data-shadow') && !O.includes('data-shadow'));
+  assert.equal(B, plain.el('panel-backlog').innerHTML, 'derived work-item state changes nothing the Backlog draws');
+  assert.equal(O, plain.el('panel-overview').innerHTML, 'derived work-item state changes nothing the Overview draws');
+  ok('the Backlog tab renders no shadow panel or derived-status mark, even when the project document carries derived work-item state');
 }
 
 assert.deepEqual([...everySub].filter(k => k === 'c:tabs' || k.startsWith('d:tabs/')), [], 'a retired tabs/* subscription');

@@ -116,10 +116,6 @@
   .tag.muted, .tag.low, .tag.todo { --t: var(--ink-3); }
   /* Pull request states. Not GitHub's purple: that hue is --human here, kept for what awaits the owner. */
   .tag.open { --t: var(--live); } .tag.merged { --t: var(--go); } .tag.closed { --t: var(--nogo); }
-  /* The shadow period's comparison. A difference is information for the owner, not a failed review or something
-     awaiting them, so it takes the ink tones: none of --human, --nogo or --changes. */
-  .tag.agrees, .tag.no-evidence, .tag.unknown { --t: var(--ink-3); } .tag.differs { --t: var(--ink); }
-  .panel.shadow .att li { padding: 10px 0; }
 
   /* attention list */
   .att { list-style: none; margin: 0; padding: 0; }
@@ -308,37 +304,6 @@
   // Reads a lookup table by a key taken from the store. Own keys only: a state, kind or lane such as "constructor"
   // or "__proto__" would otherwise find an inherited member and show its text.
   const own = (table, key) => Object.hasOwn(table, key) ? table[key] : undefined;
-  // Work-item state derived from runs. The runs prove that the latest code review passed, not that the change merged,
-  // so a derived done never reads "Built and reviewed"; and they cannot prove that nothing was done, so a work item no
-  // run names is never "Not started".
-  const derivedLabel = { done: 'Review passed', conditions: 'Conditions open', partial: 'Partly built' };
-  const derivedText = s => own(derivedLabel, s) || (s === 'todo' ? 'No run names it' : s);
-  const shadowRank = { todo: 0, partial: 1, conditions: 2, done: 3 };
-  const shadowText = { agrees: 'Agrees', 'no-evidence': 'No evidence', 'runs-ahead': 'Runs ahead', 'handkept-ahead': 'Hand-kept ahead', unnamed: 'Not named by any run', unknown: 'Cannot compare' };
-  const FLAGGED = ['runs-ahead', 'handkept-ahead', 'unnamed'];
-  // A work item's hand-kept state against the one its runs give, first match wins. A state the board does not know,
-  // on either side, is checked first, so two equal unknown states never read as agreeing. A work item no run names is
-  // "no evidence" while the hand-kept state says Not started: a staleness check that called that agreement would agree
-  // exactly when it had nothing to go on, such as work done in a session not linked to the project.
-  const shadowOf = (hk, item) => {
-    if (own(shadowRank, hk) === undefined || (item && own(shadowRank, item.state) === undefined)) return 'unknown';
-    if (!item) return hk === 'todo' ? 'no-evidence' : 'unnamed';
-    if (item.state === hk) return 'agrees';
-    return shadowRank[item.state] > shadowRank[hk] ? 'runs-ahead' : 'handkept-ahead';
-  };
-  // The project's derived work-item state, or null for a document exported before there was any: the Backlog and
-  // Overview then draw the hand-kept state alone, as they always did. derived is the owner's switch retiring the
-  // hand-kept state; anything else is the shadow period, both states side by side.
-  const workItemsOf = () => {
-    const p = proj(), w = p?.workItems;
-    if (!w || typeof w !== 'object' || Array.isArray(w)) return null;
-    const item = id => { const it = own(w, id); return it && typeof it === 'object' ? it : undefined; };
-    return { p, w, item, derived: p.workItemStatus === 'derived' };
-  };
-  const effective = (wi, x) => { const it = wi.item(x.id); return it ? it.state : 'todo'; };
-  // The Review column: the hand-kept review wins wherever one is recorded ("—" is the exporter's word for none).
-  const reviewSummary = (x, it) => typeof x.review === 'string' && x.review && x.review !== '—' ? x.review
-    : it?.rounds > 0 ? `Round ${it.rounds}: ${it.verdict}` : it?.builds > 0 ? `${it.builds} build run(s), no review yet` : '—';
   // A link out of the page, drawn only for a GitHub URL (null otherwise): a URL read from the store could
   // just as well be javascript: or lead anywhere, so the caller shows anything else as text.
   const ghLink = (url, inner, cls) => typeof url === 'string' && url.startsWith('https://github.com/')
@@ -446,8 +411,7 @@
     if (branch) $('crumb').textContent = branch;
     const you = docs.assumptions?.humanList?.length || 0, cA = $('c-assumptions');
     cA.hidden = !you; cA.textContent = you;
-    const wi = workItemsOf(), stateOf = x => wi?.derived ? effective(wi, x) : x.state;
-    const pb = docs.backlog?.pbis || [], open = pb.filter(p => stateOf(p) === 'conditions' || stateOf(p) === 'partial').length, cB = $('c-backlog');
+    const pb = docs.backlog?.pbis || [], open = pb.filter(p => p.state === 'conditions' || p.state === 'partial').length, cB = $('c-backlog');
     cB.hidden = !open; cB.textContent = open;
   }
 
@@ -624,13 +588,7 @@
     const p = $('panel-overview');
     if (!inProject()) return renderSessionOverview(p);
     const pbis = docs.backlog?.pbis || [], m = status?.metrics || {}, g = docs.git;
-    // In the shadow period the Overview keeps the hand-kept state and marks a cell whose two states differ; once the
-    // owner retires the hand-kept state, the derived one is drawn in its place.
-    const wi = workItemsOf(), derived = !!wi?.derived, shadow = !!wi && !derived;
-    const stateOf = x => derived ? effective(wi, x) : x.state;
-    const labelOf = s => derived ? derivedText(s) : own(stateLabel, s) || s;
-    const outcome = x => shadow ? shadowOf(x.state, wi.item(x.id)) : '';
-    const cnt = k => pbis.filter(x => stateOf(x) === k).length;
+    const cnt = k => pbis.filter(x => x.state === k).length;
     const built = cnt('done') + cnt('conditions');
     const you = docs.assumptions?.humanList?.length;
     const tokens = agentRuns().reduce((a, r) => a + (Number(r.tok) || 0), 0);
@@ -648,7 +606,7 @@
     ].join('');
 
     const cells = pbis.length
-      ? pbis.map(x => { const differs = FLAGGED.includes(outcome(x)); return `<div class="cell ${esc(stateOf(x))}"${differs ? ` data-shadow="${outcome(x)}"` : ''} title="${esc(x.id)}: ${esc(String(x.title).replace(/[`*]/g, ''))}${differs ? '; hand-kept and derived state differ' : ''}"><span class="id">${esc(x.id)}</span><span class="nm">${esc(String(x.title).replace(/[`*]/g, ''))}</span><span class="st"><i></i>${esc(labelOf(stateOf(x)))}</span></div>`; }).join('')
+      ? pbis.map(x => `<div class="cell ${esc(x.state)}" title="${esc(x.id)}: ${esc(String(x.title).replace(/[`*]/g, ''))}"><span class="id">${esc(x.id)}</span><span class="nm">${esc(String(x.title).replace(/[`*]/g, ''))}</span><span class="st"><i></i>${esc(own(stateLabel, x.state) || x.state)}</span></div>`).join('')
       : '<div class="empty" style="grid-column:1/-1">The backlog has not been exported yet.</div>';
 
     // Needs attention, derived from the data rather than written by hand.
@@ -656,11 +614,8 @@
     // Merging is the owner's decision, so an open pull request waits on them like the plan gate does.
     (Array.isArray(g?.pulls) ? g.pulls : []).filter(x => x?.state === 'OPEN')
       .forEach(x => att.push(['var(--human)', `PR #${x.number} awaiting your merge`, x.title, 'git', x.url]));
-    const openOf = x => derived ? x.open || reviewSummary(x, wi.item(x.id)) : x.open;
-    pbis.filter(x => stateOf(x) === 'conditions').forEach(x => att.push(['var(--changes)', `${x.id} review conditions`, openOf(x), 'backlog']));
-    pbis.filter(x => stateOf(x) === 'partial').forEach(x => att.push(['var(--live)', `${x.id} partly built`, openOf(x), 'backlog']));
-    const ahead = pbis.filter(x => outcome(x) === 'runs-ahead').length;
-    if (ahead) att.push(['var(--ink-3)', `${ahead} work item${ahead === 1 ? '' : 's'}: runs are ahead of the hand-kept state`, 'Out-of-date entries, work in flight, or reviews awaiting merge: a passed review is not proof of merge.', 'backlog']);
+    pbis.filter(x => x.state === 'conditions').forEach(x => att.push(['var(--changes)', `${x.id} review conditions`, x.open, 'backlog']));
+    pbis.filter(x => x.state === 'partial').forEach(x => att.push(['var(--live)', `${x.id} partly built`, x.open, 'backlog']));
     if (g && !pushed) att.push(['var(--ink-3)', 'Not on GitHub', 'No remote, pull request or Pages site yet.', 'git']);
     if (runs.length && !runs.some(r => r.lane === 'ver')) att.push(['var(--ink-3)', 'App not verified', 'The verifier agent has not exercised the running site yet.', 'dispatch']);
     const killed = runs.filter(r => r.kind === 'killed').length;
@@ -673,7 +628,7 @@
     p.innerHTML = `
       <div class="tiles">${tiles}</div>
       <div class="panel" style="margin-bottom:16px">
-        <div class="ph"><h3>Backlog</h3><div class="legend"><span><i style="background:var(--go)"></i>${labelOf('done')}</span><span><i style="background:var(--changes)"></i>Conditions open</span><span><i style="background:var(--live)"></i>Partly built</span><span><i style="background:var(--rule-2)"></i>${labelOf('todo')}</span></div></div>
+        <div class="ph"><h3>Backlog</h3><div class="legend"><span><i style="background:var(--go)"></i>Built and reviewed</span><span><i style="background:var(--changes)"></i>Conditions open</span><span><i style="background:var(--live)"></i>Partly built</span><span><i style="background:var(--rule-2)"></i>Not started</span></div></div>
         <div class="pb"><div class="cells">${cells}</div></div>
       </div>
       <div class="panel" style="margin-bottom:16px">
@@ -1003,73 +958,13 @@
   }
 
   // ---------------- backlog ----------------
-  // The linked sessions the derivation read, and when they were last active: how old the evidence itself is. when(),
-  // not ago(), so the text does not change with the clock between two renders of the same data.
-  const linkedSessions = p => `${esc(Array.isArray(p.sessions) ? p.sessions.length : 0)} linked session(s)`;
-  const lastActive = p => typeof p.last === 'string' ? when(p.last) : '';
-  const unattributedTile = p => tile('Review rounds naming no work item', esc(Number(p.unattributedRounds) || 0), '', 'var(--rule-2)');
-  const retiredLine = p => `<p class="muted" data-retired style="margin:-8px 0 16px">The hand-kept state is retired for this project (the owner set <code>workItemStatus</code> to derived). State comes from runs in this project's ${linkedSessions(p)}${lastActive(p) ? `, last active ${esc(lastActive(p))}.` : '. Those sessions have no recorded activity.'} Review passed means the latest code review passed; it is not proof the change merged. Review, open items and commit still come from projects/${esc(p.id)}.json where recorded.</p>`;
-  const shadowCells = (x, it, o) => `<td><span class="tag ${esc(x.state)}">${esc(own(stateLabel, x.state) || x.state)}</span></td>`
-    + `<td>${it ? `<span class="tag ${esc(it.state)}">${esc(derivedText(it.state))}</span>` : '<span class="tag todo">No run names it</span>'}</td>`
-    + `<td><span class="tag ${FLAGGED.includes(o) ? 'differs' : o}">${shadowText[o]}</span></td>`;
-  // What a flagged work item's derived state rests on: its latest review round, found among all the project's runs
-  // whatever the session filter shows, so a mis-credited run label is visible rather than silent.
-  const evidenceOf = it => {
-    if (!(it.rounds > 0)) return `${esc(Number(it.builds) || 0)} build run(s), no finished review`;
-    const r = allRuns.find(r => r.id === it.latestRound);
-    if (!r) return `latest review: round ${esc(it.rounds)}, ${esc(it.verdict)}`;
-    const at = typeof r.start === 'string' ? when(r.start) : '';
-    return `latest review: ${esc(r.label || r.id)} · ${esc(it.verdict)}${at ? ` · ${esc(at)}` : ''}`;
-  };
-  // The shadow period: the derived state beside the hand-kept one, each difference grouped by its direction. A stale
-  // hand-kept entry (runs ahead) reads differently from what runs cannot show (hand-kept ahead), and a work item no run
-  // names is kept apart from both and never counted as agreeing.
-  function shadowPanel(wi, pbis, outcome) {
-    const p = wi.p, count = o => pbis.filter(x => outcome[x.id] === o).length;
-    const agree = count('agrees'), none = count('no-evidence'), unknown = count('unknown'), flagged = FLAGGED.reduce((n, o) => n + count(o), 0);
-    const tiles = tile('Agree', agree, 'backed by a run', 'var(--ink-3)')
-      + tile('Runs ahead of the hand-kept state', count('runs-ahead'), '', 'var(--ink)')
-      + tile('Hand-kept state ahead of the runs', count('handkept-ahead'), '', 'var(--ink-2)')
-      + tile('Not named by any run', count('unnamed'), '', 'var(--ink-3)')
-      + tile('No evidence', none, 'no run names it; hand-kept Not started', 'var(--rule-2)')
-      + unattributedTile(p)
-      + (unknown ? tile('Cannot compare', unknown, 'a state the board does not recognise', 'var(--rule-2)') : '');
-    const hk = x => esc(own(stateLabel, x.state) || x.state);
-    const li = (x, tone, main, sub) => `<li style="--t:${tone}" data-item="${esc(x.id)}"><span class="d"></span><div><b><span class="id">${esc(x.id)}</span> · ${md(x.title)}${main}</b>${sub ? `<span class="m">${sub}</span>` : ''}</div><span></span></li>`;
-    const group = (o, heading, line, tone, row) => { const xs = pbis.filter(x => outcome[x.id] === o); return xs.length
-      ? `<div data-group="${o}" style="margin-top:16px"><h3>${heading}</h3><p class="muted" style="font-size:13px;margin:2px 0 4px">${line}</p><ul class="att">${xs.map(x => row(x, tone)).join('')}</ul></div>` : ''; };
-    const compared = (x, tone) => { const it = wi.item(x.id); return li(x, tone, ` — hand-kept: ${hk(x)}; from runs: ${esc(derivedText(it.state))}`, evidenceOf(it)); };
-    const differ = flagged
-      ? `<h3 style="margin-top:18px">Where hand-kept and derived state differ</h3>`
-        + group('runs-ahead', 'Runs are ahead of the hand-kept state: out-of-date entries, work in flight, or reviews awaiting merge',
-          'Review passed means the latest code review passed. It is not proof of merge, so this group can include work still being built or a passed review whose pull request has not merged, as well as a hand-kept entry that is out of date.', 'var(--ink)', compared)
-        + group('handkept-ahead', 'The hand-kept state is ahead of the runs',
-          'Runs show review verdicts only. They cannot show that conditions were applied, that a pull request was merged, or work done in a session not linked to this project.', 'var(--ink-2)', compared)
-        + group('unnamed', 'Not named by any run', 'No code-writer, test-writer or code-reviewer run in the linked sessions names these work items.',
-          'var(--ink-3)', (x, tone) => li(x, tone, ` — hand-kept: ${hk(x)}`))
-      : `<p style="margin-top:16px">${agree
-        ? `Hand-kept and derived state agree for all ${agree} work items that a run names.${none ? ` ${none} work item(s) named by no run and hand-kept Not started have no evidence and are not counted as agreeing.` : ''}`
-        : `No run in the linked sessions names any of these ${pbis.length} work items, so there is nothing to compare. None is counted as agreeing.`}</p>`;
-    const listed = new Set(pbis.map(x => x.id)), extra = Object.keys(wi.w).filter(id => !listed.has(id)).sort();
-    const at = lastActive(p);
-    return `<div class="panel shadow" data-shadow-panel style="margin-bottom:16px"><div class="ph"><h3>Shadow period</h3><span class="faint">derived from runs, beside the hand-kept state</span></div><div class="pb">
-      <p class="muted" style="margin:0 0 14px;max-width:110ch">Shadow period: each work item's state is derived from the code-writer, test-writer and code-reviewer runs in this project's ${linkedSessions(p)} whose task names it, and shown beside the hand-kept state. ${at ? `Those sessions were last active ${esc(at)}.` : 'Those sessions have no recorded activity.'} A difference is shown for you to look at before deciding whether to retire the hand-kept state; it is not an error in either. Review passed means the latest code review passed, not that the change merged. Work done in sessions not linked to this project is not seen, so a work item no run names is shown as no evidence, never as agreement.</p>
-      <div class="tiles" style="margin:0">${tiles}</div>
-      ${differ}${group('no-evidence', 'No evidence either way', 'No code-writer, test-writer or code-reviewer run in the linked sessions names these work items, and the hand-kept state says Not started. There is nothing to compare, so they are not counted as agreeing.', 'var(--ink-3)', (x, tone) => li(x, tone, ''))}
-      ${extra.length ? `<p class="muted" style="margin-top:16px">Named by runs but not in the PBI list: ${extra.map(esc).join(', ')}</p>` : ''}
-    </div></div>`;
-  }
   function renderBacklog() {
     const d = docs.backlog, p = $('panel-backlog');
     if (!d) { p.innerHTML = '<div class="empty">The backlog has not been exported yet.</div>'; return; }
     const pbis = d.pbis || [], by = Object.fromEntries(pbis.map(x => [x.id, x]));
     // Future-iteration ideas: shown in their own group and never mixed into pbis, so no count includes them.
     const ideas = (Array.isArray(d.later) ? d.later : []).filter(x => x && typeof x === 'object');
-    const wi = workItemsOf(), derived = !!wi?.derived, shadow = !!wi && !derived;
-    const stateOf = x => derived ? effective(wi, x) : x.state;
-    const labelOf = s => derived ? derivedText(s) : own(stateLabel, s) || s;
-    const outcome = shadow ? Object.fromEntries(pbis.map(x => [x.id, shadowOf(x.state, wi.item(x.id))])) : {};
-    const cnt = k => pbis.filter(x => stateOf(x) === k).length;
+    const cnt = k => pbis.filter(x => x.state === k).length;
     const tone = { done: 'var(--go)', conditions: 'var(--changes)', partial: 'var(--live)', todo: 'var(--rule-2)' };
     const deps = Object.fromEntries(pbis.map(x => [x.id, (String(x.dependsOn).match(/PBI-\d+/g) || []).filter(i => by[i])]));
     const layer = {}, L = id => layer[id] ?? (layer[id] = deps[id].length ? 1 + Math.max(...deps[id].map(L)) : 0);
@@ -1090,27 +985,27 @@
       g += `<path d="M${x1} ${y1}C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}" fill="none" stroke="var(--rule-2)" stroke-width="1.2" marker-end="url(#da)"/>`;
     }));
     pbis.forEach(x => {
-      const s = stateOf(x), q = pos[x.id], t = own(tone, s) || 'var(--rule-2)', title = String(x.title).replace(/[`*]/g, '');
-      g += `<g><title>${esc(x.id)}: ${esc(title)} (${esc(labelOf(s))})</title>`;
-      g += `<rect x="${q.x}" y="${q.y}" width="${NW}" height="${NH}" rx="6" fill="var(--surface)" stroke="var(--rule-2)" ${s === 'partial' ? 'stroke-dasharray="4 3"' : ''}/>`;
-      g += `<rect x="${q.x}" y="${q.y}" width="${NW}" height="3" rx="1.5" fill="${s === 'todo' ? 'transparent' : t}"/>`;
+      const q = pos[x.id], t = own(tone, x.state) || 'var(--rule-2)', title = String(x.title).replace(/[`*]/g, '');
+      g += `<g><title>${esc(x.id)}: ${esc(title)} (${esc(own(stateLabel, x.state) || x.state)})</title>`;
+      g += `<rect x="${q.x}" y="${q.y}" width="${NW}" height="${NH}" rx="6" fill="var(--surface)" stroke="var(--rule-2)" ${x.state === 'partial' ? 'stroke-dasharray="4 3"' : ''}/>`;
+      g += `<rect x="${q.x}" y="${q.y}" width="${NW}" height="3" rx="1.5" fill="${x.state === 'todo' ? 'transparent' : t}"/>`;
       g += `<text x="${q.x + 11}" y="${q.y + 22}" font-size="12" font-weight="600" font-family="IBM Plex Mono, ui-monospace, monospace" fill="var(--ink)">${esc(x.id)}</text>`;
       g += `<text x="${q.x + 11}" y="${q.y + 39}" font-size="11" fill="var(--ink-2)">${esc(title.length > 19 ? title.slice(0, 18) + '…' : title)}</text></g>`;
     });
     g += '</g></svg>';
     p.innerHTML = `
-      <h2>Backlog and status</h2>${src(d)}${derived ? retiredLine(wi.p) : ''}${carried(d)}
+      <h2>Backlog and status</h2>${src(d)}${carried(d)}
       <div class="tiles">
-        ${tile(labelOf('done'), cnt('done'), `of ${pbis.length} work items`, 'var(--go)')}
+        ${tile('Built and reviewed', cnt('done'), `of ${pbis.length} work items`, 'var(--go)')}
         ${tile('Conditions open', cnt('conditions'), 'review findings to fix', 'var(--changes)')}
         ${tile('Partly built', cnt('partial'), 'interrupted', 'var(--live)')}
-        ${tile(labelOf('todo'), cnt('todo'), '', 'var(--rule-2)')}${derived ? unattributedTile(wi.p) : ''}
-      </div>${shadow ? shadowPanel(wi, pbis, outcome) : ''}
+        ${tile('Not started', cnt('todo'), '', 'var(--rule-2)')}
+      </div>
       ${d.board ? `<div class="callout warn">${icon('warn')}<p>${esc(d.board)}</p></div>` : ''}
       <div class="panel" style="margin-bottom:16px"><div class="ph"><h3>Dependencies</h3><span class="faint">arrows run from a prerequisite to what depends on it</span></div><div class="pb scroll">${g}</div></div>
       <div class="panel"><div class="ph"><h3>Work items</h3><span class="faint">${pbis.length}</span></div>
-        <div class="pb flush scroll"><table><thead><tr><th>Item</th><th>Delivers</th><th>Depends on</th>${shadow ? '<th>Hand-kept</th><th>From runs</th><th>Shadow</th>' : '<th>State</th>'}<th>Review</th><th>Still open</th></tr></thead><tbody>
-        ${pbis.map(x => `<tr${shadow ? ` data-shadow="${outcome[x.id]}"` : ''}><td style="white-space:nowrap"><span class="id">${esc(x.id)}</span>${x.commit ? `<div class="sub id">${esc(x.commit)}</div>` : ''}</td><td class="wide">${md(x.title)}<div class="sub">${esc(x.group)} · ${esc(x.risk)} risk</div></td><td class="muted" style="white-space:nowrap">${esc(String(x.dependsOn).replace(/[\[\]]/g, '') || '—')}</td>${shadow ? shadowCells(x, wi.item(x.id), outcome[x.id]) : `<td><span class="tag ${esc(stateOf(x))}">${esc(labelOf(stateOf(x)))}</span></td>`}<td class="muted">${esc(wi ? reviewSummary(x, wi.item(x.id)) : x.review)}</td><td class="wide muted">${esc(x.open) || '—'}</td></tr>`).join('')}
+        <div class="pb flush scroll"><table><thead><tr><th>Item</th><th>Delivers</th><th>Depends on</th><th>State</th><th>Review</th><th>Still open</th></tr></thead><tbody>
+        ${pbis.map(x => `<tr><td style="white-space:nowrap"><span class="id">${esc(x.id)}</span>${x.commit ? `<div class="sub id">${esc(x.commit)}</div>` : ''}</td><td class="wide">${md(x.title)}<div class="sub">${esc(x.group)} · ${esc(x.risk)} risk</div></td><td class="muted" style="white-space:nowrap">${esc(String(x.dependsOn).replace(/[\[\]]/g, '') || '—')}</td><td><span class="tag ${esc(x.state)}">${esc(own(stateLabel, x.state) || x.state)}</span></td><td class="muted">${esc(x.review)}</td><td class="wide muted">${esc(x.open) || '—'}</td></tr>`).join('')}
         </tbody></table></div></div>
       ${ideas.length ? `<div class="panel" data-later style="margin-top:16px"><div class="ph"><div><h3>Later</h3><p class="muted" style="font-size:13px;margin-top:2px">Ideas the spec records for a future iteration. They are not work items and are not counted.</p></div><span class="faint">${ideas.length}</span></div>
         <div class="pb"><div class="ideas">${ideas.map(x => `<div class="tile idea"><div class="tl">Not planned</div><div class="tv">${md(x.title)}</div>${x.description ? `<div class="ts">${md(x.description)}</div>` : ''}</div>`).join('')}</div></div></div>` : ''}`;
