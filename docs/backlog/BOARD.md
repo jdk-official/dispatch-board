@@ -16,7 +16,7 @@
 | ID | Title | Depends on | Notes |
 |----|-------|------------|-------|
 | PBI-020 | Timeline view (feature 9; FR-101 filled, FR-122–FR-124) | [PBI-003, PBI-004] | Decomposed from the approved spec, 2026-09-11 |
-| PBI-040 | Only one collector runs at a time | [] | Intake 2026-09-19 from PBI-007's log-on demonstration: Task Scheduler started a second collector. Starts after PBI-030 (both edit `local/collector.py`). |
+| PBI-040 | Only one collector runs at a time, and the local app picks up new code by itself | [] | Intake 2026-09-19 from PBI-007's log-on demonstration: Task Scheduler started a second collector. Starts after PBI-030 (both edit `local/collector.py`). |
 | PBI-032 | Answer from the board: Accept and Override on the Assumptions tab (local adapter only), answered and transcribed states (FR-131, AC-87) | [PBI-031] | Decomposed from spec revision 6 (approved 2026-09-19); batch approved by the owner 2026-09-19. |
 | PBI-033 | Answer audit: transcript tool calls that could have sent an answer, and the answers they may have made marked on the Assumptions tab | [PBI-032, PBI-030, PBI-034] | Decomposed from spec revision 6 (approved 2026-09-19); batch approved by the owner 2026-09-19. |
 | PBI-034 | Approvals as answers: `planApproval` bound to git's blob id of the committed spec, and `conditionsAccepted` bound to one review run, with server checks and `verify` support (S-31) | [PBI-031] | Decomposed from spec revision 6 (approved 2026-09-19); batch approved by the owner 2026-09-19. |
@@ -49,6 +49,7 @@
 |----|-------|--------|----------|-------------|---------------|
 <!-- Revision 6 decomposed 2026-09-19 into PBI-031 to PBI-038. The owner approved the batch, asked "Put PBI-031 to PBI-038 on the BOARD as shown, and start PBI-037 (freeze the published artifact) now?", verbatim: "Approve batch, start 037". PBI-037 is docs/Low, so it runs beside PBI-010 (page/High). -->
 | PBI-031 | Answers endpoint on the local server: the answer record, a server-owned answers database, `POST /api/answers` with its checks, a nonce content-security policy, `local/answers.py list` and `verify`, and the `CLAUDE.md` answer and transcription rules (FR-95, FR-132, NFR-23) | `pbi/PBI-031-answers-endpoint` | C:/Users/jdk/dispatch-board-worktrees/PBI-031 | 7e0c4f3c | 2026-09-19T21:00:00Z |
+| PBI-041 | The board note and the pipeline's Board box come from the BOARD, not from hand-kept text | `pbi/PBI-041-board-state-from-board` | C:/Users/jdk/dispatch-board-worktrees/PBI-041 | 7e0c4f3c | 2026-09-19T21:10:00Z |
 <!-- PBI-031 started 2026-09-19 once PBI-007 was Done and the security_paths chore (#44) merged. Spec revision 3 approved; the owner approved the build ("Approve the build"). Security path: the owner reviews the code and approves the merge. -->
 <!-- PBI-039 started 2026-09-19 the moment PBI-010 merged and freed the page slot. No spec gate, no external review. Keep it minimal: the owner found PBI-010's panel too complex. -->
 <!-- PBI-030 started 2026-09-19 (exporters, Medium) beside PBI-010: its spec is approved (revision 3), and it rebases onto PBI-010 once that merges, taking PBI-010's follow-up CR-010-1 with it. -->
