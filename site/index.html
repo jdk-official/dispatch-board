@@ -123,6 +123,9 @@
   .att .d { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; background: var(--t); }
   .att b { font-weight: 600; display: block; }
   .att span.m { color: var(--ink-2); font-size: 13px; }
+  /* Waiting on you: a quoted question keeps to two lines, in the sans face like the rest of the list. */
+  .att .q { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .att .end { display: flex; gap: 8px; align-items: center; }
   .linkbtn { font: 500 12.5px/1 inherit; font-family: inherit; color: var(--ink-2); background: var(--raised); border: 1px solid var(--rule-2); border-radius: 6px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
   .linkbtn:hover { color: var(--ink); background: var(--hover); }
   a.linkbtn { display: inline-block; text-decoration: none; }
@@ -480,19 +483,92 @@
         </tbody></table></div></div>`;
   }
 
+  // ---------------- waiting on you ----------------
+  // What waits on the owner across every session in view, whatever the session filter shows: a blocker hidden by a
+  // filter the owner forgot they had set is the failure this panel exists to prevent. The exporter records only what
+  // the transcripts say. Whether a session has gone quiet, and how old an item is, depend on the clock, so they are
+  // judged here, as liveness is; the exported document then stays the same from one refresh to the next.
+  // Only a later owner message clears an item, so a session nobody returns to would keep its items for the whole
+  // retention window without the age bound.
+  const WAIT_AGE = 48 * 3600e3, WAIT_CAP = 20;
+  // Over the cap, inferred items go first, then refusals, then asks, each oldest first. An assumption row is an exact
+  // fact and is never dropped.
+  const WAIT_DROP = ['prose', 'refused', 'ask'];
+  const refusedAs = { 'permission-rule': 'refused by a permission rule', 'automode-blocked': 'blocked by auto mode', 'user-rejected': 'rejected by you' };
+  const quietFor = ms => { const m = Math.max(0, Math.round(ms / 60000)); return m < 60 ? `${m} min` : m < 2880 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`; };
+  function waitingOf(now) {
+    const dated = [], needs = [];
+    let aged = 0, more = 0;
+    filterSessions().forEach(s => {
+      const w = s.waiting && typeof s.waiting === 'object' ? s.waiting : null;
+      if (!w) return;
+      const idle = !sessionLive(s, now);
+      let listed = 0;
+      const add = (kind, x) => {
+        const t = typeof x?.at === 'string' ? Date.parse(x.at) : NaN;
+        if (!(now - t <= WAIT_AGE)) { aged++; return; }  // an unreadable time cannot be shown to be inside the bound
+        dated.push({ kind, t, s, x }); listed++;
+      };
+      // A question put through the tool waits from the moment it is asked; one inferred from prose only once the
+      // session has gone quiet, since while it is live the owner is in it.
+      (Array.isArray(w.questions) ? w.questions : []).forEach(q => { if (q?.source === 'ask') add('ask', q); else if (q?.source === 'prose' && idle) add('prose', q); });
+      (Array.isArray(w.refusals) ? w.refusals : []).forEach(r => add('refused', r));
+      // The exporter keeps a session's newest refusals, so those it only counted are older still: they count only
+      // while something of that session is listed.
+      if (listed && Number(w.more) > 0) more += Number(w.more);
+    });
+    const rows = (list, go, text, what) => (Array.isArray(list) ? list : []).filter(r => r?.needsYou).forEach(r => needs.push({ kind: 'needs', go, text: r[text], what }));
+    rows(docs.assumptions?.rows, 'assumptions', 'question', 'assumption awaiting your decision');
+    rows(docs.decisions?.notWorkedOut, 'decisions', 'item', 'not worked out, awaiting you');
+    let dropped = 0;
+    for (const kind of WAIT_DROP) {
+      const over = dated.length + needs.length - WAIT_CAP;
+      if (over <= 0) break;
+      const gone = new Set(dated.filter(i => i.kind === kind).sort((a, b) => a.t - b.t).slice(0, over));
+      dropped += gone.size;
+      dated.splice(0, dated.length, ...dated.filter(i => !gone.has(i)));
+    }
+    return { items: [...dated.sort((a, b) => b.t - a.t), ...needs], aged, dropped, more };
+  }
+  // What the minute timer compares: which items are listed, and whether the bounds hid any.
+  const waitingState = now => { try { const w = waitingOf(now); return w.items.map(i => i.kind + i.t).join() + ` ${w.aged}`; } catch (e) { return ''; } };
+  const waitingTile = w => tile('Waiting on you', w.items.length, w.items.length ? 'questions, refusals and decisions' : 'nothing detected', 'var(--human)', true);
+  // Transcript text is data: it goes through esc() only, never md(). Assumption rows are repo text, as on their own tab.
+  function waitingPanel(w, now) {
+    const who = s => `${esc(s.title || s.id)} <span class="id">${esc(String(s.id).slice(0, 8))}</span>`;
+    const li = (kind, tag, main, meta, end = '') => `<li style="--t:var(--human)" data-wait="${kind}"><span class="d"></span><div><b class="q">${main}</b><span class="m">${meta}</span></div><span class="end"><span class="tag human">${tag}</span>${end}</span></li>`;
+    const row = it => {
+      if (it.kind === 'needs') return li('needs', 'Needs you', md(it.text), esc(it.what), `<button class="linkbtn" data-go="${it.go}">View</button>`);
+      const { s, x } = it, from = `${who(s)} · ${esc(ago(x.at))}`;
+      if (it.kind === 'refused') return li('refused', 'Refused', `${esc(x.tool || '—')} ${esc(own(refusedAs, x.kind) || 'refused')}`, from);
+      if (it.kind === 'prose') return li('prose', 'Inferred', esc(x.question), `last message looks like a question · quiet ${esc(quietFor(now - (Date.parse(s.last) || it.t)))} · ${who(s)}`);
+      return li('ask', 'Asked you', esc(x.question), from);
+    };
+    const hidden = w.dropped + w.more;
+    const foot = (hidden ? `<p class="muted">+${esc(hidden)} more waiting</p>` : '')
+      + (w.aged || w.dropped ? '<p class="faint">Older than 48 hours, or beyond the first 20, is not shown.</p>' : '');
+    // The empty state claims only that nothing was detected, and is muted text rather than the .empty block, which
+    // marks a panel the board has nothing to show for.
+    return `<div class="panel" data-waiting style="margin-bottom:16px"><div class="ph"><h3>Waiting on you</h3><span class="count human">${w.items.length}</span></div>
+        ${w.items.length ? `<ul class="att">${w.items.map(row).join('')}</ul>` : '<div class="pb"><p class="muted"><b>Nothing detected as waiting on you.</b> These are heuristics over transcripts; a question asked in prose may not be spotted.</p></div>'}
+        ${foot ? `<div class="pb" style="border-top:1px solid var(--rule)">${foot}</div>` : ''}</div>`;
+  }
+
   // A session linked to no project: its own activity, usage and agents, and no project tabs.
   function renderSessionOverview(p) {
     const s = cur();
     if (!s) { p.innerHTML = `<div class="empty">${loaded ? `No Claude Code session outside a project was active in the last ${esc(windowDays())} days.` : offline ? cannotReach() : connectingTo()}</div>`; return; }
-    const t = s.usage?.totals || {}, ar = agentRuns(), now = runs.filter(r => r.kind === 'running').length;
+    const t = s.usage?.totals || {}, ar = agentRuns(), now = runs.filter(r => r.kind === 'running').length, wait = waitingOf(renderNow);
     p.innerHTML = `
       <div class="tiles">
         ${tile('Agent runs', ar.length, ar.length ? `${verdictRuns().length} review verdicts` : 'no agents dispatched', 'var(--live)')}
         ${tile('Running now', now, sessionLive(s, renderNow) ? 'session active' : 'session idle', 'var(--live)', now > 0)}
+        ${waitingTile(wait)}
         ${tile('Claude usage', fmtTok(t.effective) + '<small> effective</small>', `${esc((t.requests || 0).toLocaleString())} requests`, 'var(--live)')}
         ${tile('Limit hits', limitsOf(s.usage).length, 'usage limit', 'var(--nogo)')}
         ${forecastTile(docs.usage)}
       </div>
+      ${waitingPanel(wait, renderNow)}
       <div class="grid g-2-1">
         <div class="panel"><div class="ph"><h3>Session</h3><span class="faint">Not linked to a project</span></div><div class="pb">
           <dl class="facts">
@@ -516,10 +592,11 @@
     const you = docs.assumptions?.humanList?.length;
     const tokens = agentRuns().reduce((a, r) => a + (Number(r.tok) || 0), 0);
     const cov = String(m.coverage || ''), covMain = (cov.match(/\d+%/) || ['—'])[0], covRest = cov.replace(covMain, '').replace(/^\s*/, '');
-    const pushed = (g?.remotes || []).length > 0;
+    const pushed = (g?.remotes || []).length > 0, wait = waitingOf(renderNow);
     const tiles = [
       tile('Work items built', pbis.length ? `${built}<small> / ${pbis.length}</small>` : '—', pbis.length ? `${cnt('conditions')} with open conditions · ${cnt('partial')} partly built` : '', 'var(--go)'),
       tile('Awaiting your decision', esc(you ?? '—'), 'assumptions at the plan gate', 'var(--human)', true),
+      waitingTile(wait),
       tile('Tests passing', esc(m.tests ?? '—'), m.testFiles ? `${m.testFiles} files · commit ${esc(m.measuredOn || '')}` : '', 'var(--go)'),
       tile('Library coverage', esc(covMain), esc(covRest), 'var(--go)'),
       tile('Agent runs', esc(agentRuns().length || '—'), agentRuns().length ? `${verdictRuns().length} review verdicts · ${(tokens / 1e6).toFixed(2)}M reported tokens` : '', 'var(--live)'),
@@ -533,7 +610,6 @@
 
     // Needs attention, derived from the data rather than written by hand.
     const att = [];
-    if (you) att.push(['var(--human)', 'Plan gate approval', `${you} assumptions need confirming before work can go on the board.`, 'assumptions']);
     // Merging is the owner's decision, so an open pull request waits on them like the plan gate does.
     (Array.isArray(g?.pulls) ? g.pulls : []).filter(x => x?.state === 'OPEN')
       .forEach(x => att.push(['var(--human)', `PR #${x.number} awaiting your merge`, x.title, 'git', x.url]));
@@ -558,6 +634,7 @@
         <div class="ph"><h3>Pipeline</h3><div class="legend"><span><i style="background:var(--human)"></i>Human decision</span><span><i style="background:var(--changes)"></i>Feedback loop</span><span><i style="background:var(--live)"></i>Running agent</span><span class="faint">${isLive(renderNow) ? 'Live' : 'Paused'}</span></div></div>
         <div class="pb scroll">${pipeline()}</div>
       </div>
+      ${waitingPanel(wait, renderNow)}
       <div class="grid g-3">
         <div class="panel"><div class="ph"><h3>Needs attention</h3><span class="count">${att.length}</span></div>
           <ul class="att">${att.map(([t, h, m2, go, url]) => `<li style="--t:${t}"><span class="d"></span><div><b>${esc(h)}</b><span class="m">${esc(m2)}</span></div>${ghLink(url, 'Open', 'linkbtn') || `<button class="linkbtn" data-go="${go}">View</button>`}</li>`).join('') || '<li><span></span><span class="m">Nothing needs attention.</span><span></span></li>'}</ul>
@@ -1145,7 +1222,7 @@
   // "Running now" tiles). The minute timer compares this against what was last drawn and redraws once when it differs.
   // A forecast that cannot be computed counts as not passed, so it can never stop a redraw or the timer.
   const forecastIsPast = now => { try { const f = forecastOf(docs.usage); return f.state === 'ok' && f.at < now; } catch (e) { return false; } };
-  const clockState = now => `${forecastIsPast(now)} ${isLive(now)} ${scopeLive(now)}`;
+  const clockState = now => `${forecastIsPast(now)} ${isLive(now)} ${scopeLive(now)} ${waitingState(now)}`;
   // A render reads the clock once (renderNow) for the forecast tiles, the running window and the drawn state alike. A
   // second reading could fall past the forecast or the window's end, recording a state as drawn that no tile shows,
   // and the minute timer would then never redraw that tile.

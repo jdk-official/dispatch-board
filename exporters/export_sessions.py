@@ -57,7 +57,7 @@ from derive import (  # noqa: F401
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(HERE, 'board.config.json')
-PARSER_VERSION = 7  # bump when parsing changes, to drop cached results
+PARSER_VERSION = 8  # bump when parsing changes, to drop cached results
 
 
 # (block, key, check, what the value must be) for each typed value under sessions and runs; board_config.manual

@@ -75,6 +75,16 @@ GROUP_LABEL = {
     'loop': 'Loop scheduling', 'ask': 'Questions to you', 'connectors': 'Connectors', 'other': 'Other tools',
 }
 TOKEN_FIELDS = ('input_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens', 'output_tokens')
+# Permission refusals the owner is shown, by the transcript's toolDenialKind. automode-unavailable is left out: it is
+# a transient outage of the classifier, not a decision about the action, and no owner action clears it. The field is
+# the only signal read: most is_error tool results are ordinary command failures, and refusal wording also turns up
+# in unrelated text, so matching on message text would be wrong in both directions.
+REFUSAL_KINDS = ('permission-rule', 'automode-blocked', 'user-rejected')
+# A closing paragraph that asks the owner for something without a question mark. Deliberately short and closed: a
+# looser list starts matching rhetorical and self-answered closes.
+SOLICIT = re.compile(r"\b(?:let me know|want me to|shall I|should I|which would you|your call|say the word|confirm)\b", re.I)
+WAITING_CAP = 5  # items listed per session; one session refusing a call in a loop is one problem, not forty
+WAITING_TEXT = 300  # characters of a question or refusal kept; the page shows two lines of it
 
 
 def is_number(v):
@@ -444,10 +454,77 @@ def use_skill(uses, sid, skill, ts, warn=None):
         u['last'] = ts
 
 
+def is_owner_message(o):
+    """True for a record the owner typed, for the waiting items' clearing rule ("was the owner here after this?").
+    Wider than the test that picks the first prompt, which accepts string content only and is left as it is:
+      - a user record whose isMeta is not true (Claude Code's synthetic copy of a typed command);
+      - whose content is a string not beginning with "<" (injected command and reminder blocks do),
+      - or a list holding at least one text block not beginning with "<" and no tool_result block, which is how a
+        reply typed beside a pasted image or attachment arrives.
+    A reply counted as not the owner's would leave an answered question listed, so the list form is accepted; the
+    "<" rule applies to both forms, since this one test clears every pending item in the session at once."""
+    if o.get('type') != 'user' or o.get('isMeta') is True:
+        return False
+    content = (o.get('message') if isinstance(o.get('message'), dict) else {}).get('content')
+    typed = lambda s: isinstance(s, str) and bool(s.strip()) and not s.lstrip().startswith('<')
+    if isinstance(content, str):
+        return typed(content)
+    if not isinstance(content, list):
+        return False
+    blocks = [c for c in content if isinstance(c, dict)]
+    return not any(c.get('type') == 'tool_result' for c in blocks) \
+        and any(c.get('type') == 'text' and typed(c.get('text')) for c in blocks)
+
+
+def later(a, b):
+    """True when time a is after time b; False when either is missing or unreadable."""
+    try:
+        return epoch(a) > epoch(b)
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
 def new_session(sid):
     """The running state of a session's main transcript, fed record by record with add_record()."""
     return {'sid': sid, 'title': None, 'aiTitle': None, 'cwd': None, 'first': None, 'start': None, 'last': None,
-            'by': {}, 'rejects': [], 'launched': {}, 'stopped': {}, 'notes': {}, 'sync': {}, 'uses': {}, 'skillCalls': set()}
+            'by': {}, 'rejects': [], 'launched': {}, 'stopped': {}, 'notes': {}, 'sync': {}, 'uses': {}, 'skillCalls': set(),
+            'tools': {}, 'asks': {}, 'answered': set(), 'denials': [], 'lastOwnerAt': None, 'lastTurn': None}
+
+
+def add_waiting(state, o, ts, t, m):
+    """Fold one record into the waiting keys: tool names by call id, AskUserQuestion calls, the call ids that got a
+    result, listed refusals, the latest owner message and the last conversation record. Bookkeeping records (mode,
+    titles, attachments, last-prompt) are not conversation, and a transcript very often ends on one."""
+    content = m.get('content')
+    if t == 'assistant':
+        for c in content if isinstance(content, list) else []:
+            if not isinstance(c, dict) or c.get('type') != 'tool_use':
+                continue
+            state['tools'][c.get('id')] = c.get('name')
+            if c.get('name') == 'AskUserQuestion' and c.get('id') not in state['asks']:  # a streamed repeat keeps its first time
+                qs = (c.get('input') if isinstance(c.get('input'), dict) else {}).get('questions')
+                text = ' · '.join(q['question'].strip() for q in qs if isinstance(q, dict) and isinstance(q.get('question'), str)) \
+                    if isinstance(qs, list) else ''
+                state['asks'][c.get('id')] = {'at': ts, 'question': redact(text)[:WAITING_TEXT]}
+    if t == 'user' and isinstance(content, list):
+        for c in content:
+            if isinstance(c, dict) and c.get('type') == 'tool_result':
+                state['answered'].add(c.get('tool_use_id'))
+        kind = o.get('toolDenialKind')
+        if kind in REFUSAL_KINDS and o.get('isMeta') is not True:
+            first = content[0] if content and isinstance(content[0], dict) else {}
+            # toolUseResult on a refusal is a plain string, so it is not read here; the detail is the result's text.
+            state['denials'].append({'at': ts, 'kind': kind, 'tool': state['tools'].get(first.get('tool_use_id')),
+                                     'detail': redact(text_of(first.get('content')).strip())[:WAITING_TEXT]})
+    if is_owner_message(o) and ts and not later(state['lastOwnerAt'], ts):
+        state['lastOwnerAt'] = ts
+    if t in ('user', 'assistant'):
+        prev, mid = state['lastTurn'] or {}, m.get('id')
+        text = text_of(content) if t == 'assistant' else ''
+        # A streamed reply spans several lines of one message id, so a line without text keeps the text before it.
+        if not text.strip() and t == 'assistant' and mid and prev.get('mid') == mid:
+            text = prev.get('text') or ''
+        state['lastTurn'] = {'at': ts, 'role': t, 'stop': m.get('stop_reason'), 'text': text, 'mid': mid}
 
 
 def add_record(state, o, raw=None, warn=None):
@@ -473,6 +550,7 @@ def add_record(state, o, raw=None, warn=None):
             use_skill(state['uses'], state['sid'], name[1:] if name.startswith('/') else name, ts, warn)
     reject(state['rejects'], o)
     response(state['by'], o)
+    add_waiting(state, o, ts, t, m)
     if t == 'assistant':
         for c in m.get('content') or []:
             if not isinstance(c, dict) or c.get('type') != 'tool_use':
@@ -498,6 +576,42 @@ def add_record(state, o, raw=None, warn=None):
                 if tid:  # an agent may notify more than once; the latest wins
                     state['notes'][tid] = {'at': ts, 'status': tag(block, 'status').strip(), 'result': tag(block, 'result'),
                                            'tokens': tag(block, 'subagent_tokens'), 'ms': tag(block, 'duration_ms')}
+
+
+def prose_question(turn):
+    """The closing paragraph of an assistant turn that asks the owner something, or None. Only the last paragraph is
+    read, so a question raised and answered earlier in the reply does not count."""
+    paras = [p.strip() for p in re.split(r'\n\s*\n', (turn or {}).get('text') or '') if p.strip()]
+    last = paras[-1] if paras else ''
+    return last if last.rstrip('*_ ').endswith('?') or SOLICIT.search(last) else None
+
+
+def waiting_of(state):
+    """What the session leaves waiting on the owner, or None when nothing is: at most one question (an unanswered
+    AskUserQuestion, else a closing question in prose) and the listed refusals, each cleared by any later owner
+    message. Only facts read from the transcript: whether the session has since gone quiet, and how old an item is,
+    depend on the time and are judged by the page, so the document stays the same between exports of one
+    transcript. At most WAITING_CAP items are kept -- the question first, then the newest refusals -- and the
+    number left out is "more"."""
+    owner = state['lastOwnerAt']
+    questions = []
+    pending = [a for tid, a in state['asks'].items() if tid not in state['answered'] and not later(owner, a['at'])]
+    turn = state['lastTurn'] or {}
+    if pending:
+        questions.append(dict(pending[-1], source='ask'))
+    elif turn.get('role') == 'assistant' and turn.get('stop') != 'tool_use' and not later(owner, turn.get('at')):
+        text = prose_question(turn)
+        if text:
+            questions.append({'at': turn.get('at'), 'question': redact(text)[:WAITING_TEXT], 'source': 'prose'})
+    refusals = [dict(d) for d in state['denials'] if not later(owner, d['at'])]
+    if not questions and not refusals:
+        return None
+    room = WAITING_CAP - len(questions)
+    kept = refusals[len(refusals) - room:] if len(refusals) > room else refusals
+    out = {'questions': questions, 'refusals': kept}
+    if len(refusals) > len(kept):
+        out['more'] = len(refusals) - len(kept)
+    return out
 
 
 def edited(resps):
@@ -554,6 +668,9 @@ def session_result(state, subs, rows, skipped):
     doc = {'title': state['title'] or state['aiTitle'], 'cwd': cwd or '', 'folder': os.path.basename((cwd or '').rstrip('\\/')),
            'firstPrompt': first, 'start': state['start'], 'last': last, 'usage': usage_doc(main, subs, (state['start'], last)),
            'skillUses': {k: dict(v) for k, v in state['uses'].items()}}
+    waiting = waiting_of(state)
+    if waiting:  # left out entirely otherwise, so a session with nothing waiting exports exactly as before
+        doc['waiting'] = waiting
     return {'doc': doc, 'rows': rows, 'skipped': skipped}
 
 

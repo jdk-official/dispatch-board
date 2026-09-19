@@ -1383,7 +1383,14 @@ const snapshotOf = (records, version = 7) => ({ version, generatedAt: now, skipp
 // Unique sort keys, so "the order the store hands them over in" is one order: the check below compares like with
 // like, and would otherwise turn on how each side happens to break a tie.
 const step = (iso, i, n) => new Date(Date.parse(iso) - (n - i) * 1000).toISOString();
-const EQ_SESSIONS = SESSIONS.map((s, i) => ({ ...s, last: step(s.last, i, SESSIONS.length) }));
+// The project's live session carries a question and a refusal, so the "Waiting on you" panel is compared with items
+// in it. The question is worded to occur nowhere else in the fixtures.
+const EQ_WAITING = { questions: [{ at: now, question: 'Ship the waiting fixture tonight?', source: 'ask' }],
+  refusals: [{ at: now, kind: 'permission-rule', tool: 'Bash', detail: 'Permission to use Bash has been denied.' }] };
+const EQ_SESSIONS = SESSIONS.map((s, i) => ({ ...s, last: step(s.last, i, SESSIONS.length), ...(s.id === 's2' ? { waiting: EQ_WAITING } : {}) }));
+// Item content only, read from the Overview alone: the panel's title shows in its empty state too, and "Refused" is
+// also a column heading on the Usage tab, so neither the title nor the whole board could tell an empty panel apart.
+const WAITING_PROBES = [['a question waiting on you', /Ship the waiting fixture tonight\?/], ['a refused action', /Refused/]];
 // The compared board's newest run is a finished review round, so the run detail panel is compared with a verdict,
 // a duration and findings on it rather than with the emptiest run either side happens to hold.
 const EQ_REVIEW = { id: 'r5', session: 's2', project: 'dispatch-board', lane: 'cr', kind: 'changes', label: 'DB review',
@@ -1481,6 +1488,7 @@ const overStore = async () => {
     ['an assumption awaiting a human', /Which port\?/], ['work items in four states', /class="cell partial"/]]) {
     assert.ok(Object.values(seen).some(h => re.test(h)), `the compared board shows ${what}`);
   }
+  for (const [what, re] of WAITING_PROBES) assert.match(seen['panel-overview'], re, `the compared Overview shows ${what}`);
   assert.deepEqual(rendered(l), rendered(s));
   ok('FR-97: the store adapter and the local API adapter render the same board from the same data, on a board where every panel has content');
 
@@ -1511,6 +1519,15 @@ const overStore = async () => {
   assert.equal(stub.streams.length, 1, 'the page never opens a second stream, not even after the browser gave up');
   assert.deepEqual(stub.streams.map(x => x.url), ['/api/events?since=7']);
   ok('local adapter: a stream the browser has given up retrying is reported, a transient drop is not, and the page never reopens it at a position of its own');
+}
+{
+  // The negative control: the same board with no waiting data must fail both probes, or they test nothing.
+  const bare = env(VIEW);
+  await tick();
+  bare.fire('c:projects', PROJECTS); bare.fire('c:sessions', EQ_SESSIONS.map(({ waiting, ...s }) => s));
+  bare.fire('c:runs', EQ_RUNS); bare.fire('c:projectTabs', EQ_TABS);
+  for (const [what, re] of WAITING_PROBES) assert.doesNotMatch(bare.el('panel-overview').innerHTML, re, `without waiting data, no ${what}`);
+  ok('the waiting probes fail on the same board without waiting data, so they test item content, not the panel title');
 }
 {
   // One arrival of data, one render pass. The store adapter hands a snapshot to one reader, so it already draws
@@ -1771,6 +1788,111 @@ const overStore = async () => {
   assert.ok(filesOf(locs).includes('Files its findings name: C:/Users/jdk/app/x.py, exporters/export_board.py, tests/test_export_board.py, site/index.html.'), filesOf(locs));
   assert.doesNotMatch(filesOf(locs), /object Object|\b958\b/);
   ok('run detail: file names are read from a finding location\'s drive letter, several files and line lists, skipping one that is not text');
+}
+
+// ---- 23. "Waiting on you" (feature 2, FR-106 to FR-110, AC-75, AC-76): questions, refusals and assumptions awaiting
+// the owner, across every session in view, bounded by age and count, and honest when it finds nothing
+{
+  const T = Date.parse('2026-09-19T12:00:00Z'), H = 3600e3, realNow = Date.now;
+  const at = ago => new Date(T - ago).toISOString();
+  const row = (n, question, needsYou) => ({ n, question, resolution: 'r', source: 's', level: 'Low', impact: 'Low', status: needsYou ? 'ASSUMED' : 'RESOLVED', needsYou });
+  const WTABS = [
+    { id: 'dispatch-board.assumptions', generatedAt: now, source: 'A', humanList: ['Pick a port'], rows: [row(1, 'Pick a `port`', true), row(2, 'Settled one', false)] },
+    { id: 'dispatch-board.decisions', generatedAt: now, source: 'D', adrs: [], decisions: [],
+      notWorkedOut: [{ item: 'An open point', landed: 'x', row: 3, adr: null, needsYou: true }, { item: 'A settled point', landed: 'y', row: 4, adr: null, needsYou: false }] },
+  ];
+  // With a backlog, so the Overview's only possible empty state is the panel's own.
+  const QUIET_TABS = [{ ...WTABS[0], humanList: [], rows: [row(2, 'Settled one', false)] }, { ...WTABS[1], notWorkedOut: [] },
+    { id: 'dispatch-board.backlog', generatedAt: now, source: 'B', board: '', pbis: [{ id: 'PBI-001', title: 't', dependsOn: '—', state: 'done', group: 'g', risk: 'Low' }] }];
+  const sess = (id, lastAgo, waiting, project = 'dispatch-board') => ({ id, title: 'Session ' + id, project, last: at(lastAgo),
+    start: at(lastAgo + H), running: 0, windowMinutes: 10, usage: usage(id, 1), ...(waiting ? { waiting } : {}) });
+  const load = async (sessions, tabs, view = 'p:dispatch-board') => {
+    const e = env({ 'board-view': view });
+    await tick();
+    e.fire('c:projects', PROJECTS); e.fire('c:sessions', sessions); e.fire('c:runs', []); e.fire('c:projectTabs', tabs);
+    return e;
+  };
+  const O = e => e.el('panel-overview').innerHTML;
+  const kinds = e => [...O(e).matchAll(/data-wait="(\w+)"/g)].map(m => m[1]);
+  const NOTHING = 'Nothing detected as waiting on you. These are heuristics over transcripts; a question asked in prose may not be spotted.';
+  const BOUNDS = 'Older than 48 hours, or beyond the first 20, is not shown.';
+
+  try {
+    Date.now = () => T;
+    const W = [
+      sess('w1', 2 * H, { questions: [{ at: at(2 * H), question: 'Deploy <script>alert(1)</script> to `prod` now?', source: 'prose' }],
+        refusals: [{ at: at(3 * H), kind: 'permission-rule', tool: 'Bash', detail: 'Permission to use Bash has been denied.' }] }),
+      sess('w3', 60e3, { questions: [{ at: at(60e3), question: 'Shall I tidy up the live one?', source: 'prose' }], refusals: [] }),
+      sess('w2', 60e3, { questions: [{ at: at(60e3), question: 'Which database should it use?', source: 'ask' }], refusals: [] }),
+    ];
+    const e = await load(W, WTABS);
+    const h = O(e);
+    assert.deepEqual(kinds(e), ['ask', 'prose', 'refused', 'needs', 'needs'], 'newest first, assumptions after the dated items');
+    for (const tag of ['Asked you', 'Inferred', 'Refused', 'Needs you']) assert.match(h, new RegExp(`class="tag human">${tag}<`), tag);
+    assert.match(h, /Which database should it use\?/);
+    assert.match(h, /Bash refused by a permission rule/);
+    assert.match(h, /An open point/);
+    assert.match(h, /<span class="id">w1<\/span>/, 'the session id is the one thing in the mono face');
+    assert.deepEqual(tileOf(h, 'Waiting on you'), ['5', 'questions, refusals and decisions']);
+    ok('AC-75, AC-76: a project\'s panel lists an unanswered ask, an idle prose question, a refusal with its tool, and the needsYou rows, each with its word');
+
+    assert.match(h, /last message looks like a question · quiet 2 h/);
+    assert.doesNotMatch(h, /Shall I tidy up the live one/, 'a live session\'s prose question is not listed');
+    ok('a prose question is listed once its session is quiet past its running window, and not while it is live');
+
+    assert.ok(h.includes('Deploy &lt;script&gt;alert(1)&lt;/script&gt; to `prod` now?'), 'escaped, backticks left as text');
+    assert.ok(!h.includes('<script>') && !h.includes('<code>prod</code>'), 'transcript text is never markup');
+    ok('transcript text is escaped and not rendered through md()');
+
+    assert.doesNotMatch(h, /Plan gate approval/);
+    assert.match(h, /<h3>Needs attention<\/h3>/);
+    ok('the duplicate "Plan gate approval" line has left Needs attention');
+
+    e.change('session', 'w2');
+    assert.deepEqual(kinds(e), ['ask', 'prose', 'refused', 'needs', 'needs'], 'the panel ignores the session filter');
+    ok('the panel shows every session in the project whatever the session filter is set to');
+
+    const o = await load([sess('u1', 20 * 60e3, { questions: [], refusals: [{ at: at(H), kind: 'automode-blocked', tool: null, detail: 'd' }], more: 3 }, null)], [], 'other');
+    assert.match(O(o), /Not linked to a project/);
+    assert.deepEqual(kinds(o), ['refused']);
+    assert.match(O(o), /— blocked by auto mode/, 'a refused tool that could not be named shows as —');
+    assert.match(O(o), /\+3 more waiting/, 'a session\'s own overflow is counted');
+    ok('the panel renders in Other sessions too');
+
+    for (const [view, sessions, tabs] of [['p:dispatch-board', [sess('q1', 5 * H)], QUIET_TABS], ['other', [sess('q2', 5 * H, null, null)], []]]) {
+      const n = await load(sessions, tabs, view);
+      assert.ok(text(O(n)).includes(NOTHING), view);
+      assert.doesNotMatch(O(n), /nothing is waiting on you/i, view);
+      assert.doesNotMatch(O(n), /class="empty"/, view + ': the Overview is not counted as an empty panel');
+      assert.doesNotMatch(O(n), /data-wait=/, view);
+      assert.deepEqual(tileOf(O(n), 'Waiting on you'), ['0', 'nothing detected'], view);
+    }
+    ok('with nothing detected the panel says so, names the heuristic limit, never claims nothing is waiting, and carries no empty class');
+
+    const aged = await load([sess('a1', 47 * H, { questions: [{ at: at(47 * H), question: 'Still wanted?', source: 'prose' }],
+      refusals: [{ at: at(47 * H), kind: 'user-rejected', tool: 'Write', detail: 'd' }] })], QUIET_TABS);
+    assert.deepEqual(kinds(aged), ['prose', 'refused']);
+    assert.ok(!O(aged).includes(BOUNDS));
+    Date.now = () => T + 2 * H;  // both items are now 49 hours old, and the store has not changed
+    aged.timers.forEach(f => f());
+    assert.deepEqual(kinds(aged), [], 'redrawn on the minute tick once the items pass 48 hours');
+    assert.ok(O(aged).includes(BOUNDS) && text(O(aged)).includes(NOTHING));
+    ok('items older than 48 hours are not listed, and the panel says something was left out');
+
+    Date.now = () => T;
+    const many = [0, 1, 2, 3, 4, 5].map(i => sess('c' + i, 30 * 60e3, {
+      questions: [{ at: at((i + 1) * H), question: `Prose question ${i}?`, source: 'prose' }],
+      refusals: Array.from({ length: i < 5 ? 3 : 2 }, (_, k) => ({ at: at((10 + i * 3 + k) * H), kind: 'automode-blocked', tool: 'Bash', detail: 'd' })) }));
+    const c = await load(many, WTABS);
+    const ks = kinds(c);
+    assert.equal(ks.length, 20);
+    assert.deepEqual([ks.filter(k => k === 'prose').length, ks.filter(k => k === 'refused').length, ks.filter(k => k === 'needs').length], [1, 17, 2]);
+    assert.match(O(c), /Prose question 0\?/, 'the newest inferred item is the one kept');
+    assert.doesNotMatch(O(c), /Prose question [1-5]\?/);
+    assert.match(O(c), /\+5 more waiting/);
+    assert.ok(O(c).includes(BOUNDS));
+    ok('25 items render 20 and "+5 more waiting"; inferred items go first, oldest first, and assumption rows are never dropped');
+  } finally { Date.now = realNow; }
 }
 
 assert.deepEqual([...everySub].filter(k => k === 'c:tabs' || k.startsWith('d:tabs/')), [], 'a retired tabs/* subscription');
