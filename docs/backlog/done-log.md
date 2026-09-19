@@ -2,6 +2,27 @@
 
 <!-- On-demand archive of completed-PBI evidence. NEVER loaded at session start; the BOARD ## Done
      index anchors here by ID. One ## <PBI-ID> section per completed PBI. -->
+## PBI-029
+- title: No console windows from the scheduled collector
+- PR: https://github.com/jdk-official/dispatch-board/pull/35 · merge: `8bd2621` · class: standard · tier: assisted · cell-verdict: CELL-DONE
+- allowed_areas: local/tabs.py, exporters/export_board.py, local/tests/**, tests/test_export_board.py
+- evidence: Canonical run bound to a9985a7: 826/0. Re-run on 8bd2621: backend 410 OK, page 139, local 430 OK. Accounted r1-r3 GO, 0 findings (r3 under the owner's extension). Handover docs/backlog/handovers/PBI-029.md
+- outcome: resolved_method=squash (declared) / observed_method=squash, level record. Git children launch with CREATE_NO_WINDOW on Windows; proved under a real pythonw.exe parent.
+
+## PBI-012
+- title: Test and coverage trend, cost per work item and per agent type (features 5 and 7, FR-114–FR-116, FR-119, FR-120)
+- PR: https://github.com/jdk-official/dispatch-board/pull/34 · merge: `312e2f5` · class: standard · tier: assisted · cell-verdict: CELL-DONE
+- allowed_areas: exporters/**, tests/test_*.py, site/**, tests/page.test.mjs
+- evidence: Canonical run bound to 51acfa5: 823/0. Re-run on 8bd2621: backend 410 OK, page 139 passed. Accounted code-review-r1 GO, 1 Low (CR-012-1, follow-up chore). Handover docs/backlog/handovers/PBI-012.md
+- outcome: resolved_method=squash (declared) / observed_method=squash, level record. Runs carry stated tests and coverage; Dispatch charts both; usage shows cost per work item and per agent type.
+
+## PBI-028
+- title: Local record shapes name the session's waiting list and check a run's files are strings
+- PR: https://github.com/jdk-official/dispatch-board/pull/31 · merge: `f7b21f9` · class: standard · tier: assisted · cell-verdict: CELL-DONE
+- allowed_areas: local/records*, local/records.shapes.json, local/tests/**
+- evidence: Canonical run via round_close bound to 7debcf0: backend 396, local 426, page exit 0 (131). Accounted code-review-r1 GO, 0 findings; reviewer validated the owner's real board.db and 7 real waiting objects. Handover docs/backlog/handovers/PBI-028.md
+- outcome: resolved_method=squash (declared) / observed_method=squash, level record. Session shape names waiting; run files typed as strings; grammar gains scalar list_of and an object form. Closes PBI-009 spec row 3 and PBI-027's review follow-up.
+
 ## PBI-009
 - title: 'Waiting on you' panel: detectors for pending questions, idle-after-asking and permission refusals (feature 2, FR-106–FR-110)
 - PR: https://github.com/jdk-official/dispatch-board/pull/29 · merge: `25156c9` · class: standard · tier: assisted · cell-verdict: CELL-DONE

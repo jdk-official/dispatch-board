@@ -1,7 +1,7 @@
 ---
 id: PBI-028
 title: "Local record shapes name the session's waiting list and check a run's files are strings"
-status: In Progress
+status: Done
 change_class: standard
 depends_on: [PBI-009, PBI-027]
 allowed_areas: ["local/records*", "local/records.shapes.json", "local/tests/**"]
@@ -31,18 +31,25 @@ A banked follow-up landed by intake on 2026-09-19, combining two recorded follow
 
 ## Acceptance criteria
 
-- [ ] **W-1 The session shape names `waiting`.** `local/records.py` `SHAPES['session']` (and its mirror `local/records.shapes.json`) lists `waiting` as optional, with `questions` and `refusals` typed as lists of objects whose fields match `waiting_of()` exactly, and `more` as an optional integer. The conformance check, which drives the real exporters, still passes with a session that has a question and a refusal.
-- [ ] **W-2 A malformed `waiting` is rejected, and the test bites.** Tests show `validate('session', …)` rejecting a refusal missing a field, a question that is not an object, and a non-integer `more`, and accepting a `waiting` with empty lists. Each test fails before W-1's change.
-- [ ] **W-3 A run's `files` holds strings only.** `SHAPES['run']['optional']['files']` rejects a non-string item and accepts `[]`, pinned by a test that fails before the change.
-- [ ] **W-4 Nothing is weakened.** Every existing local test passes. Where the pinned SHAPES literal in `local/tests/test_records.py` must mirror a shape change, it gains exactly the new fields and loses nothing.
-- [ ] **Out of scope:** the exporters, the collector, the server, the schema and the page.
-- [ ] Worker close-out: the three configured suites green on the head commit; accounted code-review gate passed (`review-agents:code-reviewer` GO).
+- [x] **W-1 The session shape names `waiting`.** `local/records.py` `SHAPES['session']` (and its mirror `local/records.shapes.json`) lists `waiting` as optional, with `questions` and `refusals` typed as lists of objects whose fields match `waiting_of()` exactly, and `more` as an optional integer. The conformance check, which drives the real exporters, still passes with a session that has a question and a refusal.
+- [x] **W-2 A malformed `waiting` is rejected, and the test bites.** Tests show `validate('session', …)` rejecting a refusal missing a field, a question that is not an object, and a non-integer `more`, and accepting a `waiting` with empty lists. Each test fails before W-1's change.
+- [x] **W-3 A run's `files` holds strings only.** `SHAPES['run']['optional']['files']` rejects a non-string item and accepts `[]`, pinned by a test that fails before the change.
+- [x] **W-4 Nothing is weakened.** Every existing local test passes. Where the pinned SHAPES literal in `local/tests/test_records.py` must mirror a shape change, it gains exactly the new fields and loses nothing.
+- [x] **Out of scope:** the exporters, the collector, the server, the schema and the page.
+- [x] Worker close-out: the three configured suites green on the head commit; accounted code-review gate passed (`review-agents:code-reviewer` GO).
 
 ---
 
 ## Evidence
 
-- (written at close-out)
+**Closed out 2026-09-19.** Merged as `f7b21f9` (PR #31, squash; landing resolved squash (declared) / observed squash, level `record`).
+
+- **W-1** — `SHAPES['session']` names `waiting` as `waiting_of()` writes it; the conformance check carries a question and a refusal through the real exporters; the reviewer validated a copy of the owner's real `board.db` (7 sessions, 223 runs) and 7 real `waiting` objects with no errors.
+- **W-2** — `local/tests/test_records.py` `Waiting` rejects a refusal missing a field, a non-object question and a non-integer `more`, and accepts empty lists; with the old `records.py` 10 checks across 8 tests fail (reviewer-confirmed).
+- **W-3** — `files` is `{'list_of': 'str'}`: a non-string item is rejected and `[]` accepted.
+- **W-4** — all pre-existing local tests pass; the pinned SHAPES literal gains only `waiting` and the typed `files`; the JSON mirror is byte-identical to `--write-shapes`.
+- **Out of scope** — only `local/records*` and `local/tests/**` changed.
+- **Worker close-out** — canonical run via `round_close run` bound to `7debcf0`: backend 396, local 426, page exit 0 (131); accounted `code-review-r1` GO, 0 findings; evidence PASS at every phase.
 
 ---
 
@@ -58,6 +65,6 @@ A banked follow-up landed by intake on 2026-09-19, combining two recorded follow
 |------|------------|--------|-----------------|
 | Spec gate | false | n/a | criteria in this PBI |
 | External-review gate | false | n/a | |
-| Code-review gate | true | pending | |
-| No-self-merge gate | always | pending | |
-| BOARD-tidy gate | always | pending | |
+| Code-review gate | true | passed 2026-09-19 | Accounted `code-review-r1` GO, 0 findings |
+| No-self-merge gate | always | passed 2026-09-19 | PR #31 squash-merged `f7b21f9` under the owner's standing merge authorisation |
+| BOARD-tidy gate | always | passed 2026-09-19 | Done write, ledger deregistered |

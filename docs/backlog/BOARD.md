@@ -15,8 +15,8 @@
 
 | ID | Title | Depends on | Notes |
 |----|-------|------------|-------|
-| PBI-010 | Work-item status derived from runs, shown beside the hand-kept state during a shadow period (feature 4, FR-113) | [PBI-004] | Decomposed from the approved spec, 2026-09-11 |
 | PBI-020 | Timeline view (feature 9; FR-101 filled, FR-122–FR-124) | [PBI-003, PBI-004] | Decomposed from the approved spec, 2026-09-11 |
+| PBI-030 | Sessions link to a project automatically from the files they edit | [] | Intake 2026-09-19, owner: "want the auto-linking". Spec gate now; build after PBI-010 merges (both edit `exporters/**`). |
 
 ---
 
@@ -42,8 +42,9 @@
 | ID | Title | Branch | Worktree | Session tag | Started (UTC) |
 |----|-------|--------|----------|-------------|---------------|
 | PBI-007 | Log-on start through Task Scheduler and the on-PC deployment end to end (FR-90, FR-91, NFR-17, NFR-18, NFR-21) | `pbi/PBI-007-logon-start` | C:/Users/jdk/dispatch-board-worktrees/PBI-007 | 7e0c4f3c | 2026-09-12T16:05:00Z |
-| PBI-012 | Test and coverage trend, cost per work item and per agent type (features 5 and 7, FR-114–FR-116, FR-119, FR-120) | `pbi/PBI-012-trend-and-cost` | C:/Users/jdk/dispatch-board-worktrees/PBI-012 | 7e0c4f3c | 2026-09-19T12:04:43Z |
-| PBI-028 | Local record shapes name the session's waiting list and check a run's files are strings | `pbi/PBI-028-local-waiting-shape` | C:/Users/jdk/dispatch-board-worktrees/PBI-028 | 7e0c4f3c | 2026-09-19T12:08:07Z |
+| PBI-010 | Work-item status derived from runs, shown beside the hand-kept state during a shadow period (feature 4, FR-113) | `pbi/PBI-010-derived-status` | C:/Users/jdk/dispatch-board-worktrees/PBI-010 | 7e0c4f3c | 2026-09-19T13:49:57Z |
+<!-- PBI-010 started 2026-09-19 the moment PBI-012 closed and freed the page slot. Spec gate passed (revision 3); external review approved by the owner 2026-09-19 ("Approve the build"); ships in shadow mode, the switch to derived status stays the owner's (Q-3). First PBI whose PR the pr-steward raises. -->
+<!-- PBI-029 landed by intake and started 2026-09-19 at the owner's request, as a priority: the log-on collector's git children each opened a console window. exporters group, Medium; its areas avoid PBI-012's derive.py and export_sessions.py and PBI-028's records*. -->
 <!-- PBI-028 landed by intake 2026-09-19 from two banked follow-ups (PBI-009 spec row 3; PBI-027's review) and started at once under the owner's standing instruction to keep building: local-app Medium, so it runs beside PBI-012 (page High) and PBI-007 (local-app Low, merged, awaiting the owner's log-on demonstration) without collision. -->
 <!-- PBI-012 started 2026-09-19 the moment PBI-009 closed and freed the page slot: no spec, no external review and no open owner question, so it runs while the owner decides PBI-010's external-review gate and the CLAUDE.md grant for PBI-010 and PBI-020. merge_allowed_by_agent set true under the owner's standing merge authorisation of 2026-09-12. -->
 <!-- PBI-027 and PBI-009 started 2026-09-19 under the owner's standing instruction to keep building the backlog, the moment PBI-014's close-out freed the `page` group's High-risk slot. PBI-027 is local-app (Medium) and touches only `local/collector*`, `local/records*` and `local/tests/**`; PBI-007 (local-app, Low) is idle, waiting on it, so they do not collide. PBI-009 takes the page slot; its spec gate passed 2026-09-12 (revision 3), and it builds on the spec's recommended defaults for the owner rows 1a, 1b and 2 unless the owner says otherwise. Tier resolved `assisted` (earned lift `supervised`). -->
@@ -97,3 +98,6 @@
 | PBI-014 | Run detail (feature 8, FR-121) | https://github.com/jdk-official/dispatch-board/pull/24 | [↪](done-log.md#pbi-014) |
 | PBI-027 | Local collector publishes a run's files relative to the repository, so the local app matches the board | https://github.com/jdk-official/dispatch-board/pull/27 | [↪](done-log.md#pbi-027) |
 | PBI-009 | 'Waiting on you' panel: detectors for pending questions, idle-after-asking and permission refusals (feature 2, FR-106–FR-110) | https://github.com/jdk-official/dispatch-board/pull/29 | [↪](done-log.md#pbi-009) |
+| PBI-028 | Local record shapes name the session's waiting list and check a run's files are strings | https://github.com/jdk-official/dispatch-board/pull/31 | [↪](done-log.md#pbi-028) |
+| PBI-012 | Test and coverage trend, cost per work item and per agent type (features 5 and 7, FR-114–FR-116, FR-119, FR-120) | https://github.com/jdk-official/dispatch-board/pull/34 | [↪](done-log.md#pbi-012) |
+| PBI-029 | No console windows from the scheduled collector | https://github.com/jdk-official/dispatch-board/pull/35 | [↪](done-log.md#pbi-029) |

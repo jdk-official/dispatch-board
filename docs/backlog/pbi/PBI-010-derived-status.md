@@ -1,7 +1,7 @@
 ---
 id: PBI-010
 title: "Work-item status derived from runs, shown beside the hand-kept state during a shadow period (feature 4, FR-113)"
-status: Proposed
+status: In Progress
 change_class: standard
 depends_on: [PBI-004]
 allowed_areas: ["exporters/**", "tests/test_*.py", "site/**", "tests/page.test.mjs", "projects/**"]
