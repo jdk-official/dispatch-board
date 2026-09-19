@@ -1,0 +1,138 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "build-cell",
+    "as_of_date": "2026-09-19",
+    "pbi": "PBI-009",
+    "effective_tier": "assisted",
+    "gates": {
+      "code_review": "agent",
+      "external_review": "human",
+      "merge": "human",
+      "plan": "human",
+      "spec": "agent"
+    },
+    "overrides": [],
+    "sensitivity": "sensitive",
+    "verdict": "CELL-DONE",
+    "summary": "The 'Waiting on you' panel: a structured question, a prose question left idle, permission refusals and the plan-gate approval, listed per session in the --human colour."
+  },
+  "events": [
+    {
+      "kind": "tier-resolved",
+      "detail": "standard, ceiling assisted -> assisted; ratified earned lift supervised"
+    },
+    {
+      "kind": "owner-answers",
+      "detail": "Spec \u00a79 rows 1a, 1b and 2 answered by the owner 2026-09-19: list both refusal kinds; ship D2 enabled."
+    }
+  ],
+  "rounds": [
+    {
+      "n": 1,
+      "code_writer_verdict": "DONE",
+      "test_writer_verdict": "DONE",
+      "change_report_ref": "docs/backlog/reviews/PBI-009/change-r1.json",
+      "suite_report_ref": "docs/backlog/reviews/PBI-009/suite-r1.json",
+      "reviewer_verdict": "GO-WITH-CONDITIONS",
+      "findings_ref": "docs/backlog/reviews/PBI-009/findings-r1.json"
+    },
+    {
+      "n": 2,
+      "code_writer_verdict": "DONE",
+      "test_writer_verdict": "DONE",
+      "change_report_ref": "docs/backlog/reviews/PBI-009/change-r2.json",
+      "suite_report_ref": "docs/backlog/reviews/PBI-009/suite-r2.json",
+      "reviewer_verdict": "GO",
+      "findings_ref": "docs/backlog/reviews/PBI-009/findings-r2.json"
+    }
+  ],
+  "review_gates": [
+    {
+      "gate_id": "code-review",
+      "allowance": {
+        "configured": 2,
+        "source": "autonomy.code_review_max_rounds"
+      },
+      "dispatches": [
+        {
+          "dispatch_id": "code-review-r1",
+          "sequence": 1,
+          "kind": "substantive",
+          "reviewer": "review-agents:code-reviewer (opus, fresh context)",
+          "outcome": "completed",
+          "candidate": {
+            "head_sha": "8a59caaca55f5b79f02acc4e82ec88824777363e",
+            "content_digest": "sha256:f33234df925aebad3162a8d0b8da17bc201c801c40b427a56db8b3f8c7041016",
+            "declared_inputs_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "reviewed_inputs": {
+            "round": 1,
+            "change_report_ref": "docs/backlog/reviews/PBI-009/change-r1.json",
+            "change_report_digest": "sha256:7baf43476cd65ec452b5867bf43385a8518e63405604ab0236b560d6795a0c83",
+            "suite_report_ref": "docs/backlog/reviews/PBI-009/suite-r1.json",
+            "suite_report_digest": "sha256:4a8f90cf85d3ce2eab2a61840332c833874676e9b8995afdebd1b7e1cb178f95",
+            "prior_findings": [],
+            "assumption_attestation_digest": "sha256:d749d05571cb373dfa84fd50f9024e6374bcbcfc1a486409197b0895b61aa9e7"
+          },
+          "reviewed_inputs_digest": "sha256:6782617daa0fa42ecd83ad530c172d20baf22c1663a7a69e6aa3b4fb218fa845",
+          "findings_ref": "docs/backlog/reviews/PBI-009/findings-r1.json",
+          "findings_digest": "sha256:552719a0339e1ad857562d58b1a8d5e96b527cfb61523a33f92a3c0797ce1b26",
+          "verdict": "GO-WITH-CONDITIONS",
+          "finding_ids": [
+            "CR-009-1"
+          ]
+        },
+        {
+          "dispatch_id": "code-review-r2",
+          "sequence": 2,
+          "kind": "substantive",
+          "reviewer": "review-agents:code-reviewer (opus, fresh context)",
+          "outcome": "completed",
+          "candidate": {
+            "head_sha": "0ba49a2971b5a0ffb9af86199001baa87dc2cb0e",
+            "content_digest": "sha256:3303a4906048ac8a950d2330d0c50d882758a42e279e0448437a932f4db57759",
+            "declared_inputs_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+          },
+          "reviewed_inputs": {
+            "round": 2,
+            "change_report_ref": "docs/backlog/reviews/PBI-009/change-r2.json",
+            "change_report_digest": "sha256:dc0c76af2b908f62468f3289821aa43b6850ca4cc84c7a8e541fa06b882a97bb",
+            "suite_report_ref": "docs/backlog/reviews/PBI-009/suite-r2.json",
+            "suite_report_digest": "sha256:37fe9548ac956a35410e99347d50124a034da54caf5bd8a6450b97f0d31f2c2c",
+            "prior_findings": [
+              {
+                "ref": "docs/backlog/reviews/PBI-009/findings-r1.json",
+                "digest": "sha256:552719a0339e1ad857562d58b1a8d5e96b527cfb61523a33f92a3c0797ce1b26"
+              }
+            ],
+            "assumption_attestation_digest": "sha256:d749d05571cb373dfa84fd50f9024e6374bcbcfc1a486409197b0895b61aa9e7"
+          },
+          "reviewed_inputs_digest": "sha256:87b4914e9ef47929c10dac83547138d0b113558df1fb2c5c8e9a357bb46e9171",
+          "findings_ref": "docs/backlog/reviews/PBI-009/findings-r2.json",
+          "findings_digest": "sha256:cda9109de8dabe10775d14ff4216249da6c521bf2e9e123270394e7496897d95",
+          "verdict": "GO",
+          "finding_ids": []
+        }
+      ],
+      "extensions": [],
+      "used": 2,
+      "remaining": 0,
+      "finding_dispositions": [
+        {
+          "finding_id": "CR-009-1",
+          "status": "applied",
+          "first_dispatch_id": "code-review-r1",
+          "latest_dispatch_id": "code-review-r1",
+          "dispatch_snapshot_digest": "sha256:018e8c7787dfb91a561395d27d09428668d12687f4bc3819dd59e0fcd2036cac",
+          "rationale": "is_owner_message() now rejects compaction summaries (isCompactSummary) and the fixed tool-use interrupt marker; four regression tests, seen red first",
+          "evidence_ref": "docs/backlog/reviews/PBI-009/change-r2.json",
+          "evidence_digest": "sha256:dc0c76af2b908f62468f3289821aa43b6850ca4cc84c7a8e541fa06b882a97bb"
+        }
+      ],
+      "code_disposition": "accepted",
+      "reopen_events": [],
+      "exhaustions": []
+    }
+  ]
+}

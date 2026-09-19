@@ -1,0 +1,30 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "build-cell",
+    "as_of_date": "2026-09-19",
+    "pbi": "PBI-027",
+    "effective_tier": "assisted",
+    "gates": {
+      "code_review": "agent",
+      "external_review": "human",
+      "merge": "human",
+      "plan": "human",
+      "spec": "agent"
+    },
+    "overrides": [],
+    "sensitivity": "sensitive",
+    "verdict": "CELL-PAUSED",
+    "summary": "The local collector passes each run's project repoPath to derive.run_doc, so a run's files in the local database equal the board's."
+  },
+  "events": [
+    {
+      "kind": "tier-resolved",
+      "detail": "standard, ceiling assisted -> assisted; ratified earned lift supervised"
+    },
+    {
+      "kind": "pre-accounting-review",
+      "detail": "A fresh-context code-reviewer (opus) reviewed the uncommitted round-1 tree on 2026-09-19 before bounded review accounting reached this machine (agent-catalog 184c4ee, fetched 2026-09-19 10:57), verdict GO with 0 findings. Its inputs were not captured, and no suite report existed, so it is logged here rather than as a dispatch. Findings file: docs/backlog/reviews/PBI-027/findings-pre-accounting.json sha256:8556dd7d0303ba5e032b55069696d45e31d24186d97e0ef94ad00791ba7c8f73. The owner chose, 2026-09-19, to re-review live with full accounting (\"Re-review it live (Recommended)\")."
+    }
+  ]
+}

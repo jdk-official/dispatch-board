@@ -2,6 +2,21 @@
 
 <!-- On-demand archive of completed-PBI evidence. NEVER loaded at session start; the BOARD ## Done
      index anchors here by ID. One ## <PBI-ID> section per completed PBI. -->
+## PBI-009
+- title: 'Waiting on you' panel: detectors for pending questions, idle-after-asking and permission refusals (feature 2, FR-106–FR-110)
+- PR: https://github.com/jdk-official/dispatch-board/pull/29 · merge: `25156c9` · class: standard · tier: assisted · cell-verdict: CELL-DONE
+- allowed_areas: exporters/**, tests/test_*.py, site/**, tests/page.test.mjs
+- spec: docs/backlog/specs/pbi-009-waiting-on-you.md revision 3
+- evidence: Canonical run via round_close bound to 0ba49a2: backend 396, local 413, page exit 0 (131). Accounted review, allowance 2 used: r1 GO-WITH-CONDITIONS (CR-009-1 applied), r2 GO. W-14 approved by the owner on docs/backlog/evidence/PBI-009/. Handover docs/backlog/handovers/PBI-009.md
+- outcome: resolved_method=squash (declared) / observed_method=squash, level record. Waiting-on-you panel: D1 structured question, D2 idle prose question (on), D3 refusals from toolDenialKind (all three kinds), D4 plan gate; 48-hour bound, cap 5 with overflow. CR-009-1 caught Claude Code's own compaction summaries and interrupt marker counting as the owner, which erased user-rejected refusals; fixed and checked on 24 real transcripts. PARSER_VERSION 7 to 8.
+
+## PBI-027
+- title: Local collector publishes a run's files relative to the repository, so the local app matches the board
+- PR: https://github.com/jdk-official/dispatch-board/pull/27 · merge: `941ac4b` · class: standard · tier: assisted · cell-verdict: CELL-DONE
+- allowed_areas: local/collector*, local/tests/**, local/records*, local/records.shapes.json
+- evidence: Canonical run via round_close bound to 5ad02c8: backend 360, local 306, page exit 0 (121). Accounted dispatch code-review-r1 GO, 0 findings; evidence validation PASS at pre-review, gate-complete, pre-push (docs/backlog/reviews/PBI-027/). Handover docs/backlog/handovers/PBI-027.md
+- outcome: resolved_method=squash (declared) / observed_method=squash, level record. The collector passes each run's repoPath, so local files equal the board's; the run shape names files and findings. First PBI under bounded review accounting: an earlier pre-accounting review is logged as an event, and the owner chose a live re-review. Unblocks PBI-007.
+
 ## PBI-014
 - title: Run detail (feature 8, FR-121)
 - PR: https://github.com/jdk-official/dispatch-board/pull/24 · merge: `4bbbad8` · class: standard · tier: assisted · cell-verdict: CELL-DONE

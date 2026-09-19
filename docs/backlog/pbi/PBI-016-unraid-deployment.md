@@ -55,6 +55,8 @@ allowed `local/server*`, `local/collector*` (the upload half of FR-89), `local/d
 
 ## Notes
 
+**Carried from PBI-007, 2026-09-19:** PBI-007's AC-72 (a run the PC collector records shows on the page served from the Unraid server within 10 minutes; FR-89, NFR-18) was deferred here by the owner, verbatim: "defer AC-72". It is this item's to demonstrate once the Unraid deployment exists.
+
 Build per owner decision D-9: `engineering-agents:code-writer` under TDD, then `review-agents:code-reviewer` until GO. `requires_external_review: true`: the owner must explicitly approve ("approve" / "proceed" / "go ahead") before implementation begins.
 
 ---

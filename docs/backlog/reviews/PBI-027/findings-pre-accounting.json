@@ -1,0 +1,23 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-19",
+    "mode": "changeset",
+    "scope": "PBI-027 round 1: uncommitted working-tree diff in C:/Users/jdk/dispatch-board-worktrees/PBI-027 against base 47f8c13 (5 files: local/collector.py, local/records.py, local/records.shapes.json, local/tests/test_collector_equivalence.py, local/tests/test_records.py). Intent rung 2 (work-item AC L-1..L-4 + out-of-scope line, docs/backlog/pbi/PBI-027.md). Change class: standard. Grounding path: repo test suites run read-only (PYTHONDONTWRITEBYTECODE=1) + a scratch-copy mutation run + a scratch probe; no Touchstone SARIF, security is reasoning-only. AC alignment: L-1 met (collector builds repo_of from the same st['projects'] as export_sessions.py:280, both via export_sessions.settings -> board_config.projects, which normalises a missing repoPath to ''; unlinked session -> pid None -> repo None; project without repoPath -> '' -> falsy root; identical on both sides). L-2 met (test runs the real exporter es.main on the same cfg/root/now, pins the exporter value ['site/index.html', '\u2026/settings.json'] so it cannot pass vacuously, has one edit inside and one outside the repo; re-verified red on a scratch copy with collector.py reverted to 47f8c13: ['\u2026/index.html', '\u2026/settings.json'] != ['site/index.html', '\u2026/settings.json']). L-3 met (run.optional gains files:list and findings list_of the exact five string keys derive.findings_of emits; validator allows extra keys and empty lists; probe: real FindingsFixture run arev validates [], findings:[] -> [], extra key -> [], non-string files -> []; shapes.json equals SHAPES per the suite guard; no other kind changed). L-4 met in substance: the test_records.py SHAPES pin edit is the required mirror of the L-3 shape change (identical keys and types, additive, no assertion removed, no type loosened, no enum widened), not a weakening; 304 pre-existing local tests pass plus 1 added. Out-of-scope line met (only allowed areas touched; no blocked area). Verification: tier 3 (no AGENTS.md gate table; records.shapes.json is pinned by an in-suite equality test that passed). Reviewer's own runs: tests 360 OK; node tests/page.test.mjs 121/121; local/tests 305 OK.",
+    "summary": "0 CRITICAL / 0 HIGH / 0 MEDIUM / 0 LOW. Dimensions: correctness, security (reasoning-only), maintainability, test-adequacy. Change class standard. All four AC and the out-of-scope line met; builder's claims (suite counts, red-before-fix) reproduced. Flag-only: nothing in the worktree changed, committed or deployed.",
+    "sensitivity": "sensitive",
+    "verdict": "GO"
+  },
+  "findings": [],
+  "not_audited": [
+    {"ref": "security SAST", "reason": "Touchstone SARIF not provided and no SAST configured; security dimension is reasoning-only (change adds no new input boundary: repoPath comes from the owner's board.config.json via board_config.projects)."},
+    {"ref": "platform matrix", "reason": "Suites run on Windows with Python 3.14.5 only; other Python versions / OSes not exercised."}
+  ],
+  "follow_ups": [
+    {"ref": "CLAUDE.md runs/<id> row", "note": "Remove the 'Known gap until PBI-027' sentence once this merges; outside PBI-027's allowed areas, so a docs follow-up, not a finding."},
+    {"ref": "docs/backlog/specs/pbi-003-records-schema.md:82", "note": "The run row of the record-shapes spec table still lists optional fields only up to 'end'; test_records.py's pin says it is written from that table. Add 'files' list and 'findings' list of {id, severity, title, location, remediation} strings so spec, SHAPES and pin agree (docs area, outside this PBI)."},
+    {"ref": "local/tests/test_collector_equivalence.py:161", "note": "Optional wording: the class docstring's 'the one field this PBI fixes' references the work item; restate as the behaviour ('the run files field, which depends on the project repoPath') per Code Commenting. Not blocking."},
+    {"ref": "local/tests/test_records.py", "note": "Optional: a direct validate() case showing a run whose finding lacks a required string key (e.g. remediation) is rejected; current coverage rests on the literal pin and the generic list_of tests."}
+  ]
+}

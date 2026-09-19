@@ -1,7 +1,7 @@
 ---
 id: PBI-012
 title: "Test and coverage trend, cost per work item and per agent type (features 5 and 7, FR-114–FR-116, FR-119, FR-120)"
-status: Proposed
+status: In Progress
 change_class: standard
 depends_on: [PBI-004]
 allowed_areas: ["exporters/**", "tests/test_*.py", "site/**", "tests/page.test.mjs"]
@@ -11,7 +11,7 @@ conflict_risk: High
 requires_spec: false
 requires_external_review: false
 pr_required: true
-merge_allowed_by_agent: false
+merge_allowed_by_agent: true
 ---
 
 # PBI-012 — Test and coverage trend, cost per work item and per agent type (features 5 and 7, FR-114–FR-116, FR-119, FR-120)

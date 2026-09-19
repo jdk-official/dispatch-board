@@ -1,0 +1,56 @@
+{
+  "schema_version": "1",
+  "evidence_binding": {"pbi": "PBI-009", "round": 2},
+  "report": {
+    "agent": "test-writer",
+    "as_of_date": "2026-09-19",
+    "mode": "change",
+    "scope_class": "standard",
+    "scope": "CR-009-1 correction in exporters/derive.py (commit e222c77, worktree C:/Users/jdk/dispatch-board-worktrees/PBI-009): is_owner_message() rejects isCompactSummary:true and the fixed interruption-marker text; assessed the four required behaviours (both exclusions still list, a genuinely typed reply after either clears, an Esc interruption with no refusal creates no item, an ordinary owner message is not wrongly excluded) plus the malformed-input-adjacent case of a message that merely quotes the marker text; grounding: ran-suite.",
+    "verdict": "DONE",
+    "summary": "1 test file edited (tests/test_derive.py): 2 assertions added to the existing test_is_owner_message (no new test method, since three of the four required behaviours were already covered by code-writer's round-2 tests). Suites: tests/ 396 passed / 0 failed, node tests/page.test.mjs 131/131 checks passed, local/tests 413 passed / 0 failed. Nothing committed, staged or pushed; only the test file was touched.",
+    "sensitivity": "sensitive"
+  },
+  "tests_authored": [
+    {
+      "path": "tests/test_derive.py::Waiting::test_is_owner_message",
+      "kind": "modified",
+      "layer": "unit",
+      "cases": 1,
+      "covers": "a typed owner message that merely quotes the fixed interruption-marker text inside longer prose is not wrongly excluded (the predicate uses exact-match equality on the stripped text, not substring containment)",
+      "status": "pass"
+    }
+  ],
+  "coverage": [
+    {
+      "target": "a user-rejected denial still lists past the interruption marker that follows it",
+      "covered": "yes",
+      "how": "existing test Waiting::test_a_user_rejected_denial_still_lists_past_the_interruption_marker_that_follows_it (code-writer, round 2)"
+    },
+    {
+      "target": "an automode-blocked denial still lists past a compaction summary",
+      "covered": "yes",
+      "how": "existing test Waiting::test_an_automode_blocked_denial_still_lists_past_a_compaction_summary (code-writer, round 2)"
+    },
+    {
+      "target": "a genuinely typed owner reply after either exclusion still clears the refusal",
+      "covered": "yes",
+      "how": "existing test Waiting::test_a_typed_reply_after_the_interruption_marker_or_a_compaction_summary_still_clears (code-writer, round 2)"
+    },
+    {
+      "target": "an Esc interruption with no refusal creates no waiting item",
+      "covered": "yes",
+      "how": "existing test Waiting::test_an_esc_interruption_with_no_refusal_creates_no_item (code-writer, round 2), which uses the distinct '[Request interrupted by user]' text that carries no 'for tool use' suffix and so is not the INTERRUPTION_MARKER at all"
+    },
+    {
+      "target": "an ordinary owner message is not wrongly excluded (typed reply, isCompactSummary absent or false)",
+      "covered": "yes",
+      "how": "existing test_is_owner_message assertion on plain typed content, and every other Waiting fixture's typed 'fine, skip it' replies (all pass with isCompactSummary absent, which the is True check treats identically to an explicit false)"
+    },
+    {
+      "target": "an ordinary owner message that merely contains the marker text as part of longer typed text is not wrongly excluded",
+      "covered": "yes",
+      "how": "new assertion in test_is_owner_message: own(user(0, \"I saw '[Request interrupted by user for tool use]' but go ahead and retry\")) is True, pinning the exact-match (not substring) exclusion"
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "schema_version": "1",
+  "evidence_binding": {"pbi": "PBI-027", "round": 1},
+  "report": {
+    "agent": "test-writer",
+    "as_of_date": "2026-09-19",
+    "mode": "change",
+    "scope_class": "standard",
+    "scope": "PBI-027 (worktree C:/Users/jdk/dispatch-board-worktrees/PBI-027, branch pbi/PBI-027-collector-repo, HEAD 7214011 on main 47f8c13): assess coverage of the collector's repoPath-passing fix (L-1), the new equivalence test (L-2), and the widened run shape's optional files/findings fields (L-3, L-4); grounding: ran-suite.",
+    "verdict": "DONE",
+    "summary": "L-1, L-2 and L-4 already have adequate existing coverage from the builder's change (test_collector_equivalence.py's FilesRelativeToTheRepository, and the unchanged 304 pre-existing local tests). One genuine gap found and filled for L-3: no test drove validate() against an actual run document to prove a findings entry missing a required key is rejected -- coverage rested only on the hand-typed SHAPES literal pin and the generic list_of mechanism exercised via the unrelated catalogue kind. Added one case to local/tests/test_records.py (Nested class). local/tests: 306 passed / 0 failed (baseline 305 + 1 new). Nothing staged, committed or pushed; only local/tests/test_records.py edited.",
+    "sensitivity": "sensitive"
+  },
+  "tests_authored": [
+    {
+      "path": "local/tests/test_records.py::Nested::test_a_run_finding_missing_a_required_field_is_rejected",
+      "kind": "added",
+      "layer": "unit",
+      "cases": 1,
+      "covers": "validate('run', doc) rejects a findings list entry missing a required string key (remediation), reporting the error at the correct indexed path (findings[1].remediation)",
+      "status": "pass"
+    },
+    {
+      "path": "local/collector.py assemble() + local/tests/test_collector_equivalence.py::FilesRelativeToTheRepository::test_run_files_match_the_exporter_for_edits_inside_and_outside_the_repo",
+      "kind": "existing",
+      "layer": "integration",
+      "cases": "1 test, drives the real exporter and collector against one fixture with an edit inside and one outside the repository",
+      "covers": "L-1/L-2: the collector's run document 'files' equals the exporter's for the same run, for edits both inside and outside the project's repository",
+      "status": "pass"
+    },
+    {
+      "path": "local/tests/test_records.py::Shapes::test_shapes_is_the_spec_table",
+      "kind": "existing",
+      "layer": "unit",
+      "cases": "1 test, hand-typed literal pin of the full SHAPES table",
+      "covers": "L-3/L-4: run.optional names 'files': 'list' and 'findings' as a list_of the five id/severity/title/location/remediation string keys, additively (no field removed or narrowed)",
+      "status": "pass"
+    },
+    {
+      "path": "local/tests/test_records.py::ShippedCopy::test_the_committed_json_copy_equals_shapes",
+      "kind": "existing",
+      "layer": "unit",
+      "cases": 1,
+      "covers": "L-3: records.shapes.json stays byte-identical to SHAPES after the widening",
+      "status": "pass"
+    }
+  ],
+  "coverage": [
+    {
+      "target": "L-1: collector passes the run's project repoPath to derive.run_doc",
+      "covered": "yes",
+      "how": "FilesRelativeToTheRepository's existing test asserts the collector's stored files equal the exporter's for a fixture with edits inside and outside the repo",
+      "notes": "existing coverage from the builder's change; no gap"
+    },
+    {
+      "target": "L-2: the equivalence test bites (fails before the L-1 fix)",
+      "covered": "yes",
+      "how": "same test; the code review reproduced it red on a scratch copy with collector.py reverted",
+      "notes": "existing coverage, reviewer-verified"
+    },
+    {
+      "target": "L-3: SHAPES/records.shapes.json name the optional files and findings run fields; conformance still passes",
+      "covered": "yes",
+      "how": "test_shapes_is_the_spec_table (exact literal pin), test_the_committed_json_copy_equals_shapes (JSON mirror), plus the new test_a_run_finding_missing_a_required_field_is_rejected which exercises validate() directly against a run document rather than only the literal pin",
+      "notes": "the added case is the only genuine gap: the pin proves the shape's structure but never ran validate() over an actual findings list, and the only other list_of exercise was on the unrelated catalogue kind"
+    },
+    {
+      "target": "L-4: no existing local test weakened; only additive changes",
+      "covered": "yes",
+      "how": "local/tests: 306 passed / 0 failed (305 baseline + 1 new); the pre-existing 305 are unchanged and still pass",
+      "notes": null
+    }
+  ],
+  "not_done": [],
+  "follow_ups": []
+}

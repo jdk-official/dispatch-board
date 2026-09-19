@@ -1,0 +1,46 @@
+{
+  "schema_version": "1",
+  "evidence_binding": {"pbi": "PBI-009", "round": 2},
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-19",
+    "mode": "finding",
+    "change_class": "standard",
+    "scope": "Fix CR-009-1 (MEDIUM, docs/backlog/reviews/PBI-009/findings-r1.json) in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-009, branch pbi/PBI-009-waiting-on-you, HEAD 8a59caa. Intent: is_owner_message() (exporters/derive.py:466) must not treat two Claude-Code-synthetic user records as the owner being present: a compaction summary (isCompactSummary true) and the fixed interruption-marker text Claude Code writes right after the owner rejects a tool-use prompt. Acceptance criteria (from the finding's remediation): (1) is_owner_message() rejects isCompactSummary:true records; (2) it rejects the fixed marker text '[Request interrupted by user for tool use]' as a narrow predicate exclusion, not a read of the refusal signal; (3) the docstring states why, without naming the finding/PBI; (4) regression tests cover a user-rejected denial surviving the marker, an automode-blocked denial surviving a compaction summary, a typed reply after either still clearing, and an Esc interruption with no refusal creating no item; (5) the builder's known-limit note that compaction clears items is removed wherever code or tests state it; (6) PARSER_VERSION stays at 8. Grounding path: ran-suite (all three canonical suites run from the worktree root); real transcript shapes for both synthetic record kinds were confirmed read-only under C:/Users/jdk/.claude/projects (no transcript content copied into fixtures beyond the fixed marker text and a paraphrased compaction-summary opening line).",
+    "verdict": "DONE",
+    "summary": "2 files modified (exporters/derive.py, tests/test_derive.py), 4 tests added plus 2 assertions added to an existing test. Suites: tests/ 396 passed / 0 failed (392 baseline + 4 new), node tests/page.test.mjs 131/131 checks passed, local/tests 304 passed / 0 failed. Nothing committed, staged or pushed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "exporters/derive.py",
+      "change_kind": "modify",
+      "why": "is_owner_message() now rejects isCompactSummary:true records and the fixed Claude-Code interruption-marker text, so a user-rejected or automode-blocked refusal is no longer cleared by Claude Code's own synthetic records; docstring states why each is excluded.",
+      "acceptance_refs": ["is_owner_message rejects compaction summaries", "is_owner_message rejects the interruption marker", "docstring states why"]
+    },
+    {
+      "path": "tests/test_derive.py",
+      "change_kind": "modify",
+      "why": "Regression tests for the four required scenarios, plus two direct predicate assertions on the existing test_is_owner_message.",
+      "acceptance_refs": ["regression tests for both exclusions and the Esc no-op case"]
+    }
+  ],
+  "tests": [
+    {"path": "tests/test_derive.py::Waiting::test_a_user_rejected_denial_still_lists_past_the_interruption_marker_that_follows_it", "kind": "added", "status": "pass", "covers": "a user-rejected denial followed by the interruption marker still lists"},
+    {"path": "tests/test_derive.py::Waiting::test_an_automode_blocked_denial_still_lists_past_a_compaction_summary", "kind": "added", "status": "pass", "covers": "an automode-blocked denial followed by a compaction summary still lists"},
+    {"path": "tests/test_derive.py::Waiting::test_a_typed_reply_after_the_interruption_marker_or_a_compaction_summary_still_clears", "kind": "added", "status": "pass", "covers": "a typed owner reply after either synthetic record still clears the refusal"},
+    {"path": "tests/test_derive.py::Waiting::test_an_esc_interruption_with_no_refusal_creates_no_item", "kind": "added", "status": "pass", "covers": "an Esc interruption with no refusal creates no waiting item"},
+    {"path": "tests/test_derive.py::Waiting::test_is_owner_message", "kind": "modified", "status": "pass", "covers": "direct predicate assertions: a compaction summary and the interruption marker are both not the owner"}
+  ],
+  "acceptance": [
+    {"criterion": "is_owner_message() rejects compaction summaries by the isCompactSummary structural flag", "met": "yes", "evidence": "exporters/derive.py: `o.get('isCompactSummary') is True` short-circuits to False; test_an_automode_blocked_denial_still_lists_past_a_compaction_summary and the added test_is_owner_message assertion pass"},
+    {"criterion": "is_owner_message() rejects the fixed interruption-marker text as a narrow predicate exclusion", "met": "yes", "evidence": "INTERRUPTION_MARKER constant excluded inside the shared typed() closure; test_a_user_rejected_denial_still_lists_past_the_interruption_marker_that_follows_it and the added test_is_owner_message assertion pass"},
+    {"criterion": "docstring explains why each is excluded, without naming findings/PBIs/spec sections", "met": "yes", "evidence": "exporters/derive.py is_owner_message() docstring addition names only the mechanism (a compaction summary carried across context, and Claude Code's own interruption marker)"},
+    {"criterion": "a typed owner reply after either synthetic record still clears the refusal", "met": "yes", "evidence": "test_a_typed_reply_after_the_interruption_marker_or_a_compaction_summary_still_clears passes"},
+    {"criterion": "an Esc interruption with no refusal creates no item", "met": "yes", "evidence": "test_an_esc_interruption_with_no_refusal_creates_no_item passes"},
+    {"criterion": "the builder's known-limit note that compaction clears items is removed wherever code or tests state it", "met": "yes", "evidence": "grep for 'compaction' across exporters/** and tests/test_*.py before this change found no such note in code or tests (it existed only in the round-1 review artifact docs/backlog/reviews/PBI-009/change-r1.json, which is out of the exporters/**+tests/test_*.py scope and is historical review evidence, not touched)"},
+    {"criterion": "PARSER_VERSION is not bumped again", "met": "yes", "evidence": "exporters/export_sessions.py:60 still reads PARSER_VERSION = 8"}
+  ],
+  "not_done": [],
+  "follow_ups": []
+}

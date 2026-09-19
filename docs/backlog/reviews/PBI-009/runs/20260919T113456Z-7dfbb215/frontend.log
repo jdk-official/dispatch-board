@@ -1,0 +1,132 @@
+ok  before load: Connecting, project tabs hidden, saved tab kept
+ok  projects alone do not count as loaded; nothing chosen, saved tab untouched
+ok  each project status document is watched once
+ok  picker lists projects in order, then Other sessions; default is the project with a live session
+ok  session filter: All sessions (default) plus the project's sessions
+ok  project view shows every project tab; the saved Spec tab survives the load
+ok  dispatch-board without spec/backlog shows the existing empty states
+ok  dispatch-board: only its runs, Building while its run runs, branch crumb, git tab, project-wide usage
+ok  switch project: filter rebuilt, runs/status/tabs/usage follow; empty board note shows no callout
+ok  session filter narrows Dispatch and usage to one session; project tabs stay
+ok  Other sessions: project tabs hidden, Spec falls back to Overview, unlinked (and unknown-project) sessions listed, titles escaped, session-scoped view
+ok  focused picker is not rebuilt by a snapshot; blur rebuilds it
+ok  a vanished session is replaced by the next unlinked one
+ok  with no unlinked sessions left, Other sessions disappears and the view falls back to a project
+ok  saved project and saved session filter are restored (sessions snapshot first)
+ok  no saved view and no live project: the first project
+ok  store without projects yet (before the first push): every session under Other sessions
+ok  first project push: an Other sessions view the page chose by itself moves to the default project
+ok  first project push: a saved Other sessions view is kept
+ok  first project push: Other sessions picked in the picker is kept
+ok  catalogue: the Agent catalogue tab sits straight after Dispatch, before Claude usage
+ok  catalogue: until catalogue/index has answered, the tab says it is connecting, not that nothing was exported
+ok  catalogue: before catalogue/index exists, the tab shows the empty state
+ok  catalogue, project view: tiles give the view figure, the all-sessions figure beside it, and K installed
+ok  catalogue: the coverage caption is shown
+ok  catalogue: one group per plugin in order, purpose with purposeFull expandable, not-installed tag, descriptions expandable
+ok  catalogue: uses and last use (latest run start) in the view; projects and uses over all sessions
+ok  catalogue: never used in the view; projects include Other sessions for unlinked sessions
+ok  catalogue: a bare Skill id counts toward the one skill of that name, and an ambiguous one toward neither
+ok  catalogue: rows sort by uses in the view, then name
+ok  catalogue: ids outside the catalogue get their own final panel with the same columns
+ok  catalogue: descriptions are escaped and never rendered as markdown
+ok  catalogue: the session filter narrows both runs and sessions
+ok  catalogue, Other sessions: the tab stays, and follows the chosen session
+ok  catalogue: a session with no uses (and no skillUses field) reads 0, and every entry never used
+ok  catalogue: a deleted catalogue/index returns to the empty state
+ok  catalogue: an absent catalogue/index still reads Connecting while sessions and projects load
+ok  catalogue: "not exported yet" only once the store has loaded without catalogue/index
+ok  catalogue, offline: the tab says the store is out of reach
+ok  catalogue: a catalogue skill named "constructor" takes the bare "constructor" uses
+ok  catalogue: uses named after Object.prototype members with no matching entry go under Outside the catalogue
+ok  catalogue: the tabs drawn after it still render
+ok  a tab that throws shows its own empty state and is logged; the other tabs still render
+ok  project Overview: the summary tiles and backlog cells come from the project's backlog and runs
+ok  backlog: later items render as a separate Later group of idea cards below the work items
+ok  backlog: Later titles and descriptions are escaped
+ok  backlog: idea cards are neutral
+ok  backlog: later items are left out of the PBI totals, the Overview tile, the backlog cells and Needs attention
+ok  backlog: no Later group without later items (a spec without the heading, or an older export)
+ok  pulls: the GitHub tab lists each PR with a linked number and title, a state tag, the branch and the updated time
+ok  pulls: titles and branches are escaped and never rendered as markdown
+ok  pulls: only https://github.com/ URLs are links; anything else is escaped text
+ok  pulls: each open PR is "PR #n awaiting your merge" in Needs attention, in the human tone, linked and escaped
+ok  pulls: without pulls, the panel says pull requests are not available and Needs attention has no PR items
+ok  pulls: no open PR means no awaiting-merge item; an empty list says there are none yet
+ok  pulls: lookalike hosts, plain http and userinfo tricks are text, not links, in the panel and in Needs attention
+ok  pulls: an unknown state, even one named like an inherited object member, is a muted tag with the escaped raw state
+ok  forecast, project view: skewed gaps give the mean, added to the latest reset, labelled an estimate, on the usage tab and the Overview
+ok  forecast: the usage tab says how the estimate is derived and that it is not a meter; the tile never uses --human
+ok  forecast, session filter: one hit gives the hand-computed time from that session's own usage, marked as passed
+ok  forecast, project view with no limit hit: "no forecast: no limit hit recorded" on the usage tab and the Overview
+ok  forecast, Other sessions: each session's own limit hits, or none
+ok  forecast: idle hours after a reset do not count; each hit is timed from the later of its reset and the first hour with usage
+ok  forecast: a hit with nothing before it adds no gap, and the tile and note say "from 2 of the 3 recorded limit hits"
+ok  forecast: when the latest hit has no reset time, the estimate is a time after that reset, never the mean added to the hit
+ok  forecast: with no usage exported, the Overview says "no forecast: usage not exported yet", not that no hit was recorded
+ok  forecast: on an idle board the minute timer marks the forecast as passed once its time has gone by
+ok  forecast: malformed usage.limits shows no forecast with the right reason, draws every tab and logs no console.error
+ok  forecast: a render reads the clock once, for the tiles and for the passed check the minute timer compares against
+ok  forecast: a forecast that throws costs only the tabs that draw it; renderAll and the minute timer carry on
+ok  usage chart: a non-list usage.hourly, or entries that are not hours, draw no error and log nothing
+ok  usage chart: hours whose main or sub is missing or not a number count as no usage, with no NaN in the chart
+ok  running window: when a session's running window elapses with no store change, "Running now" says "session idle" on the tick the header says Idle
+ok  running window: a render that straddles the end of the window reads the clock once, so the next tick turns the header Idle and "Running now" to "session idle"
+ok  running window, project with a session filter: Dispatch's "Running now" turns from live to paused on the tick after the window ends, even when a render straddles it
+ok  carried tab: each shown project tab carrying carriedSince warns in the warning callout, stating the time, escaped
+ok  carried tab: a tab without carriedSince shows no carried warning
+ok  design: the brand dot does not use --human
+ok  design: the header status dot pulses only while an agent runs, not merely while the view is live
+ok  design: the pipeline arrows move only while an agent runs, not merely while the view is live
+ok  design: paths and branch names are in the sans face; ids and commit hashes stay in IBM Plex Mono
+ok  reported tokens: the Overview tile, both run tables, the Dispatch tile and the swimlane caption say "reported tokens"
+ok  labels: a state, kind or lane named like an inherited member shows its raw text, never the member
+ok  catalogue: usage reads pending, not 0 or "never used", until both sessions and runs have loaded
+ok  load: the font stylesheet is added by the script, so a stalled font request cannot hold back the first render
+ok  load, store absent: the app bar says Offline and the Overview says the store is out of reach
+ok  load, store refuses to open: no unhandled rejection; the app bar says Offline and the Overview says the store is out of reach
+ok  load, late store: the app bar and Overview draw a Connecting state at once, then the data when the store arrives
+ok  meta/lastRefresh 5 minutes old: "data as of" shown, without the stale styling
+ok  meta/lastRefresh: the rendered time is derived from "at" itself, not from the clock
+ok  meta/lastRefresh 25 minutes old: "data as of" shown with the word "stale" in the --changes tone
+ok  the minute timer re-evaluates staleness with no store change
+ok  meta/lastRefresh absent: no "data as of" text, no console error
+ok  meta/lastRefresh with a corrupt "at" (null, 0, true, a number, an object, or an unparsable string): no "data as of" text, no console error, for every case
+ok  meta/lastRefresh with a hostile "at" (an img/onerror fragment): rendered through esc(), no HTML injected, no console error
+ok  findings ledger: AC-77 -- round 1 lists F1, F2, F3 and round 2 lists only F2, so F1 and F3 show resolved, F2 open, 2 rounds so far
+ok  findings ledger: a work item that reached GO shows its rounds-to-GO
+ok  findings ledger: with no findings document the view says so and logs no console error
+ok  AC-73, the artifact half: with no local marker the page opens store subscriptions and makes no HTTP request
+ok  AC-73, the local half: served by the local server the page requests the snapshot and opens the event stream, and opens no store subscription
+ok  FR-97: the store adapter and the local API adapter render the same board from the same data, on a board where every panel has content
+ok  local adapter: a change event redraws the board from the documents it carries, and a deleted path removes the record
+ok  local adapter: a reset event re-fetches the snapshot and redraws from it, on the one stream it opened
+ok  local adapter: a stream the browser has given up retrying is reported, a transient drop is not, and the page never reopens it at a position of its own
+ok  the waiting probes fail on the same board without waiting data, so they test item content, not the panel title
+ok  the adapters cost the same work: one event, like one store snapshot, is one render pass
+ok  local adapter: an unreachable, refusing or wrongly shaped answer draws the out-of-reach board naming the local server, not a silent blank one
+ok  local adapter: a snapshot with genuinely no records is an empty board, not an out-of-reach one
+ok  local adapter: answers, collector state and a record outside every watched collection are never read or rendered
+ok  adapter choice: a marker missing either URL, or naming one that is not on the page's own origin, is not taken as the local server; the store adapter runs
+ok  adapter choice: the marker the local server injects, whose URLs are relative to the page, is taken as the local server
+ok  run detail: the latest run of the shown scope is detailed until the owner picks another, and the run log marks it
+ok  run detail: picking a run details it; a run whose result reported no readable findings says so, and says no file edit is recorded for it
+ok  AC-82: a picked code-reviewer run shows its verdict summary, each of its findings, the files they name and its duration
+ok  run detail: findings text goes through the page's only markup path, so an agent-written finding cannot inject markup
+ok  NFR-22: the run detail uses status tiles, colours only through tokens, and never --human
+ok  run detail: a finding row is drawn by the same cells helper as the findings ledger
+ok  run detail: a pick that leaves the shown scope, or the store, falls back to the latest run there
+ok  run detail: a review round that listed no findings reads as none reported, not as an unreadable result
+ok  AC-82: a picked run names the files it edited, escaped, and says what a "…/" name means
+ok  run detail: file names are read from a finding location's drive letter, several files and line lists, skipping one that is not text
+ok  AC-75, AC-76: a project's panel lists an unanswered ask, an idle prose question, a refusal with its tool, and the needsYou rows, each with its word
+ok  a prose question is listed once its session is quiet past its running window, and not while it is live
+ok  transcript text is escaped and not rendered through md()
+ok  the duplicate "Plan gate approval" line has left Needs attention
+ok  the panel shows every session in the project whatever the session filter is set to
+ok  the panel renders in Other sessions too
+ok  with nothing detected the panel says so, names the heuristic limit, never claims nothing is waiting, and carries no empty class
+ok  items older than 48 hours are not listed, and the panel says something was left out
+ok  25 items render 20 and "+5 more waiting"; inferred items go first, oldest first, and assumption rows are never dropped
+ok  the page never subscribes to the retired tabs collection or a tabs/* document
+all 131 page checks passed

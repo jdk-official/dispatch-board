@@ -11,7 +11,7 @@ conflict_risk: High
 requires_spec: true
 requires_external_review: false
 pr_required: true
-merge_allowed_by_agent: false
+merge_allowed_by_agent: true
 ---
 
 # PBI-020 — Timeline view (feature 9; FR-101 filled, FR-122–FR-124)
@@ -46,6 +46,8 @@ allowed `site/**`, `tests/page.test.mjs`, `exporters/**`, `tests/test_*.py` (run
 ---
 
 ## Notes
+
+**Row Q-1 — the owner chose option (b) on 2026-09-19**, "Docs chore after merge": the build leaves `CLAUDE.md` alone and a docs chore corrects the `runs.manual` store-path row straight after the merge. `merge_allowed_by_agent` set true under the owner's standing merge authorisation of 2026-09-12.
 
 Build per owner decision D-9: `engineering-agents:code-writer` under TDD, then `review-agents:code-reviewer` until GO. `requires_spec: true`: refine a per-PBI spec from the parent spec and have it independently reviewed before any code is written.
 
