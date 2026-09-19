@@ -39,7 +39,9 @@ SHAPES = {
         },
         'optional': {
             'from': 'str', 'feeds': 'str', 'group': 'str', 'agent': 'str', 'agentType': 'str', 'start': 'str',
-            'end': 'str',
+            'end': 'str', 'files': 'list',
+            'findings': {'list_of': {'required': {
+                'id': 'str', 'severity': 'str', 'title': 'str', 'location': 'str', 'remediation': 'str'}}},
         },
         'enums': {
             'kind': ['running', 'done', 'go', 'changes', 'nogo', 'killed'],

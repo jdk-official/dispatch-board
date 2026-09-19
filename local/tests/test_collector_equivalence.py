@@ -157,5 +157,32 @@ class Restart(unittest.TestCase):
         self.assertEqual(e.stored(), e.exported(cfg, now, grown))
 
 
+class FilesRelativeToTheRepository(unittest.TestCase):
+    """None of scenarios()'s sessions make an edit tool call, so the run documents' "files" field was equal
+    between the collector and the exporter only because both left it out -- vacuous coverage for a field whose
+    paths depend on the repository the collector is given. This drives an edit inside the project's repository and one outside it, so the comparison
+    can actually fail if the two publish different paths for the same run."""
+
+    def test_run_files_match_the_exporter_for_edits_inside_and_outside_the_repo(self):
+        e = Env(self)
+        now = time.time()
+        sid = S[0]
+        inside = tes.CWD + '\\site\\index.html'
+        outside = 'C:\\Users\\jdk\\.claude\\settings.json'
+        e.t.session(sid, [tes.user(0, 'go'), tes.launch(1, 'toolu_cw'),
+                          tes.notify(30, 'acw', result='DONE', tokens='5000', ms='60000')])
+        e.t.agent(sid, 'acw', [tes.user(1, 'task'),
+                              tes.reply(2, 'm-a1', text='DONE',
+                                        tools=[('toolu_e0', 'Edit', {'file_path': inside}),
+                                               ('toolu_e1', 'Edit', {'file_path': outside})])], tes.CW_META)
+        cfg = tes.pconfig(tes.proj('app', sid, repoPath=tes.CWD))
+        cfg['catalogue'] = {'marketplacePath': os.path.join(e.tmp, 'no-marketplace'),
+                            'installedPath': os.path.join(e.tmp, 'no-installed.json')}
+        e.run(cfg=cfg, now=now)
+        want = e.exported(cfg, now, e.root)
+        self.assertEqual(want['run']['acw']['files'], ['site/index.html', '…/settings.json'])
+        self.assertEqual(e.stored()['run']['acw'].get('files'), want['run']['acw']['files'])
+
+
 if __name__ == '__main__':
     unittest.main()

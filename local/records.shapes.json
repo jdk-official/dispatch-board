@@ -92,6 +92,18 @@
       "agentType": "str",
       "end": "str",
       "feeds": "str",
+      "files": "list",
+      "findings": {
+        "list_of": {
+          "required": {
+            "id": "str",
+            "location": "str",
+            "remediation": "str",
+            "severity": "str",
+            "title": "str"
+          }
+        }
+      },
       "from": "str",
       "group": "str",
       "start": "str"
