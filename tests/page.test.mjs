@@ -2153,6 +2153,18 @@ const overStore = async () => {
     ok('AC-DS19: a hand-kept "constructor" against a derived "__proto__" is Cannot compare, counted in no agree or differ tile, and logs nothing');
   }
   {
+    // Revision 3, N-3: checking Cannot compare first stops an unrecognised hand-kept state with no derived item
+    // from falling through to "Not named by any run", which would otherwise treat an unknown state as a difference
+    // the runs could explain rather than one the page cannot read at all.
+    const e = await load({ pbis: [pbi('PBI-001', 'weird-state')], over: { workItems: {} } });
+    const H = B(e), P = panelOf(H), row = shadowRows(H)['PBI-001'];
+    assert.deepEqual([row.outcome, row.cells[5]], ['unknown', 'Cannot compare']);
+    assert.deepEqual(withOutcome(H, 'unnamed'), []);
+    assert.equal(tileOf(P, 'Cannot compare')[0], '1');
+    assert.equal(tileOf(P, 'Not named by any run')[0], '0');
+    ok('AC-DS19: an unrecognised hand-kept state with no derived item is Cannot compare, not Not named by any run');
+  }
+  {
     const evil = { id: 'evil', session: 's2', project: 'dispatch-board', seq: 9, lane: 'cr', kind: 'go', label: '<img src=x onerror=alert(1)>', start: now };
     const e = await load({ pbis: [pbi('PBI-001', 'todo', { open: '<b>z</b>' })], runs: [...RUNS, evil],
       over: { workItems: { 'PBI-001': item('done', { verdict: '`x` **y**', latestRound: 'evil' }) } } });
