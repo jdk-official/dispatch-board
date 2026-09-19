@@ -1,0 +1,128 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-11",
+    "mode": "diff",
+    "scope": "Uncommitted diff in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-002 (branch pbi/PBI-002-page-fixes, base origin/main 12c197a): site/index.html +85/-58, tests/page.test.mjs +307/-17. Intent rung 2 (work-item AC): PBI-002 AC-60, AC-62, AC-126, the row 13 design fixes, the token relabel and the follow-up to-dos in its Notes, cross-checked against spec rows 1 and 13, PRD FR-83/FR-85/FR-191/S-36 and the CLAUDE.md design rules. Grounding path: repo suites run read-only (node tests/page.test.mjs 85 passed; python -m unittest discover -s tests Ran 267 OK; python -m unittest discover -s local/tests Ran 90 OK), git diff --check clean, plus scratch-only probes (the new suite against HEAD's page fails; the reviewer's probe C fails block 7; a clock-race probe and a malformed usage.hourly probe). Security is reasoning-only (no Touchstone SARIF).",
+    "summary": "0 CRITICAL / 0 HIGH / 0 MEDIUM / 2 LOW across correctness (2); security, maintainability and test-adequacy were reviewed and raised nothing. Change class: standard. Load path: sound. The script-inserted font stylesheet is governed by the same style-src allow-list as the parser-inserted one. It removes the render- and script-blocking in-body stylesheet, which is a plausible cause of the blank loads, at the cost of a fallback-font flash on a cold cache. A rejected or throwing claude.use now shows Offline. AC-126 is met: the callout is escaped, uses --changes and never appears on the Overview. The sans-face moves, the brand dot and the run-only pulse are correct. own() does not change behaviour for normal keys. The tests got stronger, and none got weaker. One AC-60 edge case: a render that straddles the running-window boundary can leave 'Running now' at 'session active' while the header says Idle (probe-confirmed). Verdict GO-WITH-CONDITIONS. This review is flag-only: nothing was changed, staged, committed, pushed or deployed.",
+    "sensitivity": "sensitive",
+    "verdict": "GO-WITH-CONDITIONS"
+  },
+  "findings": [
+    {
+      "id": "CR-PBI002-01",
+      "severity": "LOW",
+      "title": "A render that straddles the running-window boundary leaves 'Running now' at 'session active' after the header shows Idle, until the next store change (AC-60 edge case)",
+      "subject": {
+        "type": "change",
+        "id": "site/index.html:1018",
+        "name": "clockState / drawnClock vs sessionLive"
+      },
+      "evidence": [
+        {
+          "field": "site/index.html:1018",
+          "value": "const clockState = now => `${forecastIsPast(now)} ${isLive()} ${scopeLive()}`;  (only the forecast part uses the render's reading; isLive()/scopeLive() reach sessionLive, which reads Date.now() again)",
+          "sensitive": false
+        },
+        {
+          "field": "site/index.html:314",
+          "value": "const sessionLive = s => !!s && (s.running > 0 || Date.now() - new Date(s.last) < (Number(s.windowMinutes) || 10) * 60000);",
+          "sensitive": false
+        },
+        {
+          "field": "site/index.html:449 / :1029",
+          "value": "the tile reads sessionLive(s) while the Overview is drawn; drawnClock = clockState(now) reads the clock again after every tab is drawn",
+          "sensitive": false
+        },
+        {
+          "field": "scratch probe",
+          "value": "A store snapshot re-renders 1 ms before the 10-minute window elapses, and the boundary passes after the Overview is drawn. After 3 minute ticks: header=Idle, tile=[\"0\",\"session active\"]. drawnClock already recorded idle, so the timer never redraws.",
+          "sensitive": false
+        }
+      ],
+      "impact": "AC-60 requires 'session idle' within 60 s of the header showing Idle. If the window elapses between the Overview draw and the drawnClock reading, drawnClock records idle while the tile shows active. Every later tick then finds no difference, and the tile stays wrong until a store change, which may not come for an idle session. That needs a render in progress at the boundary, a window of a few milliseconds, so it is rare. The same mismatch applies to the Dispatch tile's live/paused, which comes from scopeLive().",
+      "remediation": "Use one clock reading per render for the live state as well as the forecast. For example, give sessionLive an optional now (defaulting to Date.now()), have isLive and scopeLive pass it through, and have the renderers and clockState use renderNow during renderAll while the timer's comparison passes its own reading. Add a page check that straddles the window the way the forecast one-reading check straddles the forecast time.",
+      "refs": [
+        "AC-60",
+        "FR-83",
+        "CR-PBI013-06 (one clock reading per render)"
+      ],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-PBI002-02",
+      "severity": "LOW",
+      "title": "usage.hourly entries with an hour but no numeric main/sub still draw an SVG full of NaN, a garbled chart instead of 'No hourly data'",
+      "subject": {
+        "type": "file",
+        "id": "site/index.html:930",
+        "name": "usageChart entry filter"
+      },
+      "evidence": [
+        {
+          "field": "site/index.html:930",
+          "value": "const hours = (Array.isArray(u.hourly) ? u.hourly : []).filter(h => h && typeof h.hour === 'string');",
+          "sensitive": false
+        },
+        {
+          "field": "site/index.html:933",
+          "value": "const max = niceCeil(Math.max(...hours.map(h => h.main + h.sub)));",
+          "sensitive": false
+        },
+        {
+          "field": "scratch probe",
+          "value": "hourly [{hour:'2026-09-10T10'},{hour:'2026-09-10T11',main:'x',sub:null}]: NaN in the usage chart markup, no error state, 0 console.error",
+          "sensitive": false
+        }
+      ],
+      "impact": "This does not crash, which is what the follow-up asked for, and the exporter (trusted, internal input) writes numbers. But the entry check covers the member only by its hour key. A leaf of the wrong type makes max NaN, so every gridline and bar coordinate is NaN. The browser rejects the attributes and logs SVG errors, and the chart comes out garbled.",
+      "remediation": "Normalise the leaves as well, for example map each kept entry to { hour, main: Number(h.main) || 0, sub: Number(h.sub) || 0 }. Add a missing or non-numeric main/sub case to the existing usage.hourly page check.",
+      "refs": [
+        "Malformed usage.hourly follow-up (PBI-013)",
+        "Error Handling at Boundaries"
+      ],
+      "category": "correctness"
+    }
+  ],
+  "not_audited": [
+    {
+      "ref": "AC-62",
+      "reason": "Not verifiable here. The 20-load fresh-tab Chrome check on the published page was not run (it is orchestrator-owned at close-out). The diagnosis is plausible but not reproduced: in Chrome, an in-body parser-inserted stylesheet is render-blocking for later content and script-blocking for the inline script."
+    },
+    {
+      "ref": "Artifact CSP",
+      "reason": "The live artifact's CSP header was not read. That a script-inserted <link rel=stylesheet> stays within it is reasoned from the stated allow-list: style-src fonts.googleapis.com applies to it exactly as to a parser-inserted one, and the font files still come from fonts.gstatic.com."
+    },
+    {
+      "ref": "Fallback-font flash / layout in a real browser",
+      "reason": "Not observed; the page suite uses a stub DOM. By reasoning: on a cold cache the first paint is now in the fallback stack (system-ui / Segoe UI) and reflows when Schibsted Grotesk arrives. display=swap already swapped for the font files, so the change adds only the CSS round-trip. The .crumb keeps its size, weight and line-height."
+    },
+    {
+      "ref": "Close-out criterion: suites green on the head commit",
+      "reason": "Nothing is committed. The suites were green on the working tree (85 / 267 / 90), which this review re-ran."
+    },
+    {
+      "ref": "Touchstone SARIF",
+      "reason": "Not provided. The security pass is reasoning-only: every new data path goes through esc(), the font href is a constant, and ghLink is unchanged. No security finding."
+    }
+  ],
+  "follow_ups": [
+    {
+      "ref": "FU-AC60-dispatch",
+      "note": "Extend the AC-60 page check to the Dispatch 'Running now' live/paused sub (scopeLive) under a project with a session filter, which the minute timer now also redraws."
+    },
+    {
+      "ref": "FU-pipeline-motion",
+      "note": "Endorse the writer's follow-up: the Overview pipeline arrows still animate on isLive(), i.e. status.live alone, against the 'motion only when true' rule. Switch them to agentRunning() in a later page PBI."
+    },
+    {
+      "ref": "FU-fonts-preconnect",
+      "note": "Endorse: <link rel=preconnect href=https://fonts.gstatic.com crossorigin> would shorten the fallback-font flash the script-inserted stylesheet now allows on cold loads."
+    },
+    {
+      "ref": "FU-store-hang / FU-accumulators",
+      "note": "Endorse the writer's logged follow-ups: a never-settling claude.use stays on Connecting with no timeout note, and e.code is read unguarded in fail. Data-keyed plain-object accumulators (groups, gates, byType, dup, pos) still lack own-key guards."
+    }
+  ]
+}

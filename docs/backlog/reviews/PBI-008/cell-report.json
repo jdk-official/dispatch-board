@@ -1,0 +1,63 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "build-cell",
+    "as_of_date": "2026-09-11",
+    "pbi": "PBI-008",
+    "effective_tier": "assisted",
+    "gates": {
+      "code_review": "agent",
+      "external_review": "human",
+      "merge": "human",
+      "plan": "human",
+      "spec": "agent"
+    },
+    "overrides": [],
+    "sensitivity": "sensitive",
+    "summary": "Stale-board warning: the refresher half of FR-103 plus the page's data-as-of header; blocked-area stop cleared by the owner; code review round 1 GO-WITH-CONDITIONS, round 2 GO; canonical run 307/96/90 PASS bound to bd280d5.",
+    "verdict": "CELL-DONE"
+  },
+  "rounds": [
+    {
+      "n": 1,
+      "code_writer_verdict": "NOT-DONE",
+      "change_report_ref": "docs/backlog/reviews/PBI-008/change-report.json"
+    },
+    {
+      "n": 2,
+      "code_writer_verdict": "DONE",
+      "reviewer_verdict": "GO-WITH-CONDITIONS",
+      "change_report_ref": "docs/backlog/reviews/PBI-008/change-report-r2.json",
+      "findings_ref": "docs/backlog/reviews/PBI-008/findings-r1.json"
+    },
+    {
+      "n": 3,
+      "code_writer_verdict": "DONE",
+      "reviewer_verdict": "GO",
+      "change_report_ref": "docs/backlog/reviews/PBI-008/change-report-r3.json",
+      "findings_ref": "docs/backlog/reviews/PBI-008/findings.json"
+    }
+  ],
+  "events": [
+    {
+      "kind": "tier-resolved",
+      "detail": "standard, ceiling assisted -> assisted"
+    },
+    {
+      "kind": "breaker",
+      "detail": "round 1 blocked-area stop: local/tests/test_conformance.py needed the new record; eroding build recorded"
+    },
+    {
+      "kind": "owner-approval",
+      "detail": "owner widened allowed_areas to local/tests/test_conformance.py, verbatim: 'ok and approved. Continue building'"
+    },
+    {
+      "kind": "scope-check",
+      "detail": "scope_guard ok after each round; manifest re-synced from the main checkout's PBI file"
+    },
+    {
+      "kind": "canonical-run",
+      "detail": "307 / 96 / 90 PASS, bound to bd280d5"
+    }
+  ]
+}

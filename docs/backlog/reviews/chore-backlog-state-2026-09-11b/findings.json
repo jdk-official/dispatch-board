@@ -1,0 +1,275 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-11",
+    "mode": "diff",
+    "scope": "Staged diff (git diff --cached) on branch chore/backlog-state-2026-09-11b from origin/main 602eab9, worktree C:/Users/jdk/dispatch-board-worktrees/chore-backlog-state-2: 19 files, +840/-54 (BOARD, done-log, 4 handovers, 10 PBI files, parent spec, new PBI-003 spec, projects/dispatch-board.json). Intent rung 3 (stated): the orchestrator chore brief, which records the build session backlog state and the owner decision Move PBI16 to later. Grounding path: repo-linters (the three canonical suites run read-only, tools/handover_schema.py on the four handovers, the exporter later_items() on the staged spec, and the suites re-run on a git-archive of 9aeff32 in the scratchpad) plus gh/git facts; security is reasoning plus a regex scan of the diff (no Touchstone SARIF).",
+    "summary": "Change class: large/sensitive by breadth (an approved parent spec plus a data file), with no executable code. 7 findings: 0 CRITICAL, 0 HIGH, 2 MEDIUM, 5 LOW, across correctness and maintainability. Security: nothing found. Test-adequacy: unit tests 215 OK, page 68, local 90 on the staged tree; data-file shape checks pass. Verified: every PR number, merge SHA, merge time and PR head matches gh/git; PBI-001 267/57/90 on 9aeff32 reproduced; the four handoff blocks validate. Verdict GO-WITH-CONDITIONS. Flag-only: nothing was changed, staged, committed, pushed or deployed.",
+    "sensitivity": "sensitive",
+    "verdict": "GO-WITH-CONDITIONS"
+  },
+  "findings": [
+    {
+      "id": "CR-CHORE2-01",
+      "severity": "MEDIUM",
+      "title": "PBI-023 is recorded as Done everywhere except its own PBI file, which still says In Review with its merge and tidy gates pending",
+      "subject": {
+        "type": "change",
+        "id": "docs/backlog/pbi/PBI-023.md:4",
+        "name": "PBI-023 status and gate tracking"
+      },
+      "evidence": [
+        {
+          "field": "docs/backlog/pbi/PBI-023.md:4",
+          "value": "status: In Review  (changed from In Progress by this diff)",
+          "sensitive": false
+        },
+        {
+          "field": "docs/backlog/pbi/PBI-023.md:91",
+          "value": "| No-self-merge gate | always | pending | ... waiting for the owner merge, then pbi-lifecycle finalize PBI-023 |",
+          "sensitive": false
+        },
+        {
+          "field": "docs/backlog/pbi/PBI-023.md:92",
+          "value": "| BOARD-tidy gate | always | pending | |",
+          "sensitive": false
+        },
+        {
+          "field": "contradicting records",
+          "value": "BOARD.md:74 lists PBI-023 under Done; the done-log has a PBI-023 entry (merge 547b635); projects/dispatch-board.json:28 state done; handovers/PBI-023.md handover_type done; the Evidence section of PBI-023.md says PR #6 squash-merged at 2026-09-11T15:03:35Z (gh confirms)",
+          "sensitive": false
+        }
+      ],
+      "impact": "Under SPEC State machine, the status: field of a PBI file mirrors its BOARD placement, and a mismatch is a fail-loud error. This chore would commit that error to main for a PBI the chore itself declares finalized. Anyone reading the PBI file, or tooling that reconciles status against placement, sees an unfinished PBI still waiting on a merge that happened.",
+      "remediation": "In docs/backlog/pbi/PBI-023.md, set status: Done. Mark the No-self-merge gate passed 2026-09-11, with the squash-merge by the owner at 2026-09-11T15:03:35Z as 547b635 (observed landing squash, level: record), and drop the waiting-for-merge wording. Mark the BOARD-tidy gate passed 2026-09-11 (done-log entry, BOARD row to Done, ledger deregistered), matching PBI-003, PBI-013 and PBI-021.",
+      "refs": [
+        "backlog-delivery SPEC State machine (status: is derived from placement; divergence is fail-loud)",
+        "Consistency With Existing Code"
+      ],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-CHORE2-02",
+      "severity": "MEDIUM",
+      "title": "The approved parent spec still lists PBI-016 as planned work in three sections after the owner moved it to Later",
+      "subject": {
+        "type": "change",
+        "id": "docs/backlog/specs/dispatch-board.md:256",
+        "name": "Parent spec: dangling PBI-016 references"
+      },
+      "evidence": [
+        {
+          "field": "docs/backlog/specs/dispatch-board.md:256-260",
+          "value": "Allowed and blocked areas (per PBI): PBI-016 allowed local/server*, local/collector*, ..., blocked site/**, with four sub-rules",
+          "sensitive": false
+        },
+        {
+          "field": "docs/backlog/specs/dispatch-board.md:274",
+          "value": "Sequencing notes, Owner go-ahead before implementation: - PBI-016 (LAN exposure; optional, row 6).",
+          "sensitive": false
+        },
+        {
+          "field": "docs/backlog/specs/dispatch-board.md:49",
+          "value": "In scope: local server (... ingest endpoint only for Unraid) ... and an optional Unraid container definition.",
+          "sensitive": false
+        },
+        {
+          "field": "docs/backlog/specs/dispatch-board.md:288",
+          "value": "Row 5: The guards stay: FR-133 in PBI-001, FR-134 in PBI-016, ...",
+          "sensitive": false
+        },
+        {
+          "field": "what the diff did change",
+          "value": "Removed the PBI list row, amended ordering item 5 (line 108) and row 6 (line 289), and added the Future iterations bullet (line 202), which sits correctly under the real Future iterations (not planned) heading at line 197; later_items() parses it as the first of 10 ideas",
+          "sensitive": false
+        }
+      ],
+      "impact": "The spec is the parent authority for every PBI. Its sequencing notes and per-PBI areas still name PBI-016 as a PBI that needs owner go-ahead before implementation, and its In-scope list still claims the Unraid container. A session working under the standing instruction not to ask what to build next could read these as live plan items, which contradicts the owner decision recorded three sections earlier.",
+      "remediation": "Mark each remaining reference as deferred rather than deleting its content. Suffix the PBI-016 areas entry at line 256 with (deferred to Future iterations, 2026-09-11; kept for revival). Strike PBI-016 from the owner-go-ahead list at line 274, or tag it deferred there. Move the Unraid ingest endpoint and optional container definition at line 49 to Out of scope, or tag them deferred. Reword row 5 so the FR-134 guard is said to travel with the deferred Unraid idea.",
+      "refs": [
+        "Minimal Diff & Scope Discipline (YAGNI)",
+        "Consistency With Existing Code",
+        "Owner decision: Move PBI16 to later (2026-09-11)"
+      ],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-CHORE2-03",
+      "severity": "LOW",
+      "title": "The merge gate for PBI-021 still reads pending, even though the note beside it records the squash-merge",
+      "subject": {
+        "type": "file",
+        "id": "docs/backlog/pbi/PBI-021.md:79",
+        "name": "PBI-021 No-self-merge gate row"
+      },
+      "evidence": [
+        {
+          "field": "docs/backlog/pbi/PBI-021.md:79",
+          "value": "| No-self-merge gate | always | pending | ... Squash-merged by the owner (jdk-official) at 2026-09-11T13:40:50Z as fd7b926; observed landing squash (level: record). |",
+          "sensitive": false
+        },
+        {
+          "field": "comparison",
+          "value": "PBI-003.md and PBI-013.md mark the same gate passed 2026-09-11 once merged; PBI-021.md:4 is status: Done and its BOARD-tidy gate (line 80) is passed",
+          "sensitive": false
+        }
+      ],
+      "impact": "A Done PBI shows a pending gate, so the gate table disagrees with the note beside it and with the PBI status. This only affects the record; the facts in the note are correct (gh confirms merge fd7b926 at 13:40:50Z).",
+      "remediation": "Change the Status cell on line 79 to passed 2026-09-11.",
+      "refs": [
+        "Consistency With Existing Code"
+      ],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-CHORE2-04",
+      "severity": "LOW",
+      "title": "The approved spec is amended in place with no revision-history entry, so the post-approval change is not visible where readers look for it",
+      "subject": {
+        "type": "file",
+        "id": "docs/backlog/specs/dispatch-board.md:18",
+        "name": "Parent spec revision history"
+      },
+      "evidence": [
+        {
+          "field": "docs/backlog/specs/dispatch-board.md:3-5",
+          "value": "status: approved / spec_version: 6 / revision: 5  (unchanged by this diff)",
+          "sensitive": false
+        },
+        {
+          "field": "docs/backlog/specs/dispatch-board.md:18-22",
+          "value": "Revision history ends at Revision 5 (2026-09-11) ... It records the owner approval. There is no entry for the PBI-016 move",
+          "sensitive": false
+        }
+      ],
+      "impact": "The plan-gate record and revision history still describe the approved plan as 21 PBIs with PBI-016 in it. The post-approval scope change by the owner appears only as inline notes in the body, so an auditor comparing the approved revision against the file on main cannot see from the header that the plan changed after approval.",
+      "remediation": "Add a revision-history bullet, for example: Post-approval amendment (2026-09-11): the owner moved PBI-016 (Unraid) to Future iterations (Move PBI16 to later); no other plan change. Bump or annotate the revision field if the project convention calls for it. No re-review is needed for a de-scope the owner asked for.",
+      "refs": [
+        "Consistency With Existing Code",
+        "backlog-delivery SPEC: the approved spec is the parent authority"
+      ],
+      "category": "maintainability"
+    },
+    {
+      "id": "CR-CHORE2-05",
+      "severity": "LOW",
+      "title": "The PBI-016 file carries status: Later, a value outside the SPEC state machine, and the PBI now has no BOARD section",
+      "subject": {
+        "type": "file",
+        "id": "docs/backlog/pbi/PBI-016.md:4",
+        "name": "PBI-016 frontmatter status"
+      },
+      "evidence": [
+        {
+          "field": "docs/backlog/pbi/PBI-016.md:4",
+          "value": "status: Later",
+          "sensitive": false
+        },
+        {
+          "field": "agent-catalog plugins/backlog-delivery/SPEC.md:34",
+          "value": "Proposed -> Ready -> In Progress -> In Review -> (Blocked) -> Done",
+          "sensitive": false
+        },
+        {
+          "field": "compensating context",
+          "value": "tools/backlog_provider.py reads PBI files by id (line 565) and does not enumerate status:, so no tool breaks; the banner at PBI-016.md:21 explains the move",
+          "sensitive": false
+        }
+      ],
+      "impact": "The SPEC has no withdrawn or deferred state, and status: is defined as a mirror of BOARD placement. The value Later is a local convention that no tool knows. It is harmless today, but a future status-reconciliation check or board-mode provider would flag it or mis-handle it.",
+      "remediation": "Keep the banner. Record Later as an accepted local convention for a de-scoped PBI (for example in the BOARD comment at line 10, or in CLAUDE.md in the next docs chore), and raise the missing deferred/withdrawn state as a SPEC gap with the backlog-delivery plugin owner. Alternatively, move the file out of pbi_dir to a deferred folder so it sits outside the state machine entirely.",
+      "refs": [
+        "backlog-delivery SPEC State machine",
+        "Consistency With Existing Code"
+      ],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-CHORE2-06",
+      "severity": "LOW",
+      "title": "The PBI-001 build state partial puts a misleading PBI-001 partly built item in Needs attention, though the PBI is built and reviewed and only awaits merge",
+      "subject": {
+        "type": "change",
+        "id": "projects/dispatch-board.json:40",
+        "name": "buildState PBI-001"
+      },
+      "evidence": [
+        {
+          "field": "projects/dispatch-board.json:40,43",
+          "value": "state: partial, ... commit: (empty)",
+          "sensitive": false
+        },
+        {
+          "field": "site/index.html:274,484",
+          "value": "partial maps to Partly built; every partial PBI pushes an attention row reading <id> partly built",
+          "sensitive": false
+        },
+        {
+          "field": "precedent",
+          "value": "On origin/main, PBI-021 in the same In Review / awaiting-owner position was conditions with its commit filled in; the head of PR #10 is 9aeff32 (gh)",
+          "sensitive": false
+        }
+      ],
+      "impact": "The Overview tells the owner PBI-001 is partly built, which is untrue: all code-review conditions are applied and 267/57/90 pass on 9aeff32 (reproduced). The PR #10 awaiting-your-merge item, which is the right signal, already appears through PBI-023, so this adds a second, less accurate attention row.",
+      "remediation": "Pick the state that describes built, awaiting merge. The closest existing value is conditions, which the PBI-021 precedent used, or keep partial only if the owner prefers the attention row. Set commit to 9aeff32 so the Backlog tab shows the reviewed head. Alternatively, log the missing in-review state as a PBI-002 follow-up.",
+      "refs": [
+        "Consistency With Existing Code"
+      ],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-CHORE2-07",
+      "severity": "LOW",
+      "title": "The PBI-003 handover names as a next chore work that PR #8 already landed before this chore",
+      "subject": {
+        "type": "file",
+        "id": "docs/backlog/handovers/PBI-003.md:63",
+        "name": "PBI-003 handover outcome summary"
+      },
+      "evidence": [
+        {
+          "field": "docs/backlog/handovers/PBI-003.md:63",
+          "value": "- Next chore: add local/tests to [test_commands], with a declared Python 3.11+ minimum.",
+          "sensitive": false
+        },
+        {
+          "field": "git show d9de491 (PR #8, merged 2026-09-11T15:31:20Z)",
+          "value": "adds local = python -m unittest discover -s local/tests to [test_commands] with the Python 3.11+ note (backlog-delivery.config, CLAUDE.md, README.md)",
+          "sensitive": false
+        }
+      ],
+      "impact": "A committed handover points the next session at work that is already done, which invites a duplicate chore or confusion about whether the canonical gate covers local/tests. It does.",
+      "remediation": "Reword line 63 to: Done in PR #8 (d9de491): local/tests is in [test_commands], with the Python 3.11+ minimum.",
+      "refs": [
+        "Dead Code & Leftover State",
+        "Code Commenting (stale pointer)"
+      ],
+      "category": "maintainability"
+    }
+  ],
+  "not_audited": [
+    {
+      "ref": "docs/backlog/reviews/PBI-001, 003, 013, 021, 023 review folders",
+      "reason": "Review folders are local-only and not in this worktree, so the quoted verdicts, round counts and finding counts (for example round 1 NO-GO, all four fixed; five conditions applied) could not be checked against the findings files. They are consistent across BOARD, the PBI files, the done-log, the handovers and buildState."
+    },
+    {
+      "ref": "Live store and artifact claims (PBI-021 AC-S3 store empty for tabs/*, 140 documents; PBI-013 AC-80 live-data strings; PBI-023 republish)",
+      "reason": "Needs read access to the board store and the published artifact; outside a read-only repo review."
+    },
+    {
+      "ref": "Page-suite count on 7fd96cb (57) for the PBI-003, PBI-021 and PBI-023 evidence",
+      "reason": "Not re-run on 7fd96cb itself. 57 was reproduced on 9aeff32 (which is based on d9de491, after 7fd96cb, and has no page changes), and 68 on 602eab9, which is consistent."
+    },
+    {
+      "ref": "Security dimension",
+      "reason": "Touchstone SARIF not provided. Security is reasoning-only plus a regex scan of the staged diff for tokens, keys, credentialed URLs, email and user paths: nothing found. The only token-like text is the placeholder https://user:TOKEN@github.com/... in the PBI-001.md follow-up, and the only local path is a removed line."
+    }
+  ],
+  "follow_ups": [
+    "PBI-003 AC-69 is ticked on a truncated owner reply (accept AC-69 as N/A for PBI-00). The evidence discloses this honestly; a one-line owner confirmation would make it unambiguous, since PBI-005 also carries AC-69.",
+    "BOARD places PBI-001 physically under In Review (and main previously placed PBI-021 there). The catalog SPEC State machine calls In Progress/In Review vestigial as storage under the local provider. This is a pre-existing repo convention, not introduced here; align it with the plugin owner.",
+    "PBI-013.md:46 cites scratchpad/forecast-check.mjs as evidence, a file the repo does not ship. Consider committing the harness under docs/backlog/evidence/ or describing it inline so the AC-80 live-data check is reproducible.",
+    "After PR #10 merges: fix the stale CLAUDE.md text about the six deleted tabs/* documents (PBI-021 handover:217) and describe the forecast tile (PBI-013 notes), as the brief already plans."
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-11",
+    "mode": "finding",
+    "change_class": "large-sensitive",
+    "scope": "Round-2 fixes for code-review NO-GO findings CR-PBI019-01..05 (docs/backlog/reviews/PBI-019/findings.json) on the uncommitted PBI-019 collector in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-019 (branch pbi/PBI-019-collector, base d10d9e6), conforming to spec pbi-019-collector.md revision 3 (sections 3.3, 3.5, 4.3, 5). Acceptance: (01) a config that parses but is not a JSON object exits 2 at startup with a clear message, and in loop mode a bad save is reported with a timestamp and the loop goes on; (02) a stored session or agent row that decodes but has the wrong layout resets only that session or agent (re-read from 0 once) and the pass commits; (03) a path SQLite cannot open is refused with exit 2; (04) a test of two collectors taking turns proves no lost or duplicated records, plus the lock message; (05) _Pass.session is split into smaller functions as a pure refactor, with AC-64 equivalence unchanged. Grounding path: ran-suite (all three configured suites run in the worktree). Verification tier 3 (executable code); the full configured suites were run.",
+    "verdict": "DONE",
+    "summary": "2 files modified this round (local/collector.py, local/db.py) and 2 test files extended (local/tests/test_collector.py, local/tests/test_db.py), all untracked files created in this PBI. board.config.json and exporters/board_config.py were not touched this round. 8 new tests: 4 red first for the right reasons (KeyError/TypeError/AttributeError from malformed rows and non-object configs, IndexError because the reset never reopened the file, exit 1 where 2 is due); the 2 turn-taking tests passed on arrival as the reviewer predicted, and a mutation run (dropping the data_version comparison) makes the main one fail. Suites: tests/ 300 passed / 0 failed; node tests/page.test.mjs 89/89; local/tests 194 passed / 0 failed (186 before). No test weakened, skipped or deleted; no pre-existing test edited. Nothing committed, staged, pushed or deployed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "local/collector.py",
+      "change_kind": "modify",
+      "why": "CR-PBI019-01: new read_config() and config_object() raise ValueError for a config whose top level is not an object (naming the JSON type) or that nests too deeply to parse, so startup takes the existing exit-2 'not started' path. In loop mode a config that cannot be re-read is now a refused pass, reported with a timestamp ('the config could not be re-read (...); this pass did not run'), and the loop tries again at the next interval. Before, it silently ran on the previous config, and a non-object crashed the loop. The shared _stamped() also backs _one's loop reports.",
+      "acceptance_refs": ["CR-PBI019-01", "AC-CL12", "spec 5"]
+    },
+    {
+      "path": "local/collector.py",
+      "change_kind": "modify",
+      "why": "CR-PBI019-02: _session_ok and _agent_ok now require the whole stored layout: the exact top-level key sets (SESSION_KEYS, AGENT_KEYS); cursor fields of the right types (path str; dev, ino, offset, size non-negative ints; mtime a number); and a result that is null or {doc: object, rows: list of objects, skipped: list}. Any other row is treated as fresh: a reset of that session or agent only, as spec 4.3 treats undecodable state.",
+      "acceptance_refs": ["CR-PBI019-02", "spec 4.3"]
+    },
+    {
+      "path": "local/collector.py",
+      "change_kind": "modify",
+      "why": "CR-PBI019-05: _Pass.session (84 lines) split into session (20 lines: fresh entry, the one outer try, bytes and judge), _derive, _feed_main, _agents (the per-agent try, with bookkeeping kept outside it as before), _agent, _rederive, _stage (every encode before anything is queued) and _keep (the main-transcript failure path), plus module-level _Agents and _needs_rederive. Pure refactor: same statements inside the session's try and the agent's try, same order of rederived counting, staging and byte counts.",
+      "acceptance_refs": ["CR-PBI019-05", "AC-64"]
+    },
+    {
+      "path": "local/db.py",
+      "change_kind": "modify",
+      "why": "CR-PBI019-03: sqlite3.connect (opening step 3) moved inside open_db's try (conn = None first, closed only when set), so its DatabaseError ('unable to open database file' for a folder or no permission) becomes db.Refused and the collector exits 2 with 'refusing to start: <path> cannot be used as the database (...)'. The lock error stays the lock case.",
+      "acceptance_refs": ["CR-PBI019-03", "spec 3.3", "AC-CL1"]
+    },
+    {
+      "path": "local/tests/test_collector.py",
+      "change_kind": "modify",
+      "why": "New tests only: State.test_a_session_row_with_a_wrong_layout_resets_that_session_only (8 corruptions), State.test_an_agent_row_with_a_wrong_layout_resets_that_agent (3), CommandLine.test_a_path_sqlite_cannot_open_exits_2, ConfigFile (startup refusal for null/array/string/number/bool/too-deep in --once and loop mode, plus an in-process non-dict config; a mid-loop bad save), TakingTurns (this process with its cache against a separate --once process across 5 turns; a pass that meets the other collector's lock in loop mode).",
+      "acceptance_refs": ["CR-PBI019-01", "CR-PBI019-02", "CR-PBI019-03", "CR-PBI019-04"]
+    },
+    {
+      "path": "local/tests/test_db.py",
+      "change_kind": "modify",
+      "why": "New test Refusals.test_a_path_sqlite_cannot_open_is_refused: a folder at the database path raises db.Refused naming the path and leaves the folder empty.",
+      "acceptance_refs": ["CR-PBI019-03"]
+    }
+  ],
+  "tests": [
+    {"path": "local/tests/test_collector.py::ConfigFile.test_a_config_that_is_not_an_object_refuses_to_start", "kind": "added", "status": "pass", "covers": "exit 2 with the path, the JSON type and 'not started' for null, [], a string, a number, true and a too-deep document, in --once and loop mode; the loop never starts; nothing stored; config=[] in-process"},
+    {"path": "local/tests/test_collector.py::ConfigFile.test_a_bad_save_mid_loop_refuses_that_pass_and_the_loop_goes_on", "kind": "added", "status": "pass", "covers": "db path taken from local.databasePath (the reviewer's probe); [] then null saved between passes: two timestamped refusals, no pass run on either, exit 0 on Ctrl+C, the pass after a good save counts the appended skill use once and equals the exporter"},
+    {"path": "local/tests/test_collector.py::State.test_a_session_row_with_a_wrong_layout_resets_that_session_only", "kind": "added", "status": "pass", "covers": "result, main or window dropped; an extra key; result not an object; result without rows; a text cursor offset; a cursor without ino: that session's main and agent re-read from 0, the other session not opened, the pass commits (lastRefresh), equals the exporter, and the next pass opens nothing"},
+    {"path": "local/tests/test_collector.py::State.test_an_agent_row_with_a_wrong_layout_resets_that_agent", "kind": "added", "status": "pass", "covers": "agent row without cursor, with an extra key, or with a null offset: that agent re-read from 0, the other session untouched, the pass commits and equals the exporter"},
+    {"path": "local/tests/test_collector.py::CommandLine.test_a_path_sqlite_cannot_open_exits_2", "kind": "added", "status": "pass", "covers": "--once with a folder at the database path exits 2 with 'refusing to start: <path> cannot be used as the database'"},
+    {"path": "local/tests/test_db.py::Refusals.test_a_path_sqlite_cannot_open_is_refused", "kind": "added", "status": "pass", "covers": "open_db on a folder raises db.Refused naming the path; nothing created inside it"},
+    {"path": "local/tests/test_collector.py::TakingTurns.test_passes_taken_in_turns_count_every_line_once", "kind": "added", "status": "pass", "covers": "5 alternating passes (a separate python process running --once, then this process keeping its cache), with a skill call and an agent reply appended before each: this process seeks to the other's cursor and reads only the new bytes; skill count equals the turn after every turn; agent requests 6; equals the exporter. Mutation-checked: a _load that ignores data_version makes it fail (seek 801 instead of 1153)"},
+    {"path": "local/tests/test_collector.py::TakingTurns.test_a_pass_that_meets_the_other_collectors_lock_says_so_and_loses_nothing", "kind": "added", "status": "pass", "covers": "loop mode: while another connection holds BEGIN IMMEDIATE, the pass prints the timestamped spec 3.5 lock message exactly once and the loop goes on; the next pass commits the appended line once; equals the exporter"},
+    {"path": "local/tests (python -m unittest discover -s local/tests)", "kind": "existing", "status": "pass", "covers": "194 passed / 0 failed (186 before plus the 8 above), including the AC-64 equivalence suite, FailedFeed and FailureAfterFeed, which pin the refactored try boundaries"},
+    {"path": "tests/ (python -m unittest discover -s tests)", "kind": "existing", "status": "pass", "covers": "300 passed / 0 failed, unchanged"},
+    {"path": "tests/page.test.mjs (node)", "kind": "existing", "status": "pass", "covers": "89/89 page checks, unchanged"}
+  ],
+  "acceptance": [
+    {"criterion": "CR-PBI019-01: a config that parses but is not a JSON object exits 2 with a clear message at startup (never a traceback), and in loop mode a bad save is reported and the loop keeps running (spec 5)", "met": "yes", "evidence": "ConfigFile.test_a_config_that_is_not_an_object_refuses_to_start and ConfigFile.test_a_bad_save_mid_loop_refuses_that_pass_and_the_loop_goes_on pass; both were red before (AttributeError escaping main; exit 1 ending the loop)"},
+    {"criterion": "CR-PBI019-02: a stored row that decodes but lacks a top-level key (or has another wrong layout) resets that session only, re-read from 0 once, and the pass commits", "met": "yes", "evidence": "State.test_a_session_row_with_a_wrong_layout_resets_that_session_only and State.test_an_agent_row_with_a_wrong_layout_resets_that_agent pass; before, they were red with KeyError 'result'/'main'/'rows', TypeError on the offset, or no reset at all"},
+    {"criterion": "CR-PBI019-03: a path SQLite cannot open exits 2 with a clear message", "met": "yes", "evidence": "test_db Refusals.test_a_path_sqlite_cannot_open_is_refused and CommandLine.test_a_path_sqlite_cannot_open_exits_2 pass; before, they were red (OperationalError escaping; exit 1)"},
+    {"criterion": "CR-PBI019-04: two collectors taking turns on one database lose and duplicate nothing, and the lock message appears where spec 3.5 says", "met": "yes", "evidence": "TakingTurns tests pass, and the mutation run that ignores data_version fails the turn-taking test"},
+    {"criterion": "CR-PBI019-05: _Pass.session refactored into smaller functions with the same behaviour and AC-64 equivalence unchanged", "met": "yes", "evidence": "session 84 -> 20 lines; the largest helper is 23 lines; all 194 local tests pass, including test_collector_equivalence and the FailedFeed/FailureAfterFeed boundary tests"},
+    {"criterion": "All three suites pass; scope limited to local/collector*, local/db*, local/tests/**", "met": "yes", "evidence": "300 OK / 89 of 89 / 194 OK; git status shows the same file set as round 1, and board.config.json and exporters/board_config.py are unchanged this round"}
+  ],
+  "not_done": [],
+  "follow_ups": [
+    {"ref": "code-reviewer", "note": "Please confirm the loop-mode reading of spec 5 chosen for CR-PBI019-01. A config that cannot be re-read (unreadable, not JSON, not an object, or a bad local block) now refuses that pass, as a config type error does, rather than running on the previous config as round 1 did (untimestamped 'using the last one'). The spec's text also allows 'keep the last good config'. This choice avoids passing on settings the owner has replaced, for example an exclude list."},
+    {"ref": "code-reviewer", "note": "Stricter state validation (CR-PBI019-02) covers the collector's own layout only. The values inside derive's state keep the spec 4.3 rule (key set only), so a wrong value type there is still a main-transcript failure of that session rather than a reset."},
+    {"ref": "builder, optional (from round-1 follow-ups, not done here)", "note": "promote() still reads data_version after COMMIT; the NaN round-trip test line and the unreachable catalogue branch in guard() are unchanged, as none were in this round's fix list."}
+  ]
+}

@@ -1,0 +1,110 @@
+[
+  {
+    "id": "CR-005-01",
+    "severity": "High",
+    "title": "The S-3 stalled-client protection is reported as covered by AC-SV10 but is never exercised: zero queue.Full events in the test meant to prove it",
+    "file": "local/tests/test_server_live.py",
+    "line": 179,
+    "finding": "test_no_client_can_stall_another is the only test for spec-round-1 finding S-3 and for the AC-SV10 clause: a client that stops reading is dropped on its queue overflow and stalls neither the watcher nor any other stream. It opens a socket it never reads, patches server.QUEUE_MAXSIZE to 2, pushes 40 changes, then asserts only that the OTHER stream keeps receiving. It never asserts that the stalled client overflowed, that client.overflowed was set, that it was discarded from Hub.clients, or that its connection was closed; it also drops the section 9 assertion that the poll counter keeps rising. Worse, the path is not reached at all: the stalled stream keeps draining its own queue into the OS socket send buffer (40 small events are a few KB against a ~64 KB buffer), so the queue never fills. I instrumented queue.Queue.put_nowait and ran the test in isolation: 2 clients registered, 0 queue.Full events. The whole S-3 mitigation - the bounded queue (server.py:214), the overflow drop in Hub._watch (server.py:273-277), the overflowed exit in _stream_loop (server.py:503) and the connection.settimeout(10) belt (server.py:488) - is untested concurrency code, while the change report lists AC-SV10 as covered by this file. This is precisely the vacuity that AC-69 was rewritten at the spec gate to exclude; the same discipline was not applied here.",
+    "remediation": "Make the stall real, then assert the drop. Either shrink the receive window of the stalled socket (set SO_RCVBUF small before connect) and/or push payloads large enough to fill the send buffer; or, more cheaply and deterministically, drive the unit directly - build a server.Hub over a stub state, register a client, fill its queue to QUEUE_MAXSIZE without draining, run one watcher iteration, and assert that overflowed is True, that the client is gone from hub.clients, and that the next watcher poll still happens. Keep the current end-to-end case as the other-client-is-unaffected half, and add the poll-counter-keeps-rising assertion that section 9 names."
+  },
+  {
+    "id": "CR-005-02",
+    "severity": "Medium",
+    "title": "A stream that connects while the watcher is shutting down gets no watcher at all, so live push (FR-94 / AC-68) is silently dead for that client",
+    "file": "local/server.py",
+    "line": 227,
+    "finding": "Hub.unregister sets self.stop when the last client leaves (server.py:242-243), but Hub.register creates a fresh stop Event and a new watcher thread only when self.watcher is None or not self.watcher.is_alive() (server.py:233-236). Between stop.set() and the watcher thread actually exiting, is_alive() is still True, so a client registering in that window is attached to a watcher already committed to exiting, and self.stop is left set. The result is a registered client, a clients set holding only it, and no watcher thread: the database is never polled and no change event is ever delivered to that stream. The failure is silent - the client still gets its 200, its retry line and its heartbeats forever. It self-heals only when some later connection registers after the thread has died. Reproduced with a probe (a State stub whose refresh blocks, to widen the window): after the reconnect, clients=1, watcher alive=False, refresh calls=0. The window is normally milliseconds, but it widens with anything that makes the in-flight State.refresh of the watcher slow (a large snapshot read, or a read waiting on the 5-second busy timeout) - exactly when live push matters most.",
+    "remediation": "Make the watcher lifecycle one owned fact rather than two independent ones. In register, whenever self.stop is not None and is already set (or whenever the clients set was empty on entry), always mint a new stop Event and a new thread and let the dying thread finish on its now-stale Event - it holds no client. Alternatively give each watcher generation an id and have _watch exit only if its own generation is still current. Add a test that unregisters the last client and re-registers immediately, then asserts a change is still delivered."
+  },
+  {
+    "id": "CR-005-03",
+    "severity": "Medium",
+    "title": "_handle swallows every OSError silently: a server-side fault returns no response and leaves the owner no trace",
+    "file": "local/server.py",
+    "line": 344,
+    "finding": "The clause catches BrokenPipeError, ConnectionResetError, socket.timeout and OSError, then passes. All three named classes are already OSError subclasses in Python 3.10+ (socket.timeout is an alias of TimeoutError), so the tuple reduces to a bare except OSError and the enumeration is decorative. The intent is to ignore a client that hung up, but the clause wraps the whole of routing, so any OSError raised anywhere inside a handler - a file-descriptor failure, a disk error, an unexpected socket-layer fault - is discarded with no response written, no 500, no traceback and no stderr line, leaving the client with a closed connection and the owner with nothing to diagnose. It also sits above the except Exception clause, which does log, so the quieter failure mode is reserved for the class of error most likely to be environmental. Section 6.3 of the spec says a traceback goes to stderr; this path produces none. Contrast the correctly narrow handling at server.py:417 (_respond_plain) and server.py:496 (_serve_events), each scoped to a single write.",
+    "remediation": "Narrow the clause to the connection-loss case and make it observable. Either catch it only around the write paths - it already is, in _respond_plain and _serve_events - and let the except Exception clause in _handle cover the rest, or keep a single except OSError here but emit one warn line naming the errno before passing, so a repeated environmental fault is visible. Drop the redundant three-name tuple: it reads as if three distinct cases are handled when one is."
+  },
+  {
+    "id": "CR-005-04",
+    "severity": "Medium",
+    "title": "The two hardest AC-67 assertions - no socket listening, nothing created on disk - are absent or effectively vacuous in the network-path guard test",
+    "file": "local/tests/test_server.py",
+    "line": 332,
+    "finding": "AC-67 requires four things of a UNC database path: exit code 2, the path on stderr exactly as configured, NO SOCKET LISTENING on the configured port, and NO FILE OR FOLDER CREATED. test_unc_path_refuses_at_start_exits_2_no_file_created asserts the first two, then substitutes for the fourth an assertFalse over a string-manipulated path: it strips the UNC prefix with str.replace and lstrips separators, which for the backslash form checks that a relative file named board.db does not exist in the current working directory, and for the forward-slash form (where the replace argument does not match at all, its separators being the other kind) checks the relative path nas/share/board.db. Neither has any causal connection to the server, so both would pass whatever the guard did. The third assertion is absent and cannot be made in the present shape, because the test calls main with port=0 - an ephemeral port, so there is no configured port to probe. The guard itself is correctly ordered in the code: db.network_path is checked at server.py:572 and server.py:599, before the Server object is constructed and therefore before any bind, and before the path is opened. So this is a verification gap rather than a defect - but it is the verification gap on the principal security guard of this PBI.",
+    "remediation": "Pin a concrete port (bind a throwaway socket, take its port, close it) and pass it as local.port; after main returns 2, assert that a connect to 127.0.0.1 on that port is refused. For nothing-created, assert the listing of the temporary directory is unchanged, and in the realpath-patched case assert os.path.exists(self.db_path) is False against the real configured path rather than a manipulated string."
+  },
+  {
+    "id": "CR-005-05",
+    "severity": "Low",
+    "title": "The snapshot skipped count can belong to a different snapshot than the records it is reported with",
+    "file": "local/server.py",
+    "line": 202,
+    "finding": "State.current calls self.refresh, which takes and releases the lock, and then re-acquires the lock to read self.skipped. Between the two, a refresh on another thread can replace both self.snapshot and self.skipped, so the returned version, snapshot and skipped triple can pair a snapshot with a skipped count from a later read. The window is small and the consequence cosmetic - the AC-69 assertion that skipped equals 0 could in principle disagree with the records map under concurrent load - but it does not hold the invariant that section 5.3 states, that the state is read as one consistent object under one lock.",
+    "remediation": "Have refresh return the skipped count alongside the rest, or have current do its work inside a single lock acquisition via a private _refresh_locked, so version, snapshot and skipped always come from the same read."
+  },
+  {
+    "id": "CR-005-06",
+    "severity": "Low",
+    "title": "The read-only SQLite connection is never explicitly closed - not on a read failure, not on stop",
+    "file": "local/server.py",
+    "line": 190,
+    "finding": "Two places abandon a live sqlite3.Connection without closing it. State.refresh, on a sqlite3.Error, sets self.conn and self.changes to None (server.py:190) to force a clean reopen, without calling close first. Server.stop (server.py:550-553) shuts down the listener but never touches self.state.conn, so a server stopped in-process leaves the database file handle open. Refcounting in CPython finalises both promptly today, so this is latent rather than active; it matters on Windows, where an unclosed handle keeps a lock on the database file, and it is why the tests can only clean up with shutil.rmtree(self.tmp, True) - ignore_errors=True masks exactly this class of leak. The module contract (a pure reader that creates no file and can be stopped cleanly) implies a deterministic release.",
+    "remediation": "Close the old connection before dropping the reference in the error path of refresh, wrapped in its own try/except sqlite3.Error, and add a State.close called from Server.stop that closes the connection under the state lock."
+  },
+  {
+    "id": "CR-005-07",
+    "severity": "Low",
+    "title": "A change committed between a version read on a stream and the first baseline of the watcher is never delivered and never triggers a reset",
+    "file": "local/server.py",
+    "line": 464,
+    "finding": "_serve_events reads the current version via state.refresh (server.py:466) and only afterwards calls hub.register (server.py:473), which is what starts the watcher and makes it take its own baseline (server.py:251). For the first client, a collector commit landing between those two calls is folded into the baseline of the watcher, so it is never diffed and never pushed; and because the since parameter of the client equalled the version it was handed, no reset is sent either (server.py:491). That client is then permanently one commit behind until the next change arrives. The window is sub-millisecond and the next commit repairs the visible state, so the impact is small, but it is a hole in the stated purpose of section 7.3: this closes the race between the snapshot fetch and the stream opening.",
+    "remediation": "Register first and read the version second, or have Hub.register return the baseline version of the watcher and compare the client position against that, so the client is always judged against the same baseline the watcher will diff from."
+  },
+  {
+    "id": "CR-005-08",
+    "severity": "Low",
+    "title": "Three acceptance-criteria corners are untested: the 505 refusal shape, an unparsable stream position, and the page route over the real site/index.html",
+    "file": "local/tests/test_server.py",
+    "line": 188,
+    "finding": "(a) AC-SV2 names 505 among the refusals that must share the one-line plain shape; no test sends an unsupported HTTP version, and test_every_refusal_has_the_same_plain_shape covers only 403, 404 and 405 - the 400, 414, 431 and 501 cases sit in separate tests that each assert a different, smaller subset (431 asserts only the status code, 414 only that the body is under 200 bytes). (b) AC-SV9 requires that an unparsable since parameter or Last-Event-ID produces a reset; _position (server.py:288-300) is exercised only with absent, current and stale integer values, never with a non-numeric one. (c) Every page test uses the three-line synthetic fixture in server_support.PAGE; the default page path, db.resolve of site/index.html - the one that actually ships - is never served by any test. I wrapped the real 104 KB site/index.html by hand and it is correct (one html, head and body; the genuine title at offset 0 hoisted into the head; the three later title occurrences sit inside JS template literals, safely outside the 8 KB window), so this is a coverage gap, not a defect.",
+    "remediation": "Fold 400, 414, 431, 501 and a new 505 case into the one shared shape assertion so every refusal is checked against the same property list; add _position cases for a non-numeric value and a negative one; and add a single test that serves the real site/index.html of the repository and asserts the AC-SV5 structural properties against it."
+  },
+  {
+    "id": "CR-005-09",
+    "severity": "Low",
+    "title": "Every server test reads the real board.config.json of the repository, contrary to the isolation claim in section 9",
+    "file": "local/tests/server_support.py",
+    "line": 263,
+    "finding": "Env.start calls server.serve with db_path, port and page but leaves config as None, and serve falls through to _settings, which calls read_config on DEFAULT_CONFIG - the committed board.config.json (server.py:561). Section 9 states plainly what the tests never touch: the real home .claude folder, out/, board.config.json or database. The read is harmless in itself (read-only, and both values it yields are immediately overridden by the db_path and port arguments), but it couples the whole 247-test suite to the committed config: a board.config.json whose local block later failed board_config.local validation would fail dozens of server tests with an error naming the config rather than the test.",
+    "remediation": "Pass an explicit config dict from Env.start, holding databasePath and port, as the other tests in the file already do for main. The plumbing exists; only this call site skips it."
+  },
+  {
+    "id": "CR-005-10",
+    "severity": "Low",
+    "title": "Routing readability: three over-long conditional expressions used as statements, and a constant table whose name contradicts its contents",
+    "file": "local/server.py",
+    "line": 387,
+    "finding": "_route (server.py:387-395) dispatches three times with a conditional expression of the form handler-call if self.command in GET or HEAD else _respond_plain(405, ...) - an expression evaluated purely for side effects, at about 125 characters per line, longer than the surrounding modules run, and reading as a value being discarded. Each repeats the literal method-not-allowed text although FRAMEWORK_LINES[405] already holds exactly that string, so the refusal wording now lives in two places. FRAMEWORK_LINES itself (server.py:50-52) is introduced by a comment saying these are statuses the framework itself can raise, yet it carries 404, 405 and 500, which this module raises itself, so neither the name nor the comment describes the table any more. A smaller nit in the tests: test_server.py:409 embeds an assertEqual inside a conditional expression used as a statement, which reads as an assertion that can silently not run (the following line asserts unconditionally, so nothing is actually lost).",
+    "remediation": "Give _route a small mapping of path to handler and allowed methods, or plain if-else blocks, and take the 405 line from one named constant. Rename FRAMEWORK_LINES to something like REFUSAL_LINES and reword the comment to say it is the shared one-line body per status, whoever raises it. In the test, drop the conditional-expression assertion and keep the plain assertIn."
+  },
+  {
+    "id": "CR-005-11",
+    "severity": "Low",
+    "title": "Attacker-chosen request text reaches the owner stderr log unescaped (CWE-117)",
+    "file": "local/server.py",
+    "line": 513,
+    "finding": "The no-echo rule is correctly and completely enforced on response BODIES - send_error is overridden to discard the message it is handed (server.py:332-334), _respond_plain emits only fixed lines, and I could not construct a response that reflects a Host, Origin, method token or request line. Section 4.3 deliberately keeps the framework diagnostic on stderr, and that decision is sound. What is not considered is that the values reaching stderr are written raw: log_message (server.py:513) formats the request line, and while the warn calls at server.py:356, 367, 377 and 382 apply repr to the Host and Origin, the request line reaching log_request is a latin-1 decode of arbitrary bytes and is not repr-escaped, so control characters and ANSI escape sequences from any local process pass through. PBI-007 is specified to capture this stderr to a log file the owner reads in a terminal, which is where escape sequences become a minor problem.",
+    "remediation": "Apply repr to the request line as the Host and Origin warnings already do - overriding log_request to format the requestline with the repr conversion would make every logged value escaped, and would also stop the per-request logging of successful responses if that noise is unwanted. Low urgency: hardening, not a live hole."
+  },
+  {
+    "id": "CR-005-12",
+    "severity": "Informational",
+    "title": "Expect 100-continue is answered before the gate - a pre-gate framework path that section 4.3 does not enumerate",
+    "file": "local/server.py",
+    "line": 336,
+    "finding": "The section 4.3 claim holds: the handler defines exactly the six do_ methods, each a one-line call to _handle; routing happens only inside _handle, after the Host and Origin checks; and every framework-raised status (400 from parse_request, 414 and 501 from handle_one_request, 431, 505) lands in the overridden send_error and comes back as the same fixed one-line text/plain body with no echo - confirmed over raw sockets for PATCH, an oversized request line, 120 headers and a malformed request line. One pre-gate path is not in the section 4.3 enumeration: handle_expect_100 in BaseHTTPRequestHandler answers 100 Continue from inside parse_request, before any do_ method runs, for any client sending an Expect header. It reaches no route, reads no body, and returns no board data and no Server header, so there is nothing to fix; it is recorded only so the enumeration can be completed if the spec is revised. Related and equally benign: a GET or HEAD carrying a request body is not drained before a keep-alive 200, so its bytes would be read as the next request line on that connection - unreachable from a browser, because the Fetch specification forbids a body on GET and HEAD, and every non-GET method is answered with Connection close.",
+    "remediation": "No code change required. If section 4.3 is revised, add handle_expect_100 to the list of framework paths that answer before the gate, alongside the 400, 414, 431, 501 and 505 cases it already names."
+  }
+]

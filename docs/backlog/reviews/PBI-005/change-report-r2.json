@@ -1,0 +1,181 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-12",
+    "mode": "finding",
+    "change_class": "standard",
+    "scope": "Fix the round-1 code-review findings for PBI-005 (1 High, 3 Medium, 7 Low, 1 Informational) in the worktree C:\\Users\\jdk\\dispatch-board-worktrees\\PBI-005, against the approved spec docs/backlog/specs/pbi-005-local-server.md revision 2. Acceptance: every Critical/High/Medium fixed with a test that fails before the fix; every Low and the Informational either fixed or given an explicit one-line deferral rationale; no settled spec decision (S-3 per-stream bounded queue, S-4 Last-Event-ID) reopened; all three configured suites green. Grounding path: ran-suite (Python 3.14.5 and node present; all three suites run from the worktree root).",
+    "verdict": "DONE-WITH-CONDITIONS",
+    "summary": "4 files touched (1 module, 3 test files), 14 net new tests, all within the PBI's allowed areas (local/server*, local/tests/**). Suites from the worktree root: python -m unittest discover -s tests = 307 passed / 0 failed; node tests/page.test.mjs = 96 checks passed; python -m unittest discover -s local/tests = 261 passed / 0 failed (round-1 baseline 307 / 96 / 247). 11 of 12 findings fixed, 1 Informational deferred with a rationale and pinned by a test. One extra defect was found by the repaired AC-SV2 test and fixed (the 505 refusal carried no status line and no headers). Nothing committed, staged, pushed or deployed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "local/server.py",
+      "change_kind": "modify",
+      "why": "Hub.register now mints a fresh stop Event and watcher thread whenever the clients set was empty on entry, so a stream opening between unregister()'s stop.set() and the thread's own exit is never attached to a watcher already committed to exiting (live push was silently dead for that client). _handle's OSError clause is one clause, not a decorative three-name tuple, and names the errno on stderr rather than discarding a server-side fault with no response and no trace. State gained _refresh_locked/close/_close_conn: current() now reads version, snapshot and skipped under one hold of the lock, and the read-only connection is closed explicitly on a failed read and from Server.stop() rather than being abandoned to refcounting (an open handle locks the file on Windows). _serve_events registers before reading the version, so a commit landing in that window puts the version ahead of the client's position and earns a reset instead of leaving the client permanently one commit behind. _route is plain if-else with the 405 and 404 lines taken from the one table, which is renamed REFUSAL_LINES with a comment that describes what it actually holds. log_request is overridden so the request line (a latin-1 decode of arbitrary bytes) reaches stderr repr-escaped, and control characters and ANSI sequences cannot act on the owner's terminal. _respond_plain forces HTTP/1.1 when request_version is still HTTP/0.9, which is the state parse_request leaves it in on the 505 and bad-version-400 paths: without it those refusals came back as a bare body with no status line and no header at all.",
+      "acceptance_refs": ["CR-005-02", "CR-005-03", "CR-005-05", "CR-005-06", "CR-005-07", "CR-005-10", "CR-005-11", "AC-SV2", "AC-SV9", "AC-SV10", "AC-68"]
+    },
+    {
+      "path": "local/tests/test_server_live.py",
+      "change_kind": "modify",
+      "why": "test_no_client_can_stall_another now makes the stall real (SO_RCVBUF 512 set before connect, 60 KB events, QUEUE_MAXSIZE patched to 2) and asserts the drop: the stalled client overflowed, it is gone from Hub.clients, the poll counter keeps rising and the healthy stream keeps receiving afterwards. A new HubDirect class drives the hub without sockets over a stub state, so the bounded queue really fills and the overflow, drop and continued polling are asserted deterministically; the same class pins the watcher-lifecycle race with a stub State that blocks inside refresh() to widen the window. Two more cases added: a commit racing the stream open still reaches the client, and an unparsable Last-Event-ID produces a reset.",
+      "acceptance_refs": ["CR-005-01", "CR-005-02", "CR-005-07", "CR-005-08", "AC-SV9", "AC-SV10"]
+    },
+    {
+      "path": "local/tests/test_server.py",
+      "change_kind": "modify",
+      "why": "The AC-67 guard test now proves what AC-67 asks: a concrete port (bound, released, passed as local.port) with no HTTP answer on it and the port still bindable afterwards, and a recursive listing of the temporary folder unchanged, with os.path.exists(self.db_path) false in the realpath-patched case, replacing the string-manipulated relative path that had no causal connection to the server. One shared shape assertion now covers all eight refusals (400, 403, 404, 405, 414, 431, 501, 505) against the same property list including a Content-Length equal to the body and no echo of the offending token. New cases: _position over non-numeric, negative and fractional values; the repository's own site/index.html served and checked for the AC-SV5 structure; current() under one lock; the connection closed on a failed read and on stop; no server test reading the repository config; an OSError inside a handler named on stderr; the request line reaching stderr escaped; and Expect: 100-continue answered pre-gate reaching no route. The conditional-expression assertion in test_no_server_header_names_python is gone.",
+      "acceptance_refs": ["CR-005-04", "CR-005-03", "CR-005-05", "CR-005-06", "CR-005-08", "CR-005-09", "CR-005-10", "CR-005-11", "CR-005-12", "AC-67", "AC-SV2", "AC-SV5"]
+    },
+    {
+      "path": "local/tests/server_support.py",
+      "change_kind": "modify",
+      "why": "Env.start passes an explicit config dict, so no server test falls through to read_config over the committed board.config.json, which section 9 says the tests never touch. Client.open_stream gained an rcvbuf argument, set before connect because the receive window is negotiated at the handshake: it is what makes a stream that reads nothing really stall instead of draining into the OS socket buffer.",
+      "acceptance_refs": ["CR-005-09", "CR-005-01"]
+    }
+  ],
+  "tests": [
+    {"path": "local/tests/test_server_live.py::Live::test_no_client_can_stall_another", "kind": "modified", "status": "pass", "covers": "CR-005-01 / AC-SV10 end to end: a genuinely stalled stream overflows its bounded queue, is marked overflowed and dropped from Hub.clients, while the healthy stream keeps receiving every change and the poll counter keeps rising. Instrumenting queue.Queue.put_nowait the way the reviewer did now measures queue.Full events where round 1 measured 0."},
+    {"path": "local/tests/test_server_live.py::HubDirect::test_a_client_that_never_drains_overflows_and_is_dropped", "kind": "added", "status": "pass", "covers": "CR-005-01 / section 7.1 drop path driven directly over a stub state: queue filled to QUEUE_MAXSIZE without draining, then overflowed is true, the client is gone from hub.clients, the healthy client is still in it, and the watcher keeps polling and pushing after the drop."},
+    {"path": "local/tests/test_server_live.py::HubDirect::test_a_stream_registering_while_the_watcher_exits_gets_its_own_watcher", "kind": "added", "status": "pass", "covers": "CR-005-02: unregister the last client while the watcher is blocked inside refresh(), re-register immediately, and a change must still be delivered and hub.watcher must be alive. Failed before the fix with 'no change reached a stream that opened while the watcher was exiting'."},
+    {"path": "local/tests/test_server_live.py::Live::test_a_commit_between_the_position_read_and_registration_still_reaches_the_client", "kind": "added", "status": "pass", "covers": "CR-005-07: a commit landing in the window between the two calls the stream makes must not leave the client judged current against a version that already missed it. Failed before the fix with 'a commit racing the stream open was neither pushed nor reset'."},
+    {"path": "local/tests/test_server_live.py::Live::test_an_unparsable_position_gives_a_reset", "kind": "added", "status": "pass", "covers": "CR-005-08(b) / AC-SV9: a non-numeric Last-Event-ID produces a reset over the wire."},
+    {"path": "local/tests/test_server.py::NetworkGuard::test_unc_path_refuses_at_start_exits_2_no_socket_no_file_created", "kind": "modified", "status": "pass", "covers": "CR-005-04 / AC-67 in full for both UNC forms: exit 2, the path on stderr exactly as configured, no HTTP answer on the configured port and the port still bindable, and the temporary folder's recursive listing unchanged. Verified non-vacuous: with db.network_path stubbed to False the test fails."},
+    {"path": "local/tests/test_server.py::NetworkGuard::test_realpath_pointing_at_a_unc_path_refuses", "kind": "modified", "status": "pass", "covers": "CR-005-04 / AC-67 for the realpath-patched case, now asserting the configured path on stderr, nothing listening on the configured port, os.path.exists(self.db_path) false, and the folder listing unchanged."},
+    {"path": "local/tests/test_server.py::GateFramework::test_every_refusal_has_the_same_plain_shape", "kind": "modified", "status": "pass", "covers": "CR-005-08(a) / AC-SV2: 400, 403 (three ways), 404, 405, 414, 431, 501 and 505 all checked against one property list. This is the test that found the 505 defect."},
+    {"path": "local/tests/test_server.py::GateFramework::test_expect_100_continue_is_answered_before_the_gate_but_reaches_no_route", "kind": "added", "status": "pass", "covers": "CR-005-12: the pre-gate 100 Continue path is answered, then the request behind it is still refused 403 with no board data and no Python version."},
+    {"path": "local/tests/test_server.py::Position::test_unparsable_and_negative_positions_count_as_no_position", "kind": "added", "status": "pass", "covers": "CR-005-08(b): _position over a non-numeric, negative, empty and fractional value."},
+    {"path": "local/tests/test_server.py::Position::test_the_larger_parseable_value_wins_whichever_side_it_came_from", "kind": "added", "status": "pass", "covers": "CR-005-08(b) / AC-SV9 / spec finding S-4, unchanged in behaviour: the larger of ?since= and Last-Event-ID, with one side unparsable."},
+    {"path": "local/tests/test_server.py::Page::test_the_repositorys_own_page_is_served_as_one_well_formed_document", "kind": "added", "status": "pass", "covers": "CR-005-08(c) / AC-SV5 against the real 104 KB site/index.html: one html, head, body and closing body, the genuine title hoisted into the head, the marker present, and the file's own bytes minus the hoisted title in the body."},
+    {"path": "local/tests/test_server.py::StateInternals::test_current_reads_the_snapshot_and_its_skipped_count_under_one_lock", "kind": "added", "status": "pass", "covers": "CR-005-05: a counting lock proves current() takes the lock exactly once, so the skipped count cannot belong to a later read than the snapshot. Verified non-vacuous: the pre-fix current() takes it twice and the test fails."},
+    {"path": "local/tests/test_server.py::StateInternals::test_a_failed_read_closes_the_connection_before_dropping_it", "kind": "added", "status": "pass", "covers": "CR-005-06: the old connection is closed, not just dereferenced, on the sqlite3.Error path of refresh()."},
+    {"path": "local/tests/test_server.py::StateInternals::test_stop_closes_the_read_only_connection", "kind": "added", "status": "pass", "covers": "CR-005-06: Server.stop() closes the read-only connection and leaves state.conn None. Failed before the fix."},
+    {"path": "local/tests/test_server.py::Isolation::test_a_server_test_never_reads_the_repository_config", "kind": "added", "status": "pass", "covers": "CR-005-09: with server.read_config patched to raise, the test server still starts and serves, so the suite is not coupled to the committed board.config.json."},
+    {"path": "local/tests/test_server.py::Errors::test_an_os_error_inside_a_handler_is_named_on_stderr", "kind": "added", "status": "pass", "covers": "CR-005-03: an OSError(13) raised inside routing leaves an errno-naming line on stderr instead of vanishing. Failed before the fix with 'errno 13 not found in'."},
+    {"path": "local/tests/test_server.py::Errors::test_the_request_line_reaches_stderr_escaped", "kind": "added", "status": "pass", "covers": "CR-005-11 / CWE-117: an ESC and a BEL in the request line reach stderr as \\x1b and \\x07, not raw. Verified non-vacuous: with the old raw formatting the test fails."},
+    {"path": "python -m unittest discover -s tests", "kind": "existing", "status": "pass", "covers": "307 passed / 0 failed, unchanged from the round-1 baseline."},
+    {"path": "node tests/page.test.mjs", "kind": "existing", "status": "pass", "covers": "96 checks passed, unchanged from the round-1 baseline."},
+    {"path": "python -m unittest discover -s local/tests", "kind": "existing", "status": "pass", "covers": "261 passed / 0 failed (baseline 247; 14 net new tests, no test skipped, weakened or deleted)."}
+  ],
+  "acceptance": [
+    {
+      "criterion": "CR-005-01 (High): make the stalled-client test really force the overflow, so the S-3 drop path is executed and asserted and the healthy client is proven unaffected; do not weaken AC-SV10 to match the test.",
+      "met": "yes",
+      "evidence": "Two tests now cover it. HubDirect drives the hub over a stub state, fills a client's queue to QUEUE_MAXSIZE without draining and asserts overflowed, removal from hub.clients, the healthy client still registered, and that the watcher keeps polling and pushing afterwards. The end-to-end case makes the stall real with SO_RCVBUF 512 set before connect plus 60 KB events with QUEUE_MAXSIZE patched to 2 (the section 9 variant), and asserts the same drop plus the poll counter rising and the healthy stream still receiving after the drop. Instrumenting queue.Queue.put_nowait as the reviewer did now records queue.Full events across the two tests where round 1 recorded 0; replacing the bounded queue with an unbounded one makes both tests fail, so neither is vacuous. The criterion was not touched."
+    },
+    {
+      "criterion": "CR-005-02 (Medium): fix the watcher-lifecycle race properly (no sleep, no retry) and pin it with a test that fails before the fix.",
+      "met": "yes",
+      "evidence": "Hub.register records whether the clients set was empty on entry and, when it was, always mints a fresh stop Event and thread, letting the dying thread finish on its now-stale Event; it holds no client. The is_alive check is kept as a second line for a watcher that died some other way. test_a_stream_registering_while_the_watcher_exits_gets_its_own_watcher fails before the fix (no change ever delivered) and passes after, and also asserts hub.watcher.is_alive()."
+    },
+    {
+      "criterion": "CR-005-03 (Medium): narrow _handle's OSError clause and make it observable.",
+      "met": "yes",
+      "evidence": "The three-name tuple is gone (all three are OSError subclasses); one except OSError clause remains, with a comment saying why, and it emits one stderr line naming the exception class and errno before passing. Nothing is written back, because the connection may already be gone. test_an_os_error_inside_a_handler_is_named_on_stderr failed before the change and passes now."
+    },
+    {
+      "criterion": "CR-005-04 (Medium): make the AC-67 test actually prove AC-67 - no socket listening on the configured port, nothing created on disk - without changing the guard.",
+      "met": "yes",
+      "evidence": "Both guard tests now bind a throwaway socket to take a concrete free port, pass it as local.port, and after main returns 2 assert that no HTTP request is answered on it and that the port can still be bound (the bind is the reliable half: a connect to a closed port on this host is dropped rather than refused, so it only times out). Nothing-created is a recursive listing of the temporary folder before and after, plus os.path.exists(self.db_path) false in the realpath-patched case, replacing the string-manipulated relative path. The guard code itself is unchanged. Stubbing db.network_path to False makes the test fail, so it is not vacuous; main is now passed ready=lambda s: s.stop() so a guard that failed to refuse surfaces as a failed assertion rather than a hang."
+    },
+    {
+      "criterion": "CR-005-05 (Low): version, snapshot and skipped must come from one read.",
+      "met": "yes",
+      "evidence": "Fixed. A private _refresh_locked holds the body; refresh() wraps it in the lock and current() takes the lock once, reading self.skipped inside the same hold. A counting-lock test asserts exactly one acquisition and fails against the previous two."
+    },
+    {
+      "criterion": "CR-005-06 (Low): close the read-only SQLite connection explicitly, on a read failure and on stop.",
+      "met": "yes",
+      "evidence": "Fixed. State._close_conn closes under the lock inside its own try/except sqlite3.Error before dropping the reference, and is used by the error path of refresh(); State.close is called from Server.stop(). Two tests pin both paths; the stop test failed before the change."
+    },
+    {
+      "criterion": "CR-005-07 (Low): close the hole between the version read on a stream and the watcher's first baseline.",
+      "met": "yes",
+      "evidence": "Fixed by registering first and reading the version second, with the two 503 paths unregistering before they answer. A test that commits in the window (by patching Hub.register) fails before the change and passes after."
+    },
+    {
+      "criterion": "CR-005-08 (Low): the 505 refusal shape, an unparsable stream position, and the page route over the real site/index.html.",
+      "met": "yes",
+      "evidence": "All three fixed. (a) One shared shape assertion now covers 400, 403, 404, 405, 414, 431, 501 and 505 - and it found a real defect, see not_done/follow_ups and the extra acceptance row below. (b) Unit cases for non-numeric, negative, empty and fractional positions, plus an end-to-end unparsable Last-Event-ID producing a reset. (c) A test serves the repository's own site/index.html and asserts the AC-SV5 structure against it."
+    },
+    {
+      "criterion": "CR-005-09 (Low): stop every server test reading the repository's board.config.json.",
+      "met": "yes",
+      "evidence": "Fixed. Env.start passes an explicit config dict holding databasePath and port, as the other tests already did for main. Pinned by a test that patches server.read_config to raise and still gets a 200 from the page route."
+    },
+    {
+      "criterion": "CR-005-10 (Low): routing readability, the constant table's name, and the conditional-expression assertion in the test.",
+      "met": "yes",
+      "evidence": "Fixed. _route is plain if-else: unknown path 404, then method not in GET/HEAD 405, then the three handlers, with both lines taken from the one table. FRAMEWORK_LINES is renamed REFUSAL_LINES and its comment now says it is the shared one-line body per status, naming which statuses this module raises and which the framework does. The conditional-expression assertion in test_no_server_header_names_python is gone; the plain assertIn stays."
+    },
+    {
+      "criterion": "CR-005-11 (Low): attacker-chosen request text reaching stderr unescaped (CWE-117).",
+      "met": "yes",
+      "evidence": "Fixed. log_request is overridden to format the request line with the repr conversion, so every logged request line is escaped; per-request logging of successful responses is kept, since PBI-007's log capture is the intended consumer and removing it was optional in the remediation. A test sends ESC and BEL in the request line and asserts stderr holds \\x1b and not the raw bytes; it fails against the old formatting."
+    },
+    {
+      "criterion": "CR-005-12 (Informational): complete section 4.3's enumeration of pre-gate framework paths with handle_expect_100, if the spec is revised.",
+      "met": "partial",
+      "evidence": "Deferred as to the spec text, fixed as to coverage. Rationale for the deferral: the finding says no code change is required, and the only remediation it offers is an edit to docs/backlog/specs/pbi-005-local-server.md, which is an approved artefact whose gate is passed (revision 2, APPROVE-WITH-NOTES) and is outside this PBI's allowed areas - reopening it to add a sentence is the owner's call, not a build fix. The behaviour is now pinned instead: a test sends Expect: 100-continue with a foreign Host and asserts the 100 is answered, the request behind it is still refused 403, and no board data or Python version comes back. Logged as a follow-up."
+    },
+    {
+      "criterion": "Additional defect found while fixing CR-005-08(a): AC-SV2 requires the 505 refusal to share the one-line plain shape, and it did not.",
+      "met": "yes",
+      "evidence": "CPython's parse_request assigns self.request_version only after the 505 and bad-version-400 checks, so it is still HTTP/0.9 when send_error runs, and the base class then suppresses the status line and every header: the 505 came back as a bare 'bad request\\n' with no Content-Type, no Content-Length, no Cache-Control and no nosniff. _respond_plain now sets request_version to the handler's protocol_version when it is still HTTP/0.9, so every refusal gets the same shape. This makes the code meet AC-SV2 as written; it changes no design decision. Covered by the shared shape assertion."
+    },
+    {
+      "criterion": "Settled spec decisions S-3 (per-stream bounded queue) and S-4 (Last-Event-ID: id on reset, larger of the two values) are not reopened.",
+      "met": "yes",
+      "evidence": "No change to the queue design, the drop rule, the 8-stream cap, the reset semantics or _position's max-of-both rule. The S-3 work is test-side only plus the register-order fix; the S-4 work adds unit cases for values that do not parse, which is what AC-SV9 already says."
+    },
+    {
+      "criterion": "All three configured suites green from the worktree root.",
+      "met": "yes",
+      "evidence": "python -m unittest discover -s tests: Ran 307 tests, OK. node tests/page.test.mjs: all 96 page checks passed. python -m unittest discover -s local/tests: Ran 261 tests, OK. Baseline was 307 / 96 / 247."
+    },
+    {
+      "criterion": "Scope: only local/server*, local/tests/**, board.config.json and exporters/board_config.py touched; nothing under the blocked areas.",
+      "met": "yes",
+      "evidence": "git status shows four modified-or-untracked files from this pass, all under local/server.py and local/tests/. board.config.json, exporters/board_config.py and local/tests/test_config_local.py carry only the earlier round-1 build's changes, untouched by this pass. No file under exporters/export_*.py, exporters/derive.py, exporters/refresh.py or site/** was written; site/index.html is read by a test, which is what the server itself does."
+    }
+  ],
+  "not_done": [
+    {
+      "ref": "CR-005-12",
+      "reason": "The spec text is not amended. docs/backlog/specs/pbi-005-local-server.md is an approved artefact outside this PBI's allowed areas and its gate is passed, so adding handle_expect_100 to the section 4.3 enumeration is the owner's decision at the next revision. The behaviour itself needs no code change (the finding says so) and is now pinned by a test."
+    },
+    {
+      "ref": "Verification tier",
+      "reason": "This change touches executable code on a security-relevant surface (the request gate and the refusal shapes), so it is tier 3. All three configured suites were run to completion from the worktree root and are green, which is the canonical run this PBI owes; but the quality verdict is code-reviewer's, not mine, and the 505 shape fix in particular deserves a reviewer's eye because it changes what a HTTP/0.9 request receives."
+    }
+  ],
+  "follow_ups": [
+    {
+      "ref": "CR-005-12 / spec section 4.3",
+      "owner": "owner",
+      "note": "If pbi-005-local-server.md is ever revised, add handle_expect_100 to the list of framework paths that answer before the gate, alongside the 400, 414, 431, 501 and 505 cases it already names."
+    },
+    {
+      "ref": "505 / bad-version-400 and genuine HTTP/0.9 requests",
+      "owner": "code-reviewer",
+      "note": "The fix makes _respond_plain answer as HTTP/1.1 whenever request_version is still HTTP/0.9. A real HTTP/0.9 client (a two-word request line) would now receive a status line and headers it does not understand. No browser sends HTTP/0.9 and AC-SV2 requires the uniform shape, so this is judged the right trade, but it is a deliberate behaviour change and worth a reviewer's confirmation."
+    },
+    {
+      "ref": "local/server.py section 4.3 / log_error",
+      "owner": "code-writer (a later pass)",
+      "note": "Section 4.3 says log_error still writes the framework's own message, including the offending token, to stderr. Because send_error is overridden and does not call log_error, it never does: the framework's own diagnostic wording is lost, and only the (now escaped) request line and status reach stderr through log_request. Not in the round-1 findings and not fixed here, to keep the diff to what was asked."
+    },
+    {
+      "ref": "local/tests/server_support.py tearDown",
+      "owner": "code-writer (a later pass)",
+      "note": "tearDown still calls shutil.rmtree(self.tmp, True). Now that the connection is closed deterministically, ignore_errors could be dropped so a future handle leak fails the suite instead of being masked. Left alone here because a strict rmtree on Windows can fail for reasons that have nothing to do with this module, and the leak is pinned directly by test_stop_closes_the_read_only_connection."
+    },
+    {
+      "ref": "local/server.py _serve_events and _respond_plain except clauses",
+      "owner": "code-writer (a later pass)",
+      "note": "Both still list BrokenPipeError, ConnectionResetError and socket.timeout beside OSError, which is the same redundancy CR-005-03 named in _handle. The finding scoped itself to _handle and called those two 'correctly narrow', so they were left as they are; tidying them is cosmetic."
+    }
+  ]
+}

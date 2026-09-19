@@ -1,0 +1,148 @@
+{
+ "schema_version": "1",
+ "audit": {
+  "agent": "code-reviewer",
+  "as_of_date": "2026-09-11",
+  "mode": "diff",
+  "scope": "PBI-024 carried-tab marker (FR-190 / AC-125), round 1: the uncommitted working-tree diff in C:/Users/jdk/dispatch-board-worktrees/PBI-024 (branch pbi/PBI-024-carried-marker, base origin/main 12c197a), four files: exporters/export_board.py, tests/test_export_board.py, CLAUDE.md, local/tests/test_conformance.py. Intent rung 2 (work-item AC): the criteria in docs/backlog/pbi/PBI-024.md, cross-checked against PRD FR-153/FR-190/FR-191/AC-125/AC-126 and spec row 13. None of these prescribes an approach, so this is an AC-alignment pass, not a deviation assessment. Grounding path: repo suites run read-only (tests 271 OK, page 68/68, local/tests 90 OK), plus a throwaway probe of carried() and main() in a scratchpad temp out/. Security is reasoning-only (no Touchstone SARIF).",
+  "summary": "Change class: standard. 0 CRITICAL, 0 HIGH, 1 MEDIUM, 2 LOW, across correctness, maintainability and test-adequacy. Security: no code-level issue (the change adds no new input source, network, subprocess or authz path). AC-alignment: AC-125, Stable while carried, Clears on recovery, Scope, Docs, Out of scope and Local conformance test are all met; the close-out criterion cannot be verified yet (not_audited). carriedSince is set once at the first carry, as UTC with a Z. Re-serialising a file main() wrote gives exactly its bytes plus the marker (probe-verified), later carries are byte-identical, the marker is dropped on recovery, and rebuilt tabs never pass through carried(). The conformance change is limited to the one approved method and is not weaker. Scope: only the four allowed files. The conditions: close the malformed-input gap in carried() (CR-PBI024-01); the two LOWs are advisory. Flag-only: nothing was changed, staged, committed, pushed or deployed, and refresh.py was not run.",
+  "sensitivity": "sensitive",
+  "verdict": "GO-WITH-CONDITIONS"
+ },
+ "findings": [
+  {
+   "id": "CR-PBI024-01",
+   "severity": "MEDIUM",
+   "title": "A corrupt kept tab can now stop the export of the whole board: carried() catches only ValueError, so deep nesting or a lone surrogate escapes its guard",
+   "subject": {
+    "type": "file",
+    "id": "exporters/export_board.py:376-384",
+    "name": "carried() malformed-input guard"
+   },
+   "evidence": [
+    {
+     "field": "exporters/export_board.py:376-379",
+     "value": "try: doc = json.loads(raw.decode(utf-8)) / except ValueError: return raw  -- RecursionError is not a ValueError subclass",
+     "sensitive": false
+    },
+    {
+     "field": "exporters/export_board.py:384",
+     "value": "return json.dumps(doc, ensure_ascii=False, indent=1).encode(utf-8)  -- outside the try; encode raises UnicodeEncodeError for a lone surrogate",
+     "sensitive": false
+    },
+    {
+     "field": "probe (scratchpad temp out/, two projects, both sources missing)",
+     "value": "kept file with a 200000-deep nested array inside an object: main() raises an uncaught RecursionError (traceback, exit 1). Kept file holding the valid JSON escape for U+D800: UnicodeEncodeError, caught at export_board.py:424-426 and reported as export_board: utf-8 codec cannot encode ... surrogates not allowed; nothing exported, exit 2. In both cases the other, healthy project is not exported either.",
+     "sensitive": false
+    },
+    {
+     "field": "existing convention",
+     "value": "export_sessions.py:194 and export_catalogue.py:95,110 catch (ValueError, RecursionError) for deeply nested JSON",
+     "sensitive": false
+    }
+   ],
+   "impact": "Before this change the kept bytes were never parsed, so no content of a kept file could stop the export. Now two members of the malformed-input class that the docstring promises to tolerate (failing to parse it must not stop the export of every project) stop the export of every project. refresh.py then pushes nothing, and the board goes stale until someone finds and hand-fixes the file under out/projectTabs. The input is internal (main() cannot itself write a lone surrogate or deep nesting), so reaching it takes a hand-edited or corrupted file. The realistic truncation case is handled. That is why this is MEDIUM rather than HIGH, but the blast radius is the whole board.",
+   "remediation": "Treat the whole parse-and-re-serialise as one guarded step. Catch (ValueError, RecursionError) around both json.loads and the json.dumps/encode, for example by moving the encode inside the try, and return raw on failure, as export_sessions and export_catalogue do. A warning on stderr naming the file that could not be marked would help. Add both inputs (deep nesting and the U+D800 escape) to test_a_kept_file_that_is_not_a_json_object_is_kept_as_it_was (tests/test_export_board.py:472), asserting exit 0, the bytes unchanged, and the other project still exported.",
+   "refs": [
+    "Error Handling at Boundaries",
+    "Consistency With Existing Code",
+    "CWE-20 (robustness framing; internal input, so correctness not security)"
+   ],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-PBI024-02",
+   "severity": "LOW",
+   "title": "The UTC conversion and a second carry after recovery are untested: a regression in either would pass all suites",
+   "subject": {
+    "type": "change",
+    "id": "exporters/export_board.py:395; tests/test_export_board.py:19",
+    "name": "since derivation and carry lifecycle tests"
+   },
+   "evidence": [
+    {
+     "field": "exporters/export_board.py:395",
+     "value": "since = datetime.fromisoformat(stamp).astimezone(timezone.utc).strftime(%Y-%m-%dT%H:%M:%SZ)",
+     "sensitive": false
+    },
+    {
+     "field": "tests/test_export_board.py:19; local/tests/test_conformance.py:22,418",
+     "value": "every now passed is +00:00 (NOW, CARRIED, LATEST, the conformance NOW and 2026-09-12T09:00:00+00:00), so a mutation that drops .astimezone(timezone.utc) or just rewrites the offset as Z still passes",
+     "sensitive": false
+    },
+    {
+     "field": "tests/test_export_board.py:442",
+     "value": "test_a_tab_whose_source_comes_back_... stops at recovery. Nothing checks that a later loss of the source starts a new carry with a fresh carriedSince",
+     "sensitive": false
+    }
+   ],
+   "impact": "Production always passes an aware UTC stamp (export_board.py:394), so nothing is broken today, and the probe confirmed +01:00 converts correctly. But the one line that makes the value UTC with a Z has no test of its own, and the documented set/clear/set-again lifecycle is only partly pinned. A naive now, which only a test caller can pass, would be read as local time with no test noticing.",
+   "remediation": "Add a keep-last case with now 2026-09-11T09:30:00+01:00 that expects carriedSince 2026-09-11T08:30:00Z. Extend the recovery test, or add one, so the source goes missing again after recovery and the new carriedSince equals the time of that later run, not the first one.",
+   "refs": [
+    "Testing Discipline"
+   ],
+   "category": "test-adequacy"
+  },
+  {
+   "id": "CR-PBI024-03",
+   "severity": "LOW",
+   "title": "The tab serialisation is spelled out twice, and the guarantee that the marker is the only difference depends on the two staying in step",
+   "subject": {
+    "type": "file",
+    "id": "exporters/export_board.py:383-384",
+    "name": "duplicated serialisation in carried() and main()"
+   },
+   "evidence": [
+    {
+     "field": "exporters/export_board.py:383-384",
+     "value": "# The same serialisation as main() writes a rebuilt tab with ... json.dumps(doc, ensure_ascii=False, indent=1).encode(utf-8)",
+     "sensitive": false
+    },
+    {
+     "field": "exporters/export_board.py:432-433",
+     "value": "io.open(..., w, encoding=utf-8, newline=LF) + json.dump(body, f, ensure_ascii=False, indent=1)",
+     "sensitive": false
+    }
+   ],
+   "impact": "The two are identical today (probe: re-serialising a file written by main() gives exactly its bytes plus the marker). If either copy changes, for example indent or sort_keys, first-carry files silently stop matching rebuilt ones. The refresh.py digest is semantic (refresh.py:75-78), so this would not cause a spurious push. It would make the byte-level claims in CLAUDE.md and in the comment false with no test catching it, because the first-carry assertions compare parsed documents.",
+   "remediation": "Put the format in one small helper that returns json.dumps(doc, ensure_ascii=False, indent=1).encode(utf-8). Use it in carried() and in the write loop of main() (writing bytes), then drop the same-serialisation comment. Optionally assert in one test that the first carry equals the original bytes minus the closing brace plus the marker line.",
+   "refs": [
+    "Consistency With Existing Code",
+    "Naming & Readability"
+   ],
+   "category": "maintainability"
+  }
+ ],
+ "not_audited": [
+  {
+   "ref": "PBI-024 close-out criterion (suites green on the head commit; code-reviewer GO)",
+   "reason": "Not verifiable: the change is uncommitted, so there is no head commit to run on. The suites were green on the working tree (271 / 68 / 90). Re-run them once it is committed."
+  },
+  {
+   "ref": "Touchstone SARIF",
+   "reason": "Not provided; the security dimension is reasoning-only. The diff adds no new input source, subprocess, network or authorisation path."
+  },
+  {
+   "ref": "refresh.py end to end against the real out/",
+   "reason": "Not run, on purpose. The interaction was judged from the refresh.py source (plan() at refresh.py:102-185, digest() at refresh.py:75-78) and from the refresh.plan the conformance test runs over a synthetic out/."
+  }
+ ],
+ "follow_ups": [
+  {
+   "ref": "refresh.py interaction (for the record, not a defect)",
+   "note": "The first carry makes one set per kept tab, plus an updatedAt write to the statusDoc of that project (changed and relevant, refresh.py:171-178). Later carries make none, because the digest drops only generatedAt and the carried content is stable. If a push fails and --commit is skipped, the next run re-offers the same first carriedSince, since the value lives on disk in out/. The mass-delete guard (refresh.py:138-144) is unaffected, because a carry never deletes a file. The CLAUDE.md Refresh bullet documents the one push; the statusDoc bump follows from the existing updatedAt rule."
+  },
+  {
+   "ref": "local/tests/test_conformance.py:398-424",
+   "note": "Only the approved method changed; the Fixture and every other test are untouched and the count stays 90. It is not weaker: the old first-carry byte equality is retired by FR-190 on purpose, and it now checks exact parsed equality with the first export plus carriedSince, that the first export has no marker, and byte stability on a later run. The third run on a copy of out/projectTabs is faithful: export_board reads only out/projectTabs (export_board.py:398,417) and otherwise only removes legacy top-level tab files (443-446), so the copy hides nothing."
+  },
+  {
+   "ref": "CLAUDE.md projectTabs row and Refresh bullet",
+   "note": "Accurate against the code. When CR-PBI024-01 is fixed, consider one clause saying a kept file that is not a readable JSON object is kept unmarked, so the FR-191 warning will not show for it."
+  },
+  {
+   "ref": "docs/prd/dispatch-board.md FR-153 (outside allowed_areas)",
+   "note": "FR-153 still says keep that tab last export unchanged and cites test_kept_tabs_are_byte_identical as met. Under FR-190 the kept export gains carriedSince once, so the requirements owner should add: apart from carriedSince (FR-190). This agrees with the follow-up in the change report."
+  }
+ ]
+}

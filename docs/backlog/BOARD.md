@@ -9,24 +9,19 @@
 
 <!-- PBI-016 (Unraid deployment) was moved to Later by the owner on 2026-09-11 ("Move PBI16 to later"). It is now a Future iterations idea in docs/backlog/specs/dispatch-board.md, shown in the Backlog tab's Later group, and is no longer a planned work item. Local convention: a PBI de-scoped this way keeps its file with `status: Later` and sits in no BOARD section. The SPEC has no deferred state; this gap is noted for the backlog-delivery plugin owner. -->
 
+<!-- BOARD-tidy 2026-09-12, PBI-011 close-out: PBI-011 is Done (PR #18, a23afd8), so its dependants PBI-014 and PBI-026 are no longer blocked by it. PBI-014 still waits on PBI-003 (Done), so it is dependency-clear; PBI-026 is dependency-clear. Both remain Proposed — promotion to Ready is the owner's curation act. PBI-026 is local-app (Medium) and touches only `local/records*` and `local/tests/**`, so it collides with neither PBI-005 nor PBI-025. -->
+
+<!-- BOARD-tidy 2026-09-12, PBI-005 close-out: PBI-005 is Done (PR #19, 3e3ec44), so PBI-006 is now dependency-clear — both PBI-003 and PBI-005 are Done. PBI-007 still waits on PBI-006. Nothing is in flight, so no conflict group is occupied: PBI-006 (page), PBI-025 and PBI-026 (local-app, Medium each) could all start. Note PBI-025 shares `board.config.json` and `exporters/board_config.py` with what PBI-005 just landed, so it must branch from main at or after 3e3ec44. PBI-007 also owns AC-68's in-browser demonstration leg, which PBI-005 deliberately did not claim (approved spec §7, §10). All remain Proposed — promotion to Ready is the owner's curation act. -->
+
 | ID | Title | Depends on | Notes |
 |----|-------|------------|-------|
-| PBI-002 | Page fixes: FR-83 live-state tile, stale-tab callout, token relabel, design-rule deviations, blank-load investigation (FR-85) | [PBI-001] | Decomposed from the approved spec, 2026-09-11 |
-| PBI-004 | Shared derivation module: extract the exporters' parsing and derivation into an importable module, behaviour unchanged | [PBI-001] | Decomposed from the approved spec, 2026-09-11 |
-| PBI-019 | Collector: incremental transcript and catalogue reads into SQLite, mass-delete guard, network-path guard (FR-86–FR-88; FR-103 collector half) | [PBI-003, PBI-004] | Decomposed from the approved spec, 2026-09-11 |
-| PBI-005 | Local server: page, data snapshot, live push, 127.0.0.1 binding, Host and Origin checks, network-path guard (FR-92–FR-94, FR-96) | [PBI-003, PBI-004] | Decomposed from the approved spec, 2026-09-11 |
-| PBI-006 | Page data-adapter seam: store adapter and local API adapter (FR-97–FR-99) | [PBI-003, PBI-005] | Decomposed from the approved spec, 2026-09-11 |
-| PBI-007 | Log-on start through Task Scheduler and the on-PC deployment end to end (FR-90, FR-91, NFR-17, NFR-18, NFR-21) | [PBI-019, PBI-005, PBI-006] | Decomposed from the approved spec, 2026-09-11 |
-| PBI-008 | Stale-board warning: "data as of" header (feature 1; FR-103 refresher half, FR-104, FR-105) | [PBI-003, PBI-004] | Decomposed from the approved spec, 2026-09-11 |
-| PBI-009 | "Waiting on you" panel: detectors for pending questions, idle-after-asking and permission refusals (feature 2, FR-106–FR-110) | [PBI-004] | Decomposed from the approved spec, 2026-09-11 |
 | PBI-010 | Work-item status derived from runs, shown beside the hand-kept state during a shadow period (feature 4, FR-113) | [PBI-004] | Decomposed from the approved spec, 2026-09-11 |
-| PBI-011 | Review findings ledger (feature 3, FR-111, FR-112) | [PBI-004] | Decomposed from the approved spec, 2026-09-11 |
 | PBI-012 | Test and coverage trend, cost per work item and per agent type (features 5 and 7, FR-114–FR-116, FR-119, FR-120) | [PBI-004] | Decomposed from the approved spec, 2026-09-11 |
-| PBI-014 | Run detail (feature 8, FR-121) | [PBI-003, PBI-011] | Decomposed from the approved spec, 2026-09-11 |
 | PBI-020 | Timeline view (feature 9; FR-101 filled, FR-122–FR-124) | [PBI-003, PBI-004] | Decomposed from the approved spec, 2026-09-11 |
 
 ---
 
+<!-- BOARD-tidy 2026-09-19, PBI-014 close-out: PBI-014 is Done (PR #24, 4bbbad8; AC-82 and NFR-22 approved by the owner on rendered screenshots). Its ledger row is gone, so the `page` group's High-risk slot is free. PBI-027 is now dependency-clear (local-app); PBI-007 still waits on PBI-027. PBI-009, PBI-010, PBI-012 and PBI-020 remain serial in the `page` group. -->
 ## Ready
 
 <!-- Promotion notes:
@@ -35,7 +30,8 @@
      - PBI-018 was promoted 2026-09-11 under the same standing instruction, once its dependency PBI-017 reached Done. It goes before PBI-023: it is next in the approved plan order and unblocks PBI-001, PBI-003 and PBI-013. Both are in the page group at High risk, so they run one at a time.
      - PBI-021 was promoted 2026-09-11. The owner's external-review approval is recorded in its PBI file, verbatim: "approve PBI-021". The delete batch still needs its own approval (AC-S2).
      - PBI-003 was started 2026-09-11 under the standing instruction, once its dependency PBI-018 reached Done. It is local-app work at Low risk, so it runs in parallel with PBI-023 (page).
-     - PBI-001 and PBI-013 were started 2026-09-11 under the standing instruction, once their dependency PBI-018 was Done and PBI-023 (page group, High risk) had deregistered. They are in different groups (exporters and page), so they run in parallel. -->
+     - PBI-001 and PBI-013 were started 2026-09-11 under the standing instruction, once their dependency PBI-018 was Done and PBI-023 (page group, High risk) had deregistered. They are in different groups (exporters and page), so they run in parallel.
+     - PBI-024 (intake 2026-09-11, a banked follow-up from PBI-001's finalize) and PBI-002 were started 2026-09-11 under the standing instruction, once their dependency PBI-001 reached Done (PR #10, d4023c6). They are in different groups (exporters Medium, page High), so they run in parallel. ~~PBI-004 waits for PBI-024, because both change exporters/export_board.py.~~ PBI-024 Done 2026-09-11 (PR #13, 7bcd2fd), so PBI-004 is no longer held back by it. -->
 
 | ID | Title | Depends on | Conflict group | Conflict risk |
 |----|-------|------------|----------------|---------------|
@@ -46,6 +42,18 @@
 
 | ID | Title | Branch | Worktree | Session tag | Started (UTC) |
 |----|-------|--------|----------|-------------|---------------|
+| PBI-007 | Log-on start through Task Scheduler and the on-PC deployment end to end (FR-90, FR-91, NFR-17, NFR-18, NFR-21) | `pbi/PBI-007-logon-start` | C:/Users/jdk/dispatch-board-worktrees/PBI-007 | 7e0c4f3c | 2026-09-12T16:05:00Z |
+| PBI-027 | Local collector publishes a run's files relative to the repository, so the local app matches the board | `pbi/PBI-027-collector-repo` | C:/Users/jdk/dispatch-board-worktrees/PBI-027 | 7e0c4f3c | 2026-09-19T10:26:53Z |
+| PBI-009 | "Waiting on you" panel: detectors for pending questions, idle-after-asking and permission refusals (feature 2, FR-106–FR-110) | `pbi/PBI-009-waiting-on-you` | C:/Users/jdk/dispatch-board-worktrees/PBI-009 | 7e0c4f3c | 2026-09-19T10:26:53Z |
+<!-- PBI-027 and PBI-009 started 2026-09-19 under the owner's standing instruction to keep building the backlog, the moment PBI-014's close-out freed the `page` group's High-risk slot. PBI-027 is local-app (Medium) and touches only `local/collector*`, `local/records*` and `local/tests/**`; PBI-007 (local-app, Low) is idle, waiting on it, so they do not collide. PBI-009 takes the page slot; its spec gate passed 2026-09-12 (revision 3), and it builds on the spec's recommended defaults for the owner rows 1a, 1b and 2 unless the owner says otherwise. Tier resolved `assisted` (earned lift `supervised`). -->
+<!-- PBI-007 and PBI-014 started 2026-09-12 under the owner's standing instruction to keep building the backlog, after the owner again asked why nothing was in flight. Only these two can build concurrently: five of the six remaining items (PBI-009, PBI-010, PBI-012, PBI-014, PBI-020) are all `page` group at High risk, and the ledger guard permits one High-risk row per group, so PBI-014 takes that single slot. PBI-007 is local-app at Low risk, a different group, so it runs alongside. Both have `requires_spec: false` and all dependencies Done (PBI-007: PBI-019, PBI-005, PBI-006; PBI-014: PBI-003, PBI-011). `merge_allowed_by_agent` set true on both under the owner's standing merge authorisation of 2026-09-12. Meanwhile the spec gates for PBI-009 and PBI-020 run in parallel — spec authoring writes only under `docs/backlog/specs/`, so it collides with nothing and uses the time while the page slot is held. PBI-007 also owns AC-68's in-browser demonstration leg, which PBI-005 deliberately did not claim. -->
+<!-- PBI-025 entered its build 2026-09-12 once its spec gate passed (revision 3, round 2 APPROVE-WITH-NOTES, all notes applied) and PBI-026 landed, which retired the `local/tests/**` overlap the earlier note held it behind. It runs beside PBI-006: different conflict groups (local-app Medium vs page High) and no shared file — PBI-006 touches only `site/**` and `tests/page.test.mjs`. `merge_allowed_by_agent` changed from `false` to `true` under the owner's standing merge authorisation of 2026-09-12. -->
+<!-- PBI-006, PBI-025 and PBI-026 promoted and started 2026-09-12 under the owner's standing instruction to keep building the backlog ("This is for dispatch board. Lets keep building the backlog"; "Continue building"), after the owner asked why nothing was in flight. Three run at once because they do not collide: PBI-006 takes the page group's single High-risk slot, freed by PBI-011's close-out; PBI-026 is local-app (Medium) and touches only `local/records*`, `local/records.shapes.json` and `local/tests/**`; PBI-025 is local-app (Medium) but is at its SPEC gate only, which writes solely under `docs/backlog/specs/`, so it cannot collide with PBI-026 despite sharing the group and the `local/tests/**` grant. PBI-025 must not enter its build until PBI-026 lands or its own areas are re-checked. All dependencies are Done: PBI-006 needs PBI-003 and PBI-005; PBI-025 needs PBI-019; PBI-026 needs PBI-011. -->
+<!-- PBI-011 promoted and started 2026-09-12 under the owner's standing instruction to keep building. It takes the page group's single High-risk slot, which PBI-008's close-out freed. merge_allowed_by_agent is true under the owner's standing merge authorisation of 2026-09-12. -->
+<!-- PBI-019 and PBI-008 resumed 2026-09-11T22:08:17Z from Blocked on the owner's approval, verbatim: "ok and approved. Continue building" (PBI-019: rename the test constant the push rail flagged; PBI-008: add local/tests/test_conformance.py to allowed_areas). -->
+<!-- PBI-008 promoted and started 2026-09-11 under the owner's instruction, verbatim: "This is for dispatch board. Lets keep building the backlog". Its dependencies PBI-003 and PBI-004 are Done. It is first of the page PBIs in the plan's order; the page group became free when PBI-002 closed. It runs beside PBI-019 (local-app, Medium): different groups, and FR-103's two halves write the same lastRefresh record shape. -->
+<!-- PBI-019 promoted and started 2026-09-11 under the owner's instruction, verbatim: "This is for dispatch board. Lets keep building the backlog". Its dependencies PBI-003 and PBI-004 are Done. PBI-005 (same local-app group, Medium) waits for it: both edit board.config.json and exporters/board_config.py, and PBI-019 is on the critical path. -->
+<!-- PBI-004 promoted and started 2026-09-11 on the owner's instruction, verbatim: "This is for dispatch board. Lets keep building the backlog". Its dependency PBI-001 is Done, and PBI-024, which it waited for (both change exporters/export_board.py), is Done. The only active row, PBI-002, is in the page group, so there is no conflict. -->
 
 ---
 
@@ -53,7 +61,6 @@
 
 | ID | Title | PR | Review verdict | Review note path |
 |----|-------|----|----------------|-----------------|
-| PBI-001 | Exporter hardening: FR-80–FR-82, FR-84, carried-tab marker, config type checks, refuse an answers collection (FR-133) | [#10](https://github.com/jdk-official/dispatch-board/pull/10), branch `pbi/PBI-001-exporter-hardening`, squash; waiting for the owner's merge | GO-WITH-CONDITIONS (round 2; conditions applied and checked; round 1 NO-GO fixed) | docs/backlog/reviews/PBI-001/findings.json |
 
 ---
 
@@ -75,3 +82,15 @@
 | PBI-003 | Record shapes and SQLite schema: session, run, project, tab, status, last-refresh and catalogue records (FR-100 except the answer record; FR-101 fields; FR-102) | https://github.com/jdk-official/dispatch-board/pull/7 | [↪](done-log.md#pbi-003) |
 | PBI-021 | Store leftovers clean-up: export the six unused documents to snapshot/, then delete them with the owner's explicit approval | https://github.com/jdk-official/dispatch-board/pull/2 | [↪](done-log.md#pbi-021) |
 | PBI-013 | Usage limit forecast (feature 6, FR-117, FR-118) | https://github.com/jdk-official/dispatch-board/pull/9 | [↪](done-log.md#pbi-013) |
+| PBI-001 | Exporter hardening: FR-80–FR-82, FR-84, carried-tab marker, config type checks, refuse an answers collection (FR-133) | https://github.com/jdk-official/dispatch-board/pull/10 | [↪](done-log.md#pbi-001) |
+| PBI-024 | Carried-tab marker: the board exporter writes carriedSince on a tab it keeps from an earlier export (FR-190) | https://github.com/jdk-official/dispatch-board/pull/13 | [↪](done-log.md#pbi-024) |
+| PBI-004 | Shared derivation module: extract the exporters' parsing and derivation into an importable module, behaviour unchanged | https://github.com/jdk-official/dispatch-board/pull/14 | [↪](done-log.md#pbi-004) |
+| PBI-002 | Page fixes: FR-83 live-state tile, stale-tab callout, token relabel, design-rule deviations, blank-load investigation (FR-85) | https://github.com/jdk-official/dispatch-board/pull/12 | [↪](done-log.md#pbi-002) |
+| PBI-019 | Collector: incremental transcript and catalogue reads into SQLite, mass-delete guard, network-path guard (FR-86–FR-88; FR-103 collector half) | https://github.com/jdk-official/dispatch-board/pull/15 | [↪](done-log.md#pbi-019) |
+| PBI-008 | Stale-board warning: 'data as of' header (feature 1; FR-103 refresher half, FR-104, FR-105) | https://github.com/jdk-official/dispatch-board/pull/16 | [↪](done-log.md#pbi-008) |
+| PBI-011 | Review findings ledger (feature 3, FR-111, FR-112) | https://github.com/jdk-official/dispatch-board/pull/18 | [↪](done-log.md#pbi-011) |
+| PBI-005 | Local server: page, data snapshot, live push, 127.0.0.1 binding, Host and Origin checks, network-path guard (FR-92-FR-94, FR-96) | https://github.com/jdk-official/dispatch-board/pull/19 | [↪](done-log.md#pbi-005) |
+| PBI-026 | Local record shapes accept the findings tab, so the local app can hold what the findings ledger publishes | https://github.com/jdk-official/dispatch-board/pull/20 | [↪](done-log.md#pbi-026) |
+| PBI-006 | Page data-adapter seam: store adapter and local API adapter (FR-97-FR-99) | https://github.com/jdk-official/dispatch-board/pull/21 | [↪](done-log.md#pbi-006) |
+| PBI-025 | Local tab and status records: the collector writes each project's tabs and status into the local database | https://github.com/jdk-official/dispatch-board/pull/23 | [↪](done-log.md#pbi-025) |
+| PBI-014 | Run detail (feature 8, FR-121) | https://github.com/jdk-official/dispatch-board/pull/24 | [↪](done-log.md#pbi-014) |

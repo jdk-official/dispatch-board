@@ -1,0 +1,8 @@
+{
+  "schema_version": "1",
+  "ci": {
+    "provider": "none",
+    "status": "absent",
+    "head_sha": "d1e9d024c0302facddf2d4404208c2654906ab62"
+  }
+}

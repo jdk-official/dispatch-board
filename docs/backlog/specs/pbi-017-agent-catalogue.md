@@ -3,7 +3,7 @@ title: PBI-017 — Agent catalogue tab (per-PBI spec)
 status: approved
 revision: 3
 parent_spec: docs/backlog/specs/dispatch-board.md (revision 5, approved)
-pbi: docs/backlog/pbi/PBI-017.md
+pbi: docs/backlog/pbi/PBI-017-agent-catalogue.md
 ---
 
 # PBI-017 — Agent catalogue tab: per-PBI spec

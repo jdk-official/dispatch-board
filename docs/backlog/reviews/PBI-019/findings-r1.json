@@ -1,0 +1,102 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-11",
+    "mode": "diff",
+    "scope": "The uncommitted change in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-019 (branch pbi/PBI-019-collector, base d10d9e6): git diff of board.config.json and exporters/board_config.py, plus the untracked local/collector.py, local/db.py, local/tests/collector_support.py, test_collector.py, test_collector_equivalence.py, test_config_local.py and test_db.py, all read in full, against exporters/export_sessions.py and derive.py as context. Intent rung 1 (plan): docs/backlog/specs/pbi-019-collector.md revision 3 (spec gate passed), with the full deviation assessment; work item docs/backlog/pbi/PBI-019.md; builder claims in change-report.json. Grounding: repo suites run read-only in the worktree (tests/ 300 OK, page 89/89, local/tests 186 OK; git status unchanged; no out/ created), plus throwaway probes run from a scratch folder with bytecode writing off: a config re-read in loop mode, a non-object config at startup, a directory at the database path, fixture line counts, two connections taking turns on one database, and a decodable but malformed state row. Security is reasoning-only (no Touchstone SARIF).",
+    "summary": "Change class: large/sensitive (a new database writer, schema-adjacent state tables, destructive deletes and drops, a public CLI). 0 CRITICAL / 1 HIGH / 1 MEDIUM / 3 LOW across correctness, maintainability and test-adequacy; no security finding. Verdict NO-GO because one HIGH is unresolved; it is a small fix. Confirmed sound, by reading the code and running the tests: AC-63 incremental reads (exactly one seek to the old size, only the appended bytes, partial trailing lines held back, truncation and replacement reset from 0, an unchanged file never opened, a touched mtime re-derives without opening, dev and ino stored as TEXT, st_ino 2**64-1 tested); AC-64 equivalence, a genuine comparison of db.stored() with the files export_sessions.main writes to a separate folder (not a self-comparison), one-shot, incremental, after a restart and with exclusion; copy-then-swap on failed feeds (working copies deepcopied; the main failure path discards every working copy and cursor; tests prove same seeks and counted-once); the generic tagged codec and key-set reset; content-free exclusion markers with stale-marker deletion; the opening sequence (pre-check reads only, a non-database file refused unmodified with no -wal or -shm, a newer version and statuses(x) refused unmodified, WAL, create_schema, all three state tables dropped together inside BEGIN IMMEDIATE, re-check); the network-path guard order (string, absolute form, drive type, realpath; stop at the first hit); the mass-delete guard decided before any upsert; age pruning keeping state (R2-1); one BEGIN IMMEDIATE per pass with ROLLBACK and cache drop on failure; lastRefresh on every committed pass; per-record savepoints. A probe showed that two connections taking turns stay equal to the exporter. Stdlib only; every file within the allowed areas; no existing test edited (186 = 90 + 96); no network in tests (UNC cases stop at the string check; realpath and drive type patched). Deviation assessment: builder choice 1 (JSON round trip before comparison and to_row) is a justified-improvement. Choice 2: a session reset re-reading its agent files conforms to spec 4.3 (its files); resetting only the agent on an agent key-set mismatch is a justified-improvement (agent state is independent, same outcome, less I/O). Choice 3 (the stored-cwd shortcut only while the file id matches and the file has not shrunk) is a justified-improvement. Choice 4 (steps of 3 after line 12) is justified: the longest fixture transcript has 10 lines, so the 3-step branch never runs and every line boundary is exercised today. The extra root and warn parameters on network_path and open_db are justified (testability). One problematic-departure: a DatabaseError at connect (step 3) exits 1, not 2 (CR-PBI019-03). No plan-defect. Criteria: 24 of 25 met as the builder claims; the AC-CL12 exit 2 for a config error fails for a config whose top level is not an object (CR-PBI019-01); the close-out waits on a commit and this gate. Flag-only: nothing in the worktree was changed, staged, committed, run as a service or deployed.",
+    "sensitivity": "sensitive",
+    "verdict": "NO-GO"
+  },
+  "findings": [
+    {
+      "id": "CR-PBI019-01",
+      "severity": "HIGH",
+      "title": "One bad save of board.config.json stops the scheduled collector for good: a config whose top level is not a JSON object ends loop mode (exit 1), and at startup it escapes main() as a traceback instead of exit 2",
+      "subject": {"type": "change", "id": "local/collector.py:566-576,597-604", "name": "collector.main config load and the per-pass config re-read in loop mode"},
+      "evidence": [
+        {"field": "local/collector.py:571-576", "value": "cfg = load(); path = db_path or board_config.local(cfg)[\u0027databasePath\u0027] ... except (OSError, ValueError) as e: warn(...); return 2", "sensitive": false},
+        {"field": "local/collector.py:598-604", "value": "fresh = load(); if not db_path and board_config.local(fresh)[\u0027databasePath\u0027] != path: ... except (OSError, ValueError) as e: warn(\u0027the config could not be re-read ...\u0027)", "sensitive": false},
+        {"field": "probe: loop mode, db path from local.databasePath, config file rewritten to [] after the first pass", "value": "exit 1 after 1 pass; stderr: collector: failed (AttributeError: \u0027list\u0027 object has no attribute \u0027get\u0027). The outer except Exception ends the loop", "sensitive": false},
+        {"field": "probe: --once with a config file holding null", "value": "UNCAUGHT AttributeError: \u0027NoneType\u0027 object has no attribute \u0027get\u0027 escapes collector.main()", "sensitive": false}
+      ],
+      "impact": "Spec section 5 says the config is re-read on every pass, a failed or refused pass is reported, and the loop goes on; a config type error is an exit-2 refusal. Here, one save that parses as a JSON array, null, a string or a number makes board_config.local raise AttributeError. That error is outside the (OSError, ValueError) catch, so a Task Scheduler collector (PBI-007) exits. The board then stalls, and until PBI-007 captures stderr, the reason is invisible. With --once the same input gives a Python traceback and exit 1 instead of the documented 2. It is reachable because the owner edits this file by hand to link sessions. It is a crash, not a degrade: the process that must stay up ends.",
+      "remediation": "Make load() reject anything that is not a dict with a ValueError such as: the config must be a JSON object. Then both the startup path (exit 2) and the reload path in loop mode (warn, keep the last config, carry on) handle it. Alternatively widen the reload catch to Exception, keeping KeyboardInterrupt out. Add two tests: in loop mode, the config file rewritten to [] between passes, where the loop runs a second pass and exits 0 on the patched KeyboardInterrupt; and --once with a null config, which exits 2 naming the problem.",
+      "refs": ["spec pbi-019-collector.md section 5 (loop mode; --once exit 2 for a config error)", "AC-CL12", "Error Handling at Boundaries", "malformed-input class: wrong container type (internal/config trust source)"],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-PBI019-02",
+      "severity": "MEDIUM",
+      "title": "A stored state row that decodes but lacks an expected top-level key fails every pass for every session, instead of resetting that one session as the spec intends for bad state",
+      "subject": {"type": "change", "id": "local/collector.py:133-141,200-205,256", "name": "_session_ok / _agent_ok validation and the entry reads outside the per-session try"},
+      "evidence": [
+        {"field": "local/collector.py:133-136", "value": "_session_ok checks v, parser, the keys of the main cursor and the key set of the derive state, but not the keys of the entry itself (window, result, main present) or the shape of result", "sensitive": false},
+        {"field": "local/collector.py:256", "value": "old_result = entry[\u0027result\u0027] runs before the try at line 257, so a KeyError escapes session() and the pass", "sensitive": false},
+        {"field": "local/collector.py:200", "value": "cur = entry and entry[\u0027main\u0027] runs in excluded(), called under a try that catches only OSError", "sensitive": false},
+        {"field": "probe: one collector_sessions row re-encoded without result, new connection", "value": "pass 0 FAILED whole pass: KeyError result; pass 1 FAILED whole pass: KeyError result (rolled back each time; nothing written)", "sensitive": false}
+      ],
+      "impact": "Spec 4.3 treats the state as a disposable cache: text that cannot be decoded, or a key set that differs from derive, resets that session and re-reads it once. A row that decodes but has the wrong entry shape instead makes every pass roll back. That stops all records and lastRefresh until someone deletes the row by hand, and in loop mode it repeats every interval. Only the collector writes these rows, so the trigger is a future layout change made without a STATE_VERSION bump, a collector bug, or a manual edit. The consequence is total, so the fix belongs here.",
+      "remediation": "Validate the whole entry in _session_ok: the top-level key set equals {v, parser, window, main, state, result}; result is None or a dict with doc, rows and skipped; and the cursor values have the right types. Do the same in _agent_ok for {cursor, state, meta, metaSig}. Any entry that fails is then treated as fresh, which is a reset. Or, more simply, wrap the interpretation of one stored entry so that any exception is a reset of that session. Add a test that drops result (and main, with exclude set) from a stored row: the next pass re-reads that session from 0 and equals the exporter.",
+      "refs": ["spec pbi-019-collector.md section 4.3 (Versioning and resets)", "Error Handling at Boundaries"],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-PBI019-03",
+      "severity": "LOW",
+      "title": "A database path SQLite cannot open (a folder, or no permission) exits 1 as a generic failure instead of the exit-2 refusal the spec prescribes for opening step 3",
+      "subject": {"type": "file", "id": "local/db.py:124", "name": "db.open_db connect outside the try"},
+      "evidence": [
+        {"field": "local/db.py:124-125", "value": "conn = sqlite3.connect(full, isolation_level=None, timeout=TIMEOUT) is followed by try: on the next line, so the connect is not covered", "sensitive": false},
+        {"field": "probe: --once with a directory at the database path", "value": "exit 1; stderr: collector: failed (OperationalError: unable to open database file)", "sensitive": false}
+      ],
+      "impact": "Spec 3.3: any sqlite3.DatabaseError in steps 3 to 8, except database is locked, becomes db.Refused and exit 2. Step 3 is the connect. It sits before the try, so this path is reported as failed with exit 1. This is a problematic-departure, not a data risk. Nothing is written, but an operator or PBI-007 reading exit codes sees a transient failure rather than a configuration to fix.",
+      "remediation": "Move the connect inside the try (conn = None first, and close only when it is set) so that its DatabaseError goes through the same Refused conversion. Add a test with a folder at the database path: exit 2 and a message naming the path.",
+      "refs": ["spec pbi-019-collector.md section 3.3 (A file that is not a database)", "AC-CL1", "Consistency With Existing Code"],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-PBI019-04",
+      "severity": "LOW",
+      "title": "No test covers two collectors taking turns on one database, which is the only guard against a stale cache feeding the same bytes twice",
+      "subject": {"type": "file", "id": "local/collector.py:167-179", "name": "_load cache reuse keyed on connection identity and PRAGMA data_version"},
+      "evidence": [
+        {"field": "local/collector.py:169", "value": "if _cache.get(\u0027conn\u0027) is conn and _cache.get(\u0027version\u0027) == version: return _cache", "sensitive": false},
+        {"field": "local/tests/test_collector.py (read in full)", "value": "no scenario runs passes on two connections with appends between them; the second connection in the Guard test only watches", "sensitive": false},
+        {"field": "probe: connections a, b, a, b, a with one skill call appended before each pass", "value": "records equal the exporter output; eng:tdd count 5 (correct today)", "sensitive": false}
+      ],
+      "impact": "Spec 3.5 relies on this reload for a manual run beside the Task Scheduler one. The code is correct today, as the probe shows, but a regression, for example dropping the data_version comparison, would pass all 186 tests. It would then double-count skill uses and rejects in production.",
+      "remediation": "Add a test that runs passes alternately on two connections to the same file, appending lines before each pass. Assert that the records equal the exporter output and that each appended skill use is counted once.",
+      "refs": ["Testing Discipline", "spec pbi-019-collector.md section 3.5 (two collectors at once)"],
+      "category": "test-adequacy"
+    },
+    {
+      "id": "CR-PBI019-05",
+      "severity": "LOW",
+      "title": "_Pass.session is an 84-line, four-level-nested method that decides reading, feeding, agents, re-derivation, encoding and failure handling at once, which makes the copy-then-swap invariants hard to audit or extend",
+      "subject": {"type": "file", "id": "local/collector.py:249-332", "name": "_Pass.session"},
+      "evidence": [
+        {"field": "local/collector.py:257-322", "value": "an outer try around read_new, a per-agent for loop with its own try/except Exception, post_feed_excluded, and a compound re-derive condition over old_result skipped and running rows, closed by a second except Exception", "sensitive": false}
+      ],
+      "impact": "Not a defect today: the failure-isolation rules of spec 4.3 and 4.4 hold and are tested. But feature PBIs will extend derive state, and this is the method they will touch. Its main-failure boundary depends on which statements sit inside the outer try, so an edit can move a statement across that boundary unnoticed.",
+      "remediation": "When convenient, extract the per-agent step (read, feed, meta, row), returning a small record or raising, and the re-derive decision into their own functions. Keep the outer try around the session as a whole. No change is needed for this PBI to merge once the HIGH is fixed.",
+      "refs": ["Function Size & Complexity"],
+      "category": "maintainability"
+    }
+  ],
+  "not_audited": [
+    {"ref": "Close-out: suites green on the head commit", "reason": "The change is uncommitted, so there is no head commit. All three suites pass on the working tree (300 / 89 / 186). Re-run them on the commit."},
+    {"ref": "Security dimension", "reason": "Touchstone SARIF was not provided, so the security pass is reasoning-only. SQL identifiers come only from module constants; values are bound; the state decoder maps only to set, frozenset and tuple; no process or network call. No finding."},
+    {"ref": "Real transcripts and the by-hand run of the builder", "reason": "Not repeated. Equivalence was judged from the synthetic-fixture tests (run here) and from reading the glue against export_sessions.main lines 195-294."},
+    {"ref": "Non-Windows behaviour", "reason": "Suites and probes ran on Windows 11 with Python 3.14.5 only. The POSIX branches of the network-path guard (no drive-type check) and inode semantics were not exercised."}
+  ],
+  "follow_ups": [
+    "For the builder, optional: promote() reads PRAGMA data_version after COMMIT. Reading it just before COMMIT, while the write lock is still held, removes a theoretical window in which a commit by another writer would be absorbed into the cached version.",
+    "For the builder, optional: in Codec.test_generic_values_round_trip, the entry n = [float(nan)][0:0] is an empty list, so NaN is never round-tripped. Either test NaN (with a NaN-aware comparison) or drop the line.",
+    "For the builder, optional: guard() checks for catalogue deletions, but reasons() iterates only session, run and project, so that branch cannot fire. Say so in a comment, or have reasons() include the catalogue so the check is live.",
+    "For the spec owner, optional: spec 4.1 exclusion step 2 could adopt the condition the builder uses (the file id of the cursor matches and the file has not shrunk) so the spec and the code agree.",
+    "For the test owner: the incremental equivalence test steps every line only up to line 12. The fixtures have at most 10 lines today. If they grow, assert that or keep one-line steps, so AC-CL5 keeps covering every boundary.",
+    "For PBI-005 and the docs: by design (spec S-10 and R2-8), open_db drops all three collector_* tables when any has other columns. A foreign file that passes the records pre-check but has its own table named collector_sessions, collector_agents or collector_excluded would lose it. Worth one line in the operator docs."
+  ]
+}

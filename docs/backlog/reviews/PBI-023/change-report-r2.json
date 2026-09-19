@@ -1,0 +1,104 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-11",
+    "mode": "finding",
+    "change_class": "standard",
+    "scope": "Fix the three code-review conditions on the uncommitted PBI-023 change (worktree C:/Users/jdk/dispatch-board-worktrees/PBI-023, branch pbi/PBI-023-pr-links). CR-PBI023-01: gh pr list must return the 20 most recently updated PRs. CR-PBI023-02: page checks must catch a guard that drops the trailing slash of https://github.com/. CR-PBI023-03: a PR state named like an inherited object member must not crash the GitHub tab. Grounding: ran-suite (python unittest + node page harness; gh faked, never called).",
+    "verdict": "DONE",
+    "summary": "5 files modified (exporters/export_board.py, site/index.html, CLAUDE.md, tests/test_export_board.py, tests/page.test.mjs); 2 page checks added, GH_ARGS updated. python -m unittest discover -s tests: 215 ran, OK. node tests/page.test.mjs: 57 passed, 0 failed (was 55). Mutation (startsWith without trailing slash) on a scratch copy: 55 ok then fails on the lookalike-host check, exit 1; copy deleted. refresh.py not run, out/ untouched, real gh never called. Nothing committed, staged, pushed or deployed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "exporters/export_board.py",
+      "change_kind": "modify",
+      "why": "CR-PBI023-01: PR_LIST adds --search sort:updated-desc so gh picks the 20 most recently updated PRs, not the 20 newest; comments restated; client-side sort kept as a safety net",
+      "acceptance_refs": [
+        "AC1"
+      ]
+    },
+    {
+      "path": "tests/test_export_board.py",
+      "change_kind": "modify",
+      "why": "CR-PBI023-01: GH_ARGS expects the sort qualifier",
+      "acceptance_refs": [
+        "AC1"
+      ]
+    },
+    {
+      "path": "CLAUDE.md",
+      "change_kind": "modify",
+      "why": "CR-PBI023-01: projectTabs git row gives the new gh command and says it returns the 20 most recently updated PRs; notes that an unknown state shows as a neutral tag",
+      "acceptance_refs": [
+        "AC1",
+        "AC3"
+      ]
+    },
+    {
+      "path": "site/index.html",
+      "change_kind": "modify",
+      "why": "CR-PBI023-03: prRow looks up prState with Object.hasOwn and falls back to the muted tag with the escaped raw state",
+      "acceptance_refs": [
+        "AC3"
+      ]
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "change_kind": "modify",
+      "why": "CR-PBI023-02 and -03: lookalike-host / http / userinfo check and inherited-key state check",
+      "acceptance_refs": [
+        "AC2",
+        "AC3"
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "path": "tests/test_export_board.py",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "PullRequests.test_pulls_come_from_gh_in_the_repo_most_recently_updated_first asserts the exact gh argv incl. --search sort:updated-desc (red before the fix)"
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "added",
+      "status": "pass",
+      "covers": "pulls: lookalike hosts, plain http and userinfo tricks are text, not links, in the panel and in Needs attention"
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "added",
+      "status": "pass",
+      "covers": "pulls: an unknown state, even one named like an inherited object member, is a muted tag with the escaped raw state (red before the fix: TypeError function is not iterable)"
+    }
+  ],
+  "acceptance": [
+    {
+      "criterion": "AC1: PR_LIST passes --search sort:updated-desc; GH_ARGS, the pulls() comment and the CLAUDE.md row match; client-side sort kept",
+      "met": "yes",
+      "evidence": "test_export_board failed on the argv diff before the fix and passes after; full Python suite 215 OK"
+    },
+    {
+      "criterion": "AC2: PRs with urls https://github.com.evil.example/o/r/pull/1, http://github.com/o/r/pull/2, https://github.com@evil.example/x render as text with no href in the GitHub panel and in Needs attention; the trailing-slash mutation now fails the suite",
+      "met": "yes",
+      "evidence": "new check passes on site/index.html; on the scratch mutant (diff --strip-trailing-cr shows only line 278 changed) the suite exits 1 at that check after 55 ok; mutant was 55/55 green before the check existed"
+    },
+    {
+      "criterion": "AC3: a PR state of constructor, __proto__, toString or hasOwnProperty (or HTML) renders a muted tag with the escaped raw state, the tab renders, and nothing is logged to console.error",
+      "met": "yes",
+      "evidence": "new check failed with 'unexpected console.error ... TypeError: function is not iterable' before the fix; passes after, with noPageErrors asserted; 57/57 page checks"
+    }
+  ],
+  "follow_ups": [
+    {
+      "ref": "code-reviewer",
+      "reason": "Re-review the three fixes for GO."
+    },
+    {
+      "ref": "site/index.html other label lookups",
+      "reason": "Outside this change: stateLabel[x.state] || x.state (Backlog) and similar lookups also read plain objects by data key. They do not crash, since esc() stringifies the result, but an inherited name would show function text. Worth a separate check."
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+{
+ "schema_version": "1",
+ "audit": {
+  "agent": "code-reviewer",
+  "as_of_date": "2026-09-11",
+  "mode": "diff",
+  "scope": "Uncommitted change in the worktree C:/Users/jdk/dispatch-board-worktrees/PBI-008 (branch pbi/PBI-008-stale-board, base d10d9e6): exporters/refresh.py, tests/test_refresh.py, local/tests/test_conformance.py, site/index.html, tests/page.test.mjs. Intent rung 2 (work item with acceptance criteria): docs/backlog/pbi/PBI-008.md, criteria AC-34, AC-42, AC-44, AC-74 and L-1 to L-4, plus its out-of-scope list and close-out line; anchored also to the owner-confirmed parent-spec row 12 and to the lastRefresh record shape in local/records.py (read-only). The invoker asked for a deviation assessment; PBI-008.md carries outcome criteria rather than a prescribed approach, so this is an AC-alignment walk (met / not-met / not-verifiable) and every departure found is reported against the criterion it departs from. Grounding path: repo test suites run read-only plus reasoning (no Touchstone SARIF provided). Verification: python -m unittest discover -s tests = 307 OK; node tests/page.test.mjs = 94 checks passed; python -m unittest discover -s local/tests = 90 OK - the builder's claimed counts (307 / 94 / 90) are confirmed.",
+  "summary": "Change class: standard (as the PBI frontmatter states). Dimensions covered: correctness, security (code-level), maintainability, test-adequacy. Counts by severity: 0 CRITICAL, 0 HIGH, 1 MEDIUM, 3 LOW. AC-alignment: AC-34 met (Plan.test_first_plan_sets_everything_and_the_status now asserts 13 set writes and 1 update, strengthened with explicit op counts); AC-42 met; AC-44 met; AC-74 met (page checks at 5 and 25 minutes pin the text, the word stale and the faint-stale class, and .faint.stale resolves to var(--changes), never var(--human)); L-1 met (exactly one set of meta/lastRefresh per plan, at in UTC seconds with Z plus writer refresher, recorded by --commit, and both refusal paths - MassDelete and AnswersRefused - write and plan nothing, each pinned); L-2 met (all 21 refresh expectations plus the 3 restated ones were read hunk by hunk - every one keeps what it checked and only adds the extra write; no assertion was loosened); L-3 met (the write is appended after the status loop, meta is outside MANAGED, and all three properties are pinned); L-4 met except two sub-clauses (findings CR-1 and CR-2): the unreadable-at case is handled only for string values, and the-time-comes-from-at is not pinned by any check. Nothing outside the PBI allowed_areas was touched; local/tests/test_conformance.py was changed only by the owner-approved one-test path-map addition, and its kind-set assertion was widened by one, never narrowed. Flag-only review: nothing was changed, staged, committed or deployed; the three suites were run read-only.",
+  "sensitivity": "sensitive",
+  "verdict": "GO-WITH-CONDITIONS"
+ },
+ "findings": [
+  {
+   "id": "CR-1",
+   "severity": "MEDIUM",
+   "title": "The page data-as-of timestamp is never pinned to the document's at, so a regression that showed the wrong time would ship green",
+   "subject": {"type": "file", "id": "tests/page.test.mjs:1227", "name": "page check 19, meta/lastRefresh header"},
+   "evidence": [
+    {"field": "check", "value": "assert.match(asOf().innerHTML, /^data as of /); assert.doesNotMatch(asOf().innerHTML, /stale/);", "sensitive": false},
+    {"field": "code under test", "value": "site/index.html:380 - asOf.innerHTML is the template literal 'data as of ' + esc(when(lastRefresh.at)) + the optional ' (stale)', or the empty string when info is null", "sensitive": false},
+    {"field": "criterion", "value": "PBI-008 L-4: 'The time comes from at, rendered through esc(). ... Each case is pinned by a page check.'", "sensitive": false}
+   ],
+   "impact": "All five new checks assert only the 'data as of ' prefix, the presence or absence of the word stale, and the class name. None compares the rendered text with the time the document holds, and none feeds an at containing markup, so neither 'the time comes from at' nor 'rendered through esc()' is actually pinned. Replacing when(lastRefresh.at) with when(Date.now()) - the exact failure FR-104 and FR-105 exist to prevent, a board that always claims to be current - would leave all 94 checks green; only the separate stale marker would still betray it. The headline output of the feature is therefore unprotected against future edits.",
+   "remediation": "Add one assertion to the 5-minute case that the rendered text carries the time the document holds rather than any time - for example compute the expected string from the same locale formatter the page uses and assert equality, or assert that two different at values in the same render produce two different texts. Separately, feed an at made of a valid timestamp followed by an img-onerror fragment once and assert the output is escaped, which pins the esc() clause of L-4.",
+   "refs": ["Testing Discipline", "PBI-008 L-4"],
+   "category": "test-adequacy"
+  },
+  {
+   "id": "CR-2",
+   "severity": "LOW",
+   "title": "A non-string at (null, 0, true) makes the header claim 'data as of 01:00, 1 Jan' instead of staying silent, so a corrupt record reads as a 1970 board",
+   "subject": {"type": "file", "id": "site/index.html:306", "name": "asOfInfo()"},
+   "evidence": [
+    {"field": "code", "value": "const asOfInfo = now => { if (!lastRefresh) return null; const at = new Date(lastRefresh.at); return isNaN(at) ? null : { stale: now - at.getTime() > STALE_MS }; };", "sensitive": false},
+    {"field": "probe", "value": "node: new Date(null) -> 1970-01-01T00:00:00.000Z (valid); new Date(0) -> valid; new Date(true) -> 1970-01-01T00:00:00.001Z (valid); new Date of empty string, [], {}, undefined or 'not-a-time' -> Invalid Date", "sensitive": false},
+    {"field": "criterion", "value": "PBI-008 L-4: 'With no meta/lastRefresh document, or an unreadable at, the header shows no data as of text and logs no error.'", "sensitive": false}
+   ],
+   "impact": "The malformed-at boundary is handled as a single representative value rather than as a class. new Date() coerces null, 0 and true to valid 1970 dates, so a record whose at is any of those renders 'data as of 01:00, 1 Jan (stale)' rather than the silence L-4 requires. It fails safe - no crash, no console error, and the text is marked stale - and both writers of the record (refresh.py here, the collector in PBI-019) are controlled and write a string, so the blast radius is a misleading header on an already-corrupt document, not a broken page. The page check pins only the string case 'not-a-time', so the gap is invisible to the suite.",
+   "remediation": "Require a string before parsing - test typeof lastRefresh.at against 'string' and return null otherwise, before calling new Date - and extend the existing unreadable-at page check to cover the class rather than one member: at least null, a number and a boolean alongside 'not-a-time'.",
+   "refs": ["CWE-20 Improper Input Validation (robustness, internal writer)", "PBI-008 L-4"],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-3",
+   "severity": "LOW",
+   "title": "Cli.test_nothing_to_push still carries the name of the behaviour the change deleted, so the suite reads as if nothing-to-push survived",
+   "subject": {"type": "file", "id": "tests/test_refresh.py:521", "name": "Cli.test_nothing_to_push"},
+   "evidence": [
+    {"field": "test", "value": "def test_nothing_to_push(self): [comment: every plan now sets meta/lastRefresh, so nothing to push no longer occurs] self.o.pushed(); code, out, _ = self.main(); assertEqual(code, 0); assertEqual(keys(json.loads(out)), {LAST})", "sensitive": false},
+    {"field": "removed code", "value": "exporters/refresh.py main(): the branch 'if p is None: print(nothing to push); return 0' is gone", "sensitive": false}
+   ],
+   "impact": "The restated test does cover something real - that main() exits 0 and prints a one-write plan when nothing else changed - so it is not a weakened test. But its name asserts a state the code can no longer reach, and a reader grepping for 'nothing to push' now lands on a test that proves the opposite. The same applies, more mildly, to Plan.test_commit_then_nothing_to_push. The companion rename in Plan (test_nothing_to_push_removes_a_stale_pending_file became ..._replaces_a_stale_pending_file) shows the right treatment was available and was applied elsewhere in the same diff.",
+   "remediation": "Rename to something that names the new behaviour, for example test_a_quiet_tick_prints_only_the_last_refresh_write, and rename Plan.test_commit_then_nothing_to_push to match; keep the explanatory comment.",
+   "refs": ["Naming & Readability", "Testing Discipline"],
+   "category": "maintainability"
+  },
+  {
+   "id": "CR-4",
+   "severity": "LOW",
+   "title": "The plan() docstring gained a 137-character run-on line, breaking the file's own wrapping and burying the MassDelete sentence",
+   "subject": {"type": "file", "id": "exporters/refresh.py:109", "name": "plan() docstring"},
+   "evidence": [
+    {"field": "code", "value": "lines 108-110: '...records it as pending; the writes' / 'always include the set of meta/lastRefresh. Raises MassDelete, leaving nothing pending, for a delete that looks like a broken export,' / 'and AnswersRefused, ...'", "sensitive": false},
+    {"field": "convention", "value": "the surrounding docstring and body lines wrap at roughly 115-120 characters; the new line 109 is 137 and starts a new sentence mid-line", "sensitive": false}
+   ],
+   "impact": "Cosmetic only - no behaviour depends on it - but the new clause was inserted without re-wrapping, so the line runs past the file's own width and the 'Raises MassDelete' sentence now begins in the middle of a line. It makes the most load-bearing docstring in the module harder to scan, and that paragraph is exactly what the next reader consults to learn that every plan writes meta/lastRefresh.",
+   "remediation": "Re-wrap the three docstring lines to the file's usual width so each sentence starts at the left margin, for example putting 'Raises MassDelete, ...' on its own line.",
+   "refs": ["Code Commenting", "Consistency With Existing Code"],
+   "category": "maintainability"
+  }
+ ],
+ "not_audited": [
+  {"ref": "site/index.html - rendered appearance of the data-as-of span", "reason": "No browser available: the page checks run against a stub DOM, so the computed colour of .faint.stale (var(--changes): #F1B24A dark, #9A6200 light) and the app-bar layout with the extra span in .right (display:flex, gap:14px, white-space:nowrap) were read from the CSS rather than rendered. The class-to-token mapping, and its specificity over the plain .faint rule, were verified by reading site/index.html:37 and :55."},
+  {"ref": "security dimension", "reason": "No Touchstone SARIF and no SAST configured in this repo, so code-level security is reasoning-only. Reviewed and found clean: the only new externally visible value is lastRefresh.at, which goes through esc() before innerHTML; no new secret, deserialization, path, command or authz surface; the store write rule is admin-only and unchanged."},
+  {"ref": "PBI-019 collector half of FR-103", "reason": "Not in this branch. Agreement was checked against docs/backlog/specs/pbi-019-collector.md section 4.8 as text only, not against code: both halves write at plus writer to meta/lastRefresh with a timezone-aware UTC at, both write on every successful pass or plan, and both leave the record untouched when refused - so the two halves agree. The collector writes to SQLite and the refresher to the artifact store, so neither clobbers the other."}
+ ],
+ "follow_ups": [
+  {"ref": "CLAUDE.md - Refresh procedure", "note": "Still says refresh.py prints 'nothing to push' if none, and the /loop instruction guards on that string ('if refresh.py prints nothing to push, end the tick without writing'). That branch no longer exists, so the guard is dead text and every tick now writes. PBI-008's out-of-scope list already defers this to a docs chore after merge, and CLAUDE.md is not in allowed_areas, so it is correctly not a finding here - but the chore should land with or immediately after the merge, otherwise the refresher loop's prompt describes a state that cannot occur."},
+  {"ref": "CLAUDE.md - How data gets onto the page (store-path table)", "note": "The table lists every store path and its writer but has no row for meta/lastRefresh. Worth adding in the same docs chore, alongside a note that the page subscribes to it."},
+  {"ref": "FR-103's two halves stamp at in different ISO forms", "note": "refresh.py writes strftime of %Y-%m-%dT%H:%M:%SZ (ending in Z), as PBI-008 L-1 prescribes; PBI-019 section 4.8 writes isoformat(timespec=seconds) (ending in +00:00). Both are timezone-aware, both satisfy the lastRefresh shape's strict datetime (Python 3.11+ fromisoformat accepts Z) and both parse with JS new Date(), so this is not a defect - but nothing downstream should ever compare the two as strings, and a future consumer that sorts or dedupes lexically would be surprised. Worth one line in the PBI-019 spec or in the record shape's comment."},
+  {"ref": "exporters/refresh.py:191 - at is stamped when plan() runs, not when the write lands", "note": "The value records when the refresher built the plan, a few seconds to a few minutes before the operator's write_db completes. It is the conservative direction (the board reads very slightly older than it is) and meta/lastRefresh is appended last, so it sits in the final batch and is pushed after the data it describes. No change needed; noted so the 20-minute threshold is understood to include push latency."}
+ ]
+}

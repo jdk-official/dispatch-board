@@ -1,0 +1,69 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-11",
+    "mode": "diff",
+    "scope": "Uncommitted change in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-004 (branch pbi/PBI-004-shared-derivation, base 049f27e): git diff of exporters/export_board.py, export_catalogue.py, export_sessions.py plus untracked exporters/derive.py and tests/test_derive.py. Intent rung 2 (work-item AC): docs/backlog/pbi/PBI-004.md D-1 to D-5 and the close-out line, with PRD FR-86/FR-87/C-21/AC-64 for the collector context. Grounding path: repo suites run read-only (all three), an AST comparison of every base function and constant against derive.py, a before/after run of the base and new exporters on the owner live config and data (same now, gh stubbed, output to scratch), and a throwaway probe of the incremental API; security is reasoning-only (no Touchstone SARIF).",
+    "summary": "Change class: large (a 796-line move of executable exporter code into a new shared module, no intended behaviour change). 0 CRITICAL / 0 HIGH / 1 MEDIUM / 2 LOW across correctness, maintainability and test-adequacy; the security pass found nothing (pure text and dict parsing, no new input boundary, redaction patterns moved unchanged). Behaviour preservation confirmed independently: every moved function and constant is AST-identical to base except the intended warn-callable parameterisation (use_skill, frontmatter); the split read_subagent, parse_session and main blocks are equivalent by reading; the before/after run on live data wrote 155 files with 0 byte differences and identical stderr; suites 295 / 89 / 90 green; no existing test edited; all named patch points still take effect. AC-alignment: D-1 met, D-2 met, D-3 met, D-4 met (reproduced on live data rather than the frozen copy), D-5 met with gaps noted as LOW; close-out on the head commit not verifiable (uncommitted). Flag-only: nothing was changed, committed, pushed or deployed in the worktree.",
+    "sensitivity": "sensitive",
+    "verdict": "GO-WITH-CONDITIONS"
+  },
+  "findings": [
+    {
+      "id": "CR-PBI004-01",
+      "severity": "MEDIUM",
+      "title": "A collector feeding records incrementally gets session documents that keep changing after they are returned: session_result hands out the live skill-use counter",
+      "subject": {"type": "change", "id": "exporters/derive.py:499", "name": "derive.session_result / agent_summary"},
+      "evidence": [
+        {"field": "exporters/derive.py:499", "value": "skillUses is the running state uses dict itself: the doc holds a reference to the running state, not a snapshot", "sensitive": false},
+        {"field": "exporters/derive.py:313", "value": "agent_summary returns rejects as the running state rejects list itself (same aliasing)", "sensitive": false},
+        {"field": "probe (scratch, not committed)", "value": "new_session, add_record(Skill a:b), r1 = session_result(...) with count 1, then add_record(a second Skill a:b): the r1 doc now shows count 2, and r1 skillUses is state uses -> True", "sensitive": false},
+        {"field": "exporters/derive.py:6-8 (module docstring)", "value": "a reader that follows a transcript as it grows can feed records one at a time (new_session / add_record, new_agent / add_agent) and derive exactly what export_sessions.py writes", "sensitive": false}
+      ],
+      "impact": "The stated purpose of the module (D-2, FR-86/FR-87) is an incremental reader that feeds records and derives repeatedly. A collector that keeps the previous result to detect changes, or stores it before feeding more lines, will see skillUses (and an agent summary rejects list) change under it, so a changed skill count can compare equal to the previous document and never be pushed, and earlier stored records are silently rewritten. The v1 exporters are unaffected: they derive once per parse, which is why the byte-identical check passes.",
+      "remediation": "Have session_result return a snapshot (copy each per-skill dict for skillUses) and have agent_summary return a copy of the rejects list; exporter output bytes are unchanged, since the exporters derive once. Alternatively state plainly in the docstrings that results alias the running state and must be copied before feeding more records. Add a direct test in tests/test_derive.py that derives, feeds another record and asserts the first result is unchanged.",
+      "refs": ["Broken invariant: a returned record must be a snapshot of the state it was derived from", "CWE-374 Passing Mutable Objects to an Untrusted Method (closest analogue)", "PBI-004 D-2"],
+      "category": "correctness"
+    },
+    {
+      "id": "CR-PBI004-02",
+      "severity": "LOW",
+      "title": "export_sessions keeps a use_skill wrapper that nothing calls, a leftover that suggests patching it still affects parsing when it no longer does",
+      "subject": {"type": "file", "id": "exporters/export_sessions.py:142", "name": "export_sessions.use_skill"},
+      "evidence": [
+        {"field": "exporters/export_sessions.py:142-143", "value": "def use_skill(uses, sid, skill, ts): derive.use_skill(uses, sid, skill, ts, warn)", "sensitive": false},
+        {"field": "callers", "value": "Grep over exporters/, tests/, local/: no call to export_sessions.use_skill; derive.add_record calls derive.use_skill directly (derive.py:436, 449). Not a D-3 name (no suite imports or patches it).", "sensitive": false}
+      ],
+      "impact": "Dead code. Before the change parse_session called this module-level use_skill, so a patch on it took effect; now it is bypassed, so the wrapper reads as a hook that silently does nothing.",
+      "remediation": "Remove the wrapper, or, if it is kept as interface, re-export derive.use_skill in the from-derive import list like the other moved names and note that it is not on the parsing path.",
+      "refs": ["Dead Code & Leftover State", "Minimal Diff & Scope Discipline (YAGNI)"],
+      "category": "maintainability"
+    },
+    {
+      "id": "CR-PBI004-03",
+      "severity": "LOW",
+      "title": "The direct tests skip several collector-facing entry points and never exercise feed-derive-feed, the pattern the module exists for",
+      "subject": {"type": "file", "id": "tests/test_derive.py:123", "name": "test_derive.Sessions"},
+      "evidence": [
+        {"field": "tests/test_derive.py", "value": "No direct test of derive.carried, derive.project_doc, derive.excluded, derive.verifier_outcome / verdict_of / kind_of, derive.add_agent / new_agent on their own, or usage_doc limit grouping; test_a_session_fed_record_by_record (line 123) derives only once, after all records.", "sensitive": false},
+        {"field": "compensating coverage", "value": "The existing exporter suites exercise these same function objects through export_sessions (e.g. es.carried at tests/test_export_sessions.py:286-294) and main(), so v1 behaviour is covered; the gap is D-5 direct-import coverage and the incremental contract.", "sensitive": false}
+      ],
+      "impact": "PBI-019 will import these functions directly. Without direct tests of project_doc and carried and a feed-derive-feed case, a regression in the collector-only path (such as CR-PBI004-01) is not caught by any suite.",
+      "remediation": "Add small direct tests for project_doc (linked sessions, counts, aggregated usage), carried (running to killed at the window edge), excluded, and verdict_of on the ver lane; add a test that derives, feeds another record and derives again, asserting the first result is unchanged and the second matches a one-shot parse. The import-purity probe and its self-test (lines 57-75) are sound and need no change.",
+      "refs": ["Testing Discipline", "PBI-004 D-5"],
+      "category": "test-adequacy"
+    }
+  ],
+  "not_audited": [
+    {"ref": "PBI-004 D-4 (frozen copy)", "reason": "The builder frozen-data harness was in scratch and not supplied. Re-checked instead on the owner live config and data (base and new exporters run concurrently, same now, gh stubbed): 155 files, 0 differences. Transcripts still being written during the run could in principle differ; none did."},
+    {"ref": "Close-out: suites green on the head commit", "reason": "The change is uncommitted, so there is no head commit to test; the three suites were run on the working tree (295 / 89 / 90, all green). Re-run them on the commit once it exists."},
+    {"ref": "Security dimension", "reason": "Touchstone SARIF not provided; the security pass is reasoning-only. The redaction SECRETS patterns and the verdict and limit parsing moved byte-identically (AST-checked), and derive opens no files, processes or sockets."}
+  ],
+  "follow_ups": [
+    "Error-order note (builder-raised) is acceptable, not a finding: spec_tabs now reads the ADR files and review notes before parsing the spec, so when both fail at once a different error surfaces first. The one case where the exit code also changes is a spec-parse ValueError together with an OSError (e.g. PermissionError) on an ADR or review file: base exited 2 with nothing exported, now the OSError is uncaught (exit 1, traceback). refresh.py treats any non-zero exporter exit the same (refresh.py:90, push nothing) and output bytes are unaffected, so it is within behaviour unchanged; record it in the PBI evidence.",
+    "For PBI-019: the running state from new_session holds a set (skillCalls) and may use None as a dict key (launched, stopped, sync), so it is not JSON-serialisable. If the collector must persist derivation state across restarts to honour FR-86 (read only appended lines), plan a state serialiser or re-derive from stored records.",
+    "derive.carried (a run row going quiet) and export_board.carried (a tab file kept with carriedSince) are different functions with the same name; consider renaming one before the collector imports both families.",
+    "derive.py is 900 lines covering three domains; D-1 allows a package, so split it into sessions, board and catalogue submodules if it keeps growing."
+  ]
+}

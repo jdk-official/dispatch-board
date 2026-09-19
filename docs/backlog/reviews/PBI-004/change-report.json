@@ -1,0 +1,68 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-11",
+    "mode": "pbi",
+    "change_class": "large-sensitive",
+    "scope": "Behaviour-preserving refactor in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-004 (branch pbi/PBI-004-shared-derivation): move the exporters' parsing and derivation into one stdlib-only module exporters/derive.py that a future collector can `import derive` and feed parsed records/text incrementally; exporters become thin read-then-derive wrappers with unchanged main() signatures, names and patch points; output byte-identical. Acceptance D-1..D-5 plus close-out (three suites). Classed large-sensitive for the broad diff (~800 lines moved) and the new public import surface; the extra scrutiny is the end-to-end byte-for-byte comparison. Grounding: ran-suite (all three configured test commands) plus a before/after output comparison harness.",
+    "verdict": "DONE",
+    "summary": "1 module created (exporters/derive.py), 3 exporters modified (export_sessions.py, export_board.py, export_catalogue.py), 1 test file added (tests/test_derive.py, 21 tests). Suites: python -m unittest discover -s tests 295 passed / 0 failed (274 existing + 21 new); node tests/page.test.mjs 89 passed; python -m unittest discover -s local/tests 90 passed (unchanged). D-4: 155 out/ files compared byte for byte (435,066 bytes, same file set), 0 differences; exporter stderr identical; exporter stdout identical once timings and out-dir paths are masked. No existing test edited. Nothing committed, staged, pushed or deployed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "exporters/derive.py",
+      "change_kind": "create",
+      "why": "The shared derivation module, standard library only (fnmatch, json, math, os for os.path.basename only, re, datetime). Sessions: constants (LANE, TOKEN, *_TOKENS, VERIFIER_*, NEGATED, RATE_LIMIT, FIX, SECRETS, MODEL_LABEL, GROUP_LABEL, HOURS, SKILL_ID, TOKEN_FIELDS); record parsing (parse_line, record_pairs, strings, text_of, tag, epoch, stamp, num); token/usage arithmetic (is_number, tokens, group_of, response, reject, usage_doc); classification (verifier_outcome, verdict_of, kind_of, classify, carried, pbis); redact; excluded; skill counting (use_skill with an optional warn callable); incremental readers new_session/add_record and new_agent/add_agent/agent_summary/read_agent; agent_row, session_result, session_doc; aggregate_usage; link; place_manual, run_doc, project_doc (lifted from export_sessions.main). Board: STATES, LATER, MARKER, RULE, clean, section, table, bullets, later_items, build_state, not_worked_out, review_verdict, adr_entry, spec_docs (the text part of spec_tabs). Catalogue: frontmatter(text, source, warn), purpose, PURPOSE_MAX. Nothing runs at import beyond constant definitions and re.compile.",
+      "acceptance_refs": ["D-1", "D-2", "D-5"]
+    },
+    {
+      "path": "exporters/export_sessions.py",
+      "change_kind": "modify",
+      "why": "Now a thin wrapper: keeps config (check_types, settings), warn, records(path) (opens the file, then derive.record_pairs), load_meta, cwd_of, read_subagent(path) (derive.read_agent over records(path)), use_skill (passes its warn), parse_session (reads the main transcript into derive.new_session/add_record, globs agent files, calls os.path.getmtime, load_meta and read_subagent through this module's globals, then derive.agent_row and derive.session_result), signature, write_json and main. Every name it defined before is still importable from it (re-exported from derive), PARSER_VERSION unchanged. parse_session and read_subagent are still called through export_sessions' module globals, so mock.patch.object(es, 'parse_session' / 'read_subagent') and the es.os.path getmtime/getsize patches still take effect.",
+      "acceptance_refs": ["D-2", "D-3", "D-4"]
+    },
+    {
+      "path": "exporters/export_board.py",
+      "change_kind": "modify",
+      "why": "Keeps file reading, load_data, git, gh (pulls with its injectable run), tab_bytes, carried and main. spec_tabs reads the spec, prd, brief, design, ADR files and review notes (same files, same order) and hands the text to derive.spec_docs; verdict(root, path) reads the note and calls derive.review_verdict. STATES, later_items, clean, section, table, bullets, build_state, not_worked_out, LATER, MARKER, RULE are re-exported from derive.",
+      "acceptance_refs": ["D-1", "D-2", "D-3", "D-4"]
+    },
+    {
+      "path": "exporters/export_catalogue.py",
+      "change_kind": "modify",
+      "why": "frontmatter(path) reads the file (utf-8-sig, text mode) and calls derive.frontmatter(text, path, warn); purpose and PURPOSE_MAX are re-exported from derive. `from export_sessions import write_json` is kept.",
+      "acceptance_refs": ["D-1", "D-2", "D-3", "D-4"]
+    },
+    {
+      "path": "tests/test_derive.py",
+      "change_kind": "create",
+      "why": "Imports derive directly. Import tests: a fresh-interpreter probe using sys.addaudithook records any open/os./subprocess./socket./shutil./... event raised while derive's own top-level code runs, plus anything printed; it asserts none of either, and that every module derive imports is in sys.stdlib_module_names. A control test shows the probe does catch a module that opens a file, lists a folder and prints. Behaviour tests: token weighting, record_pairs, a session fed record by record (row, doc, redacted prompt, skill uses, usage), raw-line vs bare-record equivalence, streamed-duplicate dedup, warn on an unsafe skill id, classify, link, place_manual/run_doc, aggregate_usage limit merging, session_doc prompt privacy, spec_docs on a small spec, section/table, review_verdict/adr_entry, frontmatter (block value warning, missing frontmatter), purpose.",
+      "acceptance_refs": ["D-5"]
+    }
+  ],
+  "tests": [
+    {"path": "tests/test_derive.py", "kind": "added", "status": "pass", "covers": "21 tests: derive import has no file/process I/O and no output, stdlib-only imports, and the public parsing/derivation functions on small inputs"},
+    {"path": "tests/ (python -m unittest discover -s tests)", "kind": "existing", "status": "pass", "covers": "295 ran, 0 failed: the 274 existing exporter/refresh tests unchanged (including the parse_session, read_subagent and os.path getmtime/getsize patch tests) + 21 new"},
+    {"path": "tests/page.test.mjs", "kind": "existing", "status": "pass", "covers": "all 89 page checks passed (the page is untouched)"},
+    {"path": "local/tests (python -m unittest discover -s local/tests)", "kind": "existing", "status": "pass", "covers": "90 ran, 0 failed, unchanged; test_conformance imports export_board/export_catalogue/export_sessions and runs their main()"}
+  ],
+  "acceptance": [
+    {"criterion": "D-1 One shared stdlib-only module holds the exporters' parsing and derivation", "met": "yes", "evidence": "exporters/derive.py holds the sessions parsing, token/usage arithmetic, lane/verdict/kind classification, run linking, redaction, usage aggregation and skill counting; the board's spec/table/bullet/Later-list parsing and build state; the catalogue's frontmatter and purpose parsing. test_imports_only_the_standard_library passes."},
+    {"criterion": "D-2 import derive does no I/O, reads no config, prints nothing, never exits; derivation takes parsed data; file/config/git/gh/out stay in exporters", "met": "yes", "evidence": "test_importing_touches_no_files_and_prints_nothing (audit-hook probe, validated by the control test) passes. derive functions take dicts/strings (add_record(state, o, raw=None), add_agent, spec_docs(text...), frontmatter(text)); warnings go through an optional warn callable. All file reads, glob, getmtime, config, git, gh and out/ writes remain in the exporters."},
+    {"criterion": "D-3 Exporters import from derive; main() signatures, imported/patched names and patch effects unchanged", "met": "yes", "evidence": "main() signatures unchanged; every former module-level name is still an attribute of its exporter; parse_session/read_subagent stay in export_sessions and are called through its globals. The 274 existing tests, including the mock.patch.object(es, 'parse_session'/'read_subagent') and es.os.path getmtime/getsize tests, and the 90 local tests (conformance calls each main()) pass unedited."},
+    {"criterion": "D-4 Byte-identical output, proven by a before/after harness", "met": "yes", "evidence": "Before the first edit, exporters/ was copied to %TEMP%/pbi004-before/exporters. A scratch harness (not in the repo) snapshotted ~/.claude/projects (203 MB) once, pointed sessions.projectsRoot at it, and in two subprocesses (before copy / worktree exporters on sys.path, module __file__ asserted) ran export_board.main (with a stubbed gh runner and data_dir = worktree projects/), export_sessions.main and export_catalogue.main with an identical config, a fixed now and separate out dirs. Result: 155 files compared, same file set, 0 differing (435,066 bytes); exit codes [0,0,0] for both; stderr identical; stdout identical except the harness's own derive=False/True marker line."},
+    {"criterion": "D-5 tests/test_derive.py imports derive directly, tests public functions meaningfully, asserts import touches no files", "met": "yes", "evidence": "21 tests in tests/test_derive.py pass; see tests[0]."},
+    {"criterion": "Close-out: all three suites pass (tests 274 + new, page 89, local 90 unchanged)", "met": "yes", "evidence": "295 OK / 89 passed / 90 OK, from real runs in the worktree after the final edit."}
+  ],
+  "not_done": [],
+  "follow_ups": [
+    {"ref": "adr-note", "owner": "orchestrator / owner", "note": "Record derive.py as the collector's import contract: new_session/add_record + new_agent/add_agent/agent_summary, then agent_row, session_result, session_doc, link, place_manual, run_doc, project_doc, aggregate_usage; board spec_docs/later_items; catalogue frontmatter/purpose. Changing any of these changes both the exporters and the collector."},
+    {"ref": "docs", "owner": "docs-cluster writer", "note": "CLAUDE.md and README.md (out of scope here) do not mention exporters/derive.py or that the exporters now read and then call it."},
+    {"ref": "not-moved", "owner": "next PBI (collector)", "note": "Left in the exporters as out of the stated D-1 list: the git-output parsing (public_remote, github_origin, github_repo, the git log line split), gh pull-request shaping, catalogue ID/read_entry and installed-plugins parsing, and export_sessions' config typing (check_types/settings). Move them if the collector needs them."},
+    {"ref": "read-order", "owner": "code-reviewer", "note": "export_board.spec_tabs now reads ADR files and review notes before the pure spec parsing runs (the parsing moved into derive.spec_docs). The files read and the output are the same. Only if the spec parse raised (a ledger number cell such as a superscript digit, which str.isdigit accepts and int() rejects) and an ADR was also unreadable would a different ValueError message be printed; the exit code (2, nothing exported) is the same."},
+    {"ref": "schema-tool", "owner": "agent-catalog maintainer", "note": "tools/change_report_schema.py has no command-line entry point, so `python change_report_schema.py <file>` prints nothing; this report was also checked by calling validate() directly."},
+    {"ref": "scratch-cleanup", "owner": "orchestrator", "note": "%TEMP%/pbi004-before/exporters (the before copy) and the session scratchpad (compare.py, the 203 MB projects-snap, cmp/) are throwaway and can be deleted."}
+  ]
+}

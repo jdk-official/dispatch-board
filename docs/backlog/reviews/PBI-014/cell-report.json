@@ -1,0 +1,70 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "build-cell",
+    "as_of_date": "2026-09-13",
+    "pbi": "PBI-014",
+    "effective_tier": "assisted",
+    "gates": {
+      "code_review": "agent",
+      "external_review": "human",
+      "merge": "human",
+      "plan": "human",
+      "spec": "agent"
+    },
+    "overrides": [],
+    "sensitivity": "sensitive",
+    "summary": "Run detail: picking a run shows its verdict summary, the findings its review round listed, the files it edited and its duration. Run documents now carry the round's own findings and the files a run edited, relative to the project's repoPath, with PARSER_VERSION 6 to 7. Code review round 1 NO-GO (1 High, 2 Medium, 3 Low), fixed; round 2 (final) GO-WITH-CONDITIONS (3 Medium, 1 Low), conditions applied. Canonical run 360/121/304 PASS bound to 123a61c.",
+    "verdict": "CELL-DONE"
+  },
+  "rounds": [
+    {
+      "n": 1,
+      "code_writer_verdict": "DONE-WITH-CONDITIONS",
+      "reviewer_verdict": "NO-GO",
+      "change_report_ref": "docs/backlog/reviews/PBI-014/change-report.json",
+      "findings_ref": "docs/backlog/reviews/PBI-014/findings-r1.json"
+    },
+    {
+      "n": 2,
+      "code_writer_verdict": "DONE-WITH-CONDITIONS",
+      "reviewer_verdict": "GO-WITH-CONDITIONS",
+      "change_report_ref": "docs/backlog/reviews/PBI-014/change-report-r2.json",
+      "findings_ref": "docs/backlog/reviews/PBI-014/findings.json"
+    }
+  ],
+  "events": [
+    {
+      "kind": "tier-resolved",
+      "detail": "standard, ceiling assisted -> assisted; ratified earned lift supervised"
+    },
+    {
+      "kind": "decision-reversed-legitimately",
+      "detail": "PBI-014 replaced PBI-011's test_run_documents_carry_no_findings_field with its opposite. The round-1 reviewer judged the reversal legitimate and necessary: that test pinned a scope boundary under PBI-011's F-2/F-4, not an architecture, and the findings ledger cannot answer 'this run's findings' because it keys findings by round ordinal, not run id (findings_doc skips rounds without r['pbis'])."
+    },
+    {
+      "kind": "requirement-claimed-undeliverable-was-deliverable",
+      "detail": "The build first declared AC-82's 'files touched' undeliverable, citing that the exporter reads tool names only and that paths would leak. The round-1 reviewer disproved it at source: the same transcript walk already reads tool input (derive.py:455, :458) and the board already publishes each session's absolute cwd. The orchestrator had relayed the builder's claim to the owner as a recommendation and withdrew it."
+    },
+    {
+      "kind": "interrupted-and-resumed",
+      "detail": "The round-1 fix run was killed mid-edit by a usage limit (HTTP 429), leaving the tree failing one test. A second run diagnosed the half-applied state (export_sessions.py never passed repoPath to run_doc; the test was right and the exporter wrong), completed it, and found the interrupted run's parser-version test would have passed without a bump; it re-wrote the test to bite and made PARSER_VERSION 6 to 7."
+    },
+    {
+      "kind": "conditions-applied",
+      "detail": "Round-2 conditions: CR-014-7 (board/local divergence at local/collector.py:436, which omits the repo export_sessions.py:286 passes) - follow-up PBI-027 filed and added to PBI-007's depends_on so the deployment cannot ship with the mismatch; CR-014-8 - the page's wrong claim that worktree edits are 'outside the project's repository' corrected and pinned, with the old wording asserted gone; CR-014-9 - refused or failed edits no longer counted, and ~/ and drive-relative paths withheld. 70 lines over the reviewed tree, change-report-r3.json. CR-014-3 (CLAUDE.md runs row and privacy section must name findings and files) is a close-out docs chore; local/records.py's run shape goes to PBI-027."
+    },
+    {
+      "kind": "measured-limitation",
+      "detail": "The final reviewer measured real transcripts: code-reviewer runs make 0 edits (0 of 37), so for the run type AC-82 names, 'files touched' can only show files its findings name; and 65 of dispatch-board's 140 recorded edits were made in git worktrees outside repoPath, so they show by file name only. For platform-catalogue, main-checkout edits dominate (110 repo-relative vs 10 outside). AC-82 is a demonstration criterion and passes honestly on a review with readable findings plus a builder run; the close-out evidence must state the worktree limitation."
+    },
+    {
+      "kind": "withholding-verified",
+      "detail": "The final reviewer probed the path withholding across another drive, UNC paths, mixed case, the repo root itself, trailing separators, .. climbs, 8.3 short names and /c/ forms; no absolute path leaked, and every value renders through esc()."
+    },
+    {
+      "kind": "canonical-run",
+      "detail": "360 / 121 / 304 PASS bound to 123a61c; base 560e296 confirmed equal to origin/main immediately before the run, and the commit followed the run in the same step with porcelain empty afterwards"
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-12",
+    "mode": "pbi",
+    "change_class": "large-sensitive",
+    "scope": "Build local/server.py per docs/backlog/specs/pbi-005-local-server.md revision 2 (spec gate passed): the read-only local server serving the page, the /api/snapshot data snapshot and the /api/events live stream on 127.0.0.1, with the Host/Origin gate, the network-path guard, and board_config.local() gaining local.port. Grounding path: ran-suite (all three configured suites run in the worktree via python and node).",
+    "verdict": "DONE",
+    "summary": "5 files created/modified in local/server*, local/tests/**, board.config.json and exporters/board_config.py. 53 tests added (4 in test_config_local.py, 36 in test_server.py, 13 in test_server_live.py). Suite counts: python -m unittest discover -s tests = 307 passed/0 failed (unchanged baseline); node tests/page.test.mjs = 96 checks passed (unchanged); python -m unittest discover -s local/tests = 247 passed/0 failed (194 baseline + 53 new), re-run 3x clean. Nothing committed, staged, pushed or deployed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "local/server.py",
+      "change_kind": "create",
+      "why": "The local server: the config read, the network-path guard, the read-only opener (open_read, never db.open_db), the snapshot state (State), the live-push hub (Hub), the request handler (the Host/Origin gate, the page wrapper, the three routes, the one-line plain-text refusal shape) and the command line (serve/main), per the approved spec.",
+      "acceptance_refs": ["AC-67", "AC-68", "AC-69", "AC-SV1", "AC-SV2", "AC-SV3", "AC-SV4", "AC-SV5", "AC-SV6", "AC-SV7", "AC-SV8", "AC-SV9", "AC-SV10", "AC-SV11", "AC-SV12"]
+    },
+    {
+      "path": "exporters/board_config.py",
+      "change_kind": "modify",
+      "why": "local(cfg) gains 'port', defaulting to 8765 and validated as a whole number from 1 to 65535 (a bool refused, since True is an int in Python); databasePath's existing behaviour and messages are unchanged.",
+      "acceptance_refs": ["AC-SV4"]
+    },
+    {
+      "path": "board.config.json",
+      "change_kind": "modify",
+      "why": "The 'local' block gains \"port\": 8765, the default the parent spec anticipated for the second local-first PBI to land.",
+      "acceptance_refs": ["AC-SV4"]
+    },
+    {
+      "path": "local/tests/test_config_local.py",
+      "change_kind": "modify",
+      "why": "Extended for local.port per the spec's own instruction (the file is PBI-019's, in an allowed area): default, a given value, and every invalid form (string, float, bool, 0, 70000). Existing assertions were updated to expect 'port' in local()'s return, since local() now returns both keys; no assertion was weakened, only widened to the new, intentionally changed contract.",
+      "acceptance_refs": ["AC-SV4"]
+    },
+    {
+      "path": "local/tests/server_support.py",
+      "change_kind": "create",
+      "why": "Shared test fixtures: minimal conforming documents per record kind, a temporary-database/page Env, and an HTTP client with explicit control over Host/Origin/raw bytes, needed to drive the gate and the stream without a browser.",
+      "acceptance_refs": []
+    },
+    {
+      "path": "local/tests/test_server.py",
+      "change_kind": "create",
+      "why": "Binding, the request gate (six do_ methods, framework-raised refusals, Host/Origin), the page wrapper, snapshot conformance (AC-69 non-vacuous), never-writes, not-ready/error responses, the network-path guard (AC-67) and the command line, per spec section 9.",
+      "acceptance_refs": ["AC-67", "AC-69", "AC-SV1", "AC-SV2", "AC-SV3", "AC-SV4", "AC-SV5", "AC-SV6", "AC-SV7", "AC-SV8", "AC-SV12"]
+    },
+    {
+      "path": "local/tests/test_server_live.py",
+      "change_kind": "create",
+      "why": "Live push (AC-68), reconnection/reset semantics (AC-SV9), the no-poll-with-no-clients and no-client-can-stall-another cases (AC-SV10), the stream cap, and running beside a real collector.run_pass (AC-SV11).",
+      "acceptance_refs": ["AC-68", "AC-SV9", "AC-SV10", "AC-SV11"]
+    }
+  ],
+  "tests": [
+    {"path": "local/tests/test_config_local.py", "kind": "modified", "status": "pass", "covers": "board_config.local()'s new port key: default, override, and every invalid form"},
+    {"path": "local/tests/test_server.py", "kind": "added", "status": "pass", "covers": "binding, the Host/Origin gate, the six do_ methods and framework refusals (400/414/431/501/505), the page wrapper, snapshot conformance and the corrupt-row fallback, never-writes, not-ready/error responses, the network-path guard, the command line"},
+    {"path": "local/tests/test_server_live.py", "kind": "added", "status": "pass", "covers": "a change delivered to an open stream, a deletion, retry/reset/no-reset-loop/larger-of-since-and-last-event-id, the heartbeat and disconnect drop, no-poll-with-no-clients, no client stalling another, the 9th-stream cap, and a real collector.run_pass running beside an open stream and an in-flight snapshot"},
+    {"path": "tests/ (discover)", "kind": "existing", "status": "pass", "covers": "the exporters and the page's derivation, unaffected by this PBI; 307 tests, unchanged from baseline"},
+    {"path": "tests/page.test.mjs", "kind": "existing", "status": "pass", "covers": "the published page's inline script; unaffected by this PBI; 96 checks, unchanged from baseline"},
+    {"path": "local/tests/ (discover)", "kind": "existing", "status": "pass", "covers": "records/schema/db/collector conformance, unaffected except test_config_local.py's extension; 247 tests total (194 baseline + 53 new)"}
+  ],
+  "acceptance": [
+    {"criterion": "AC-67: a UNC local.databasePath refuses to start, exit 2, the path printed exactly as configured, no socket bound, nothing created", "met": "yes", "evidence": "test_server.py NetworkGuard.test_unc_path_refuses_at_start_exits_2_no_file_created and test_realpath_pointing_at_a_unc_path_refuses"},
+    {"criterion": "AC-68: a database change while a client is connected to /api/events delivers a change event naming the record's path and new document within three poll intervals (server-level leg; the in-browser leg is PBI-007's demonstration)", "met": "yes", "evidence": "test_server_live.py Live.test_change_delivered_within_three_poll_intervals and test_deleted_record_arrives_in_deleted"},
+    {"criterion": "AC-69: /api/snapshot returns an entry for every stored conforming record with skipped 0 (non-vacuous), a bad row is omitted and counted in skipped without costing the rest of its kind", "met": "yes", "evidence": "test_server.py SnapshotConformance.test_every_record_is_returned_with_skipped_zero and test_a_corrupt_row_is_skipped_others_of_its_kind_still_served"},
+    {"criterion": "AC-SV1: 127.0.0.1-only binding, AF_INET, allow_reuse_address false, a LAN connection refused", "met": "yes", "evidence": "test_server.py Binding class"},
+    {"criterion": "AC-SV2: Host allow-list, every refusal shares the one-line text/plain shape with no echo", "met": "yes", "evidence": "test_server.py HostAndOrigin.test_bad_hosts_are_403_one_line_no_echo and GateFramework.test_every_refusal_has_the_same_plain_shape"},
+    {"criterion": "AC-SV3: the six do_ methods funnel through the gate; PATCH gives 501 before it; no Access-Control-Allow-* header anywhere", "met": "yes", "evidence": "test_server.py GateFramework and HostAndOrigin.test_no_response_carries_a_cors_header"},
+    {"criterion": "AC-SV4: board_config.local(cfg) gains port, defaulting to 8765, validated 1..65535 whole numbers only; --port 0 binds a free port", "met": "yes", "evidence": "local/tests/test_config_local.py port tests and test_server.py CommandLine.test_port_0_binds_a_free_port"},
+    {"criterion": "AC-SV5: GET / returns the wrapped, well-formed page with the hoisted title and the local marker; HEAD mirrors it with no body; 404/500 as specified; site/** untouched", "met": "yes", "evidence": "test_server.py Page class"},
+    {"criterion": "AC-SV6: the server never writes the database's content (query_only=1; file bytes/mtime/data_version/sqlite_master unchanged even with db.open_db/schema.create_schema/db.upsert/db.delete patched to raise)", "met": "yes", "evidence": "test_server.py NeverWrites.test_query_only_and_file_unchanged_even_with_writers_patched_to_raise"},
+    {"criterion": "AC-SV7: no response holds collector_* state or an answers table's contents; the API routes hold no 'answers' substring; snapshot kinds are a subset of records.TABLES", "met": "yes", "evidence": "test_server.py IgnoresCollectorState and test_server_live.py Live.test_stream_events_hold_no_collector_state_or_answers"},
+    {"criterion": "AC-SV8: with no database file the page still serves and /api/snapshot is 503 with Retry-After and no file created; a too-new schema names both versions; records serve once the collector creates the database, with no restart", "met": "yes", "evidence": "test_server.py NotReady class"},
+    {"criterion": "AC-SV9: the stream's headers/retry line; ?since= vs Last-Event-ID reset semantics, the larger value wins either way, no reset loop; the heartbeat; the 9th stream is 503", "met": "yes", "evidence": "test_server_live.py Live.test_current_since_no_reset_stale_gives_reset_with_id, test_no_reset_loop_after_obeying_a_reset, test_larger_of_since_and_last_event_id_wins_either_way, test_heartbeat_arrives_within_twice_the_interval_and_disconnect_is_dropped, test_ninth_stream_gets_503"},
+    {"criterion": "AC-SV10: no polling while no client is connected, resuming on the next connection, within the stated tolerance; a client that stops reading is dropped and cannot stall another", "met": "yes", "evidence": "test_server_live.py Live.test_poll_count_stops_with_no_clients_and_resumes_on_connect and test_no_client_can_stall_another"},
+    {"criterion": "AC-SV11: the server and a real collector.run_pass run against the same file without blocking each other; a snapshot still answers under a held BEGIN IMMEDIATE", "met": "yes", "evidence": "test_server_live.py BesideACollector class"},
+    {"criterion": "AC-SV12: main([]) starts, prints the URL and database, returns 0 when stopped; exit 2 for every named start-up refusal naming its cause, 1 otherwise; a raising handler gives 500 with a stderr-only traceback and no Python-naming Server header", "met": "yes", "evidence": "test_server.py CommandLine class and Errors class"}
+  ],
+  "follow_ups": [
+    {"ref": "code-reviewer GO/NO-GO", "owner": "code-reviewer", "note": "GO/NO-GO quality gate on local/server.py and its tests. The close-out expectation's suite-green half is met (see report.summary); its code-review half is this hand-off."},
+    {"ref": "PBI-007 deployment criteria", "owner": "PBI-007", "note": "AC-66 (netstat inspection), AC-70 to AC-73, AC-68's in-browser demonstration leg, Task Scheduler start-at-log-on and stdout/stderr log capture: all named out of this PBI's scope by the spec's section 12."}
+  ]
+}

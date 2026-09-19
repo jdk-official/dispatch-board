@@ -1,0 +1,74 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "build-cell",
+    "as_of_date": "2026-09-12",
+    "pbi": "PBI-025",
+    "effective_tier": "assisted",
+    "gates": {
+      "code_review": "agent",
+      "external_review": "human",
+      "merge": "human",
+      "plan": "human",
+      "spec": "agent"
+    },
+    "overrides": [],
+    "sensitivity": "sensitive",
+    "summary": "The collector writes each project's five projectTabs records and its status record into the local SQLite database, by the same rules as export_board.py and refresh.py, with tab assembly moved into the shared exporters/derive.py so the board and the local app derive identical documents from one implementation. Spec gate took two rounds (revision 3 approved; revision 4 is a post-approval correction the code review caused). Code review round 1 GO-WITH-CONDITIONS (1 Medium, 1 Low), both applied; round 2 GO with zero findings. Canonical run 345/111/304 PASS bound to 3345bca after rebase onto main 860144d.",
+    "verdict": "CELL-DONE"
+  },
+  "rounds": [
+    {
+      "n": 1,
+      "code_writer_verdict": "DONE",
+      "reviewer_verdict": "GO-WITH-CONDITIONS",
+      "change_report_ref": "docs/backlog/reviews/PBI-025/change-report.json",
+      "findings_ref": "docs/backlog/reviews/PBI-025/findings-r1.json"
+    },
+    {
+      "n": 2,
+      "code_writer_verdict": "DONE",
+      "reviewer_verdict": "GO",
+      "change_report_ref": "docs/backlog/reviews/PBI-025/change-report-r2.json",
+      "findings_ref": "docs/backlog/reviews/PBI-025/findings.json"
+    }
+  ],
+  "events": [
+    {
+      "kind": "tier-resolved",
+      "detail": "standard, ceiling assisted -> assisted; ratified earned lift supervised"
+    },
+    {
+      "kind": "spec-gate",
+      "detail": "Two rounds. Round 1 CHANGES-REQUIRED (2 High, 4 Medium, 2 Low, 1 Info), all nine applied. Round 1's F-2 was a data-loss bug caught before any code existed: deriving the local owned-tabs set from records.TAB_NAMES would delete the findings record export_sessions owns on every 60-second pass once PBI-026 widened that tuple. Round 2 APPROVE-WITH-NOTES; N-4 caught that UnicodeDecodeError subclasses ValueError, so the confined per-project failure rule and the load_data whole-pass carve-out cannot both be met by one block-level handler. Round 2 also withdrew round 1's F-9 as incorrect and confirmed four real citation errors the author had found in its place."
+    },
+    {
+      "kind": "spec-corrected-by-the-build",
+      "detail": "Revision 4, post-approval. The build deviated from §4.4 row 4 ('Store nothing' for an already-carried record) and the code reviewer adjudicated the deviation correct and the SPEC wrong: returning nothing drops the record from the intended set, §6.2 computes deletions as stored-minus-intended, so the record would be deleted on the third pass — losing the very carry the rule exists to preserve. The reviewer reproduced that from the literal wording. The spec is amended to match the code; no acceptance criterion moved, and AC-TB3 still asserts zero db.upsert on a later carrying pass."
+    },
+    {
+      "kind": "same-bug-class-found-again",
+      "detail": "Round 1 of the code review found the spec gate's N-4 hole repeated on a different path: GIT_ERRORS omitted UnicodeDecodeError, so one project's non-UTF-8 git output (an unlimited `git log %s`, or a branch name) escaped the confined region and failed every 60-second pass indefinitely, writing nothing and taking the healthy projects with it. The reviewer reproduced it. Fixed by adding UnicodeDecodeError to GIT_ERRORS, test-first; FakeRun gained a raw mode that decodes real bytes with the call's own encoding as subprocess.run does under text=True, so the error originates in git's output rather than a synthetic exception. Round 2 applied the same lens further — twelve pathological document shapes all degraded inside READ_ERRORS, and the one residual (derive.git_doc's pipe unpack) was probed and found unreachable because git folds a multi-line subject to one line."
+    },
+    {
+      "kind": "scope-check",
+      "detail": "scope_guard ok on 10 paths. local/tests/test_conformance.py untouched, as the spec's §7.4 required (editing it was a stop-and-report). local/records* and local/schema* untouched, both blocked."
+    },
+    {
+      "kind": "no-regression-to-the-board",
+      "detail": "Four merged PBIs depend on exporters/derive.py and exporters/export_board.py. Proven by _reference_git_tab — the verbatim pre-move body — compared on keys, values AND key order through one shared fake git over four input sets, plus a byte-identity fixture for the four deterministic spec tabs. The reviewer verified that fixture is genuinely pre-move by running it green against a clean git archive of the base tree, rather than accepting that the existing tests still pass."
+    },
+    {
+      "kind": "network-boundary",
+      "detail": "T-5 re-probed by the reviewer with its own patched subprocess against real repos: 12 subprocesses, all git, no gh/curl/claude, no pulls. FakeRun never reaches a real subprocess. pulls is excluded locally by design (spec Q-2), so the local GitHub tab carries no pull requests."
+    },
+    {
+      "kind": "tooling-gap-found",
+      "detail": "The builder discovered that change_report_schema.py and cell_report_schema.py have no __main__: invoking them as `python <tool>.py <file>` exits 0 on any input, including garbage. The orchestrator confirmed this, and had been citing that vacuous check all session. All 46 change- and cell-reports in this repo were then validated properly by importing the modules and calling validate(), with a prior assertion that the validators reject garbage; every one is genuinely valid. run_report_schema.py and handover_schema.py do have working CLIs. Worth raising with the backlog-delivery plugin owner."
+    },
+    {
+      "kind": "canonical-run",
+      "detail": "345 / 111 / 304 PASS, bound to 3345bca; re-run after the rebase onto main 860144d so the report attests the tree that merges"
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-11",
+    "mode": "diff",
+    "scope": "Uncommitted diff of branch pbi/PBI-018-later-group against 84fa3ee in C:/Users/jdk/dispatch-board-worktrees/PBI-018: CLAUDE.md, exporters/export_board.py, site/index.html, tests/page.test.mjs, tests/test_export_board.py. Intent rung 2 (work-item acceptance criteria AC-L1 to AC-L3 from docs/backlog/pbi/PBI-018.md; the PBI prescribes no approach). Grounding path: repo test suites run read-only (python -m unittest: 205 OK; node tests/page.test.mjs: 49 passed; git diff --check clean) plus a scratch probe of later_items() against both real specs and edge cases; security is reasoning only (no Touchstone SARIF, no SAST).",
+    "summary": "Standard change class. 0 CRITICAL, 0 HIGH, 0 MEDIUM, 1 LOW (correctness). Dimensions covered: correctness, security, maintainability, test-adequacy. AC-L1 met, AC-L2 met in code (browser rendering not verified here), AC-L3 met. later never reaches the PBI totals, Overview tiles, backlog cells, dependency graph, header badge or Needs attention. Flag-only: nothing was changed, committed or deployed.",
+    "sensitivity": "sensitive",
+    "verdict": "GO"
+  },
+  "findings": [
+    {
+      "id": "CR-018-01",
+      "severity": "LOW",
+      "title": "Later ideas written as '* ', '+ ', numbered or indented bullets are dropped or merged into the previous idea",
+      "subject": {
+        "type": "file",
+        "id": "exporters/export_board.py:86",
+        "name": "later_items bullet matcher"
+      },
+      "evidence": [
+        {
+          "field": "code",
+          "value": "m = re.match(r'-(?: (.*))?$', line)  ...  elif line.strip() and current is not None: current.append(line.strip())",
+          "sensitive": false
+        },
+        {
+          "field": "probe",
+          "value": "'- **A**: one' followed by '* **B**: two' gives [{title:'A', description:'one * **B**: two'}]; '* **A**: one' gives []; '  - **A**: x' gives []; '1. **A**: one' gives []; '- **A**: one' then '  - sub' gives description 'one - sub'",
+          "sensitive": false
+        }
+      ],
+      "impact": "AC-L1 says each bullet under the heading becomes a later item, but only '- ' bullets at column 0 are recognised. A '* ' bullet directly after a '- ' bullet disappears into the previous idea's description, and its bold then renders mid-sentence. Other bullet styles vanish with no warning. The real spec uses only '- ' bullets and CLAUDE.md documents that limit, so today's output is correct and nothing crashes. The impact is limited to the Later display.",
+      "remediation": "Treat any Markdown list marker ('-', '*', '+', or 'N.' with up to 3 leading spaces) as the start of a new bullet, and treat more deeply indented list lines as nested items rather than continuation text. Alternatively, keep '- ' as the only style but warn on stderr when a line in the section starts with another marker, so nothing is lost silently. Add a test for each case.",
+      "refs": [
+        "AC-L1",
+        "Error Handling at Boundaries (robustness of an internal/trusted input)",
+        "Testing Discipline"
+      ],
+      "category": "correctness"
+    }
+  ],
+  "not_audited": [
+    {
+      "ref": "AC-L2 visual rendering",
+      "reason": "The page was not viewed in a browser (as instructed, the orchestrator is checking this in parallel). The markup, classes and tokens were verified in code and by tests/page.test.mjs section 9 only."
+    },
+    {
+      "ref": "PBI-018 worker close-out (suites green on the head commit)",
+      "reason": "The change is uncommitted, so there is no head commit yet. Both suites pass on the working tree; they need re-running on the commit at close-out."
+    },
+    {
+      "ref": "Security dimension",
+      "reason": "Touchstone SARIF was not provided and no SAST was run. Reasoning only: spec text reaches the DOM only through md(), which escapes first (site/index.html:254), and no text goes into an attribute."
+    },
+    {
+      "ref": "exporters/export_board.py section() (existing helper)",
+      "reason": "It ends a section at a '# ' line even inside a fenced code block. This existing behaviour is inherited, not introduced, so it is not raised against this change."
+    }
+  ],
+  "follow_ups": [
+    "Consider building a bullet with words before its bold span from the text before and after the span, so the card does not show the title twice (exporters/export_board.py:103-104; the current behaviour is documented in CLAUDE.md and is acceptable).",
+    "Cosmetic: the reflowed header comment in tests/page.test.mjs:1-3 breaks mid-sentence; rewrap it when the file is next touched.",
+    "Nested sub-bullets under a Later idea are flattened into its description as ' - item' text. If the spec starts using them, decide whether they should render as a list."
+  ]
+}

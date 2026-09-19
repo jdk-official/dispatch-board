@@ -1,0 +1,169 @@
+{
+ "schema_version": "1",
+ "report": {
+  "agent": "code-writer",
+  "as_of_date": "2026-09-13",
+  "mode": "finding",
+  "change_class": "standard",
+  "scope": "Round-2 fix of PBI-014 against code-review NO-GO findings-r1.json (CR-014-1 HIGH, CR-014-2/3 MEDIUM, CR-014-4/5/6 LOW), resumed from a run killed mid-edit, in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-014 (base 560e296). Acceptance: AC-82's files touched built from Edit/Write/MultiEdit/NotebookEdit tool inputs and published relative to the project's repoPath; each finding's remediation applied inside site/**, tests/page.test.mjs, exporters/**, tests/test_*.py. Grounding path: ran-suite.",
+  "verdict": "DONE-WITH-CONDITIONS",
+  "summary": "6 files modified (exporters/derive.py, exporters/export_sessions.py, site/index.html and three test files). Suites: tests 358 OK (was 357 with 1 failure); page 121 passed (was 117); local/tests 304 OK. Interrupted state: export_sessions.py never passed repoPath to run_doc, so in-repo files came out as bare basenames; in the failing assertion doc['files'] was the actual value and the repo-relative list the expected one. PARSER_VERSION bumped 6 to 7 because files is a new parsed and cached row field (separate from the settled findings no-bump call). Nothing committed, staged or pushed.",
+  "sensitivity": "sensitive"
+ },
+ "changes": [
+  {
+   "path": "exporters/derive.py",
+   "change_kind": "modify",
+   "acceptance_refs": [
+    "CR-014-1"
+   ],
+   "why": "response() records write-tool input paths; agent_row carries them as files; publishable_files() resolves '..', publishes in-repo paths relative to repoPath and any other path as …/<file name>; run_doc(repo=) publishes files only when there are some."
+  },
+  {
+   "path": "exporters/export_sessions.py",
+   "change_kind": "modify",
+   "acceptance_refs": [
+    "CR-014-1"
+   ],
+   "why": "Passes each session's project repoPath to run_doc; PARSER_VERSION 6 -> 7 so a parser-6 cache (no files) is re-parsed."
+  },
+  {
+   "path": "site/index.html",
+   "change_kind": "modify",
+   "acceptance_refs": [
+    "CR-014-1",
+    "CR-014-5",
+    "CR-014-6"
+   ],
+   "why": "Run detail files line names the run's own edited files, explains the …/ prefix, and falls back to the files its findings name; keeps one honest limit (shell-command edits are not recorded). Location parsing cuts only a trailing line suffix, splits on ';' and ',', skips non-strings. One findingCells() helper next to md() shared by the ledger and run-detail rows."
+  },
+  {
+   "path": "tests/test_derive.py",
+   "change_kind": "modify",
+   "acceptance_refs": [
+    "CR-014-1"
+   ],
+   "why": "Pins the outside-repo decision and the '..' climb-out cases."
+  },
+  {
+   "path": "tests/test_export_sessions.py",
+   "change_kind": "modify",
+   "acceptance_refs": [
+    "CR-014-1",
+    "CR-014-4"
+   ],
+   "why": "End-to-end repo-relative files; a cache signed by parser 6 is not reused; hasFindingsBlock and pbis stay off the run document."
+  },
+  {
+   "path": "tests/page.test.mjs",
+   "change_kind": "modify",
+   "acceptance_refs": [
+    "CR-014-1",
+    "CR-014-2",
+    "CR-014-5",
+    "CR-014-6"
+   ],
+   "why": "Edited-files line, location parsing, NFR-22 guard, single finding-cells source."
+  }
+ ],
+ "tests": [
+  {
+   "path": "tests/test_export_sessions.py",
+   "kind": "modified",
+   "status": "pass",
+   "covers": "test_a_run_document_names_the_files_the_run_edited_relative_to_the_repository (the interrupted run's failing test)"
+  },
+  {
+   "path": "tests/test_export_sessions.py",
+   "kind": "modified",
+   "status": "pass",
+   "covers": "test_a_run_document_names_a_file_edited_outside_the_repository_without_its_folder; test_a_cache_from_before_edited_files_were_parsed_is_not_reused (signs parser 6, so it fails without the bump)"
+  },
+  {
+   "path": "tests/test_export_sessions.py",
+   "kind": "modified",
+   "status": "pass",
+   "covers": "test_a_review_run_document_carries_its_own_findings: no hasFindingsBlock, no pbis (CR-014-4)"
+  },
+  {
+   "path": "tests/test_derive.py",
+   "kind": "added",
+   "status": "pass",
+   "covers": "test_run_doc_does_not_let_a_parent_step_pass_for_a_file_inside_the_repository; test_run_doc_names_a_file_outside_the_repository_without_its_folder (modified)"
+  },
+  {
+   "path": "tests/page.test.mjs",
+   "kind": "added",
+   "status": "pass",
+   "covers": "'AC-82: a picked run names the files it edited'; 'run detail: file names are read from a finding location...' (CR-014-5); 'NFR-22: the run detail uses status tiles...' (CR-014-2); 'run detail: a finding row is drawn by the same cells helper...' (CR-014-6). The last two were mutation-checked: a hex colour, or a copied finding row, in a scratch copy of the page fails them."
+  }
+ ],
+ "acceptance": [
+  {
+   "criterion": "CR-014-1: AC-82 files touched from tool inputs, repo-relative, outside-repo case decided and tested",
+   "met": "yes",
+   "evidence": "tests 358 OK, page 121 passed. Decision: an outside-repo path is published as …/<file name>, folders withheld; the prefix stops it reading as a repo-root file, and worktree edits stay visible rather than dropped."
+  },
+  {
+   "criterion": "CR-014-2: NFR-22 has a check and a verifying actor",
+   "met": "partial",
+   "evidence": "Page check pins NFR-13/9/10 for the panel and its CSS; NFR-14 by the existing escaping check. The PBI-014.md criterion naming the actor is outside allowed areas: left to the orchestrator."
+  },
+  {
+   "criterion": "CR-014-3: run shape documented with findings (and now files)",
+   "met": "no",
+   "evidence": "CLAUDE.md and local/records.py are outside allowed areas; recorded as follow-ups."
+  },
+  {
+   "criterion": "CR-014-4: row-internal fields stay off the run document",
+   "met": "yes",
+   "evidence": "assertNotIn hasFindingsBlock / pbis added."
+  },
+  {
+   "criterion": "CR-014-5: robust file names from finding locations",
+   "met": "yes",
+   "evidence": "Page check covers a drive letter, ';'-split files, a comma line list and an object location."
+  },
+  {
+   "criterion": "CR-014-6: one finding-cells helper",
+   "met": "yes",
+   "evidence": "findingCells() used by both rows; source check plus mutation check."
+  }
+ ],
+ "not_done": [
+  {
+   "ref": "local/collector.py:436",
+   "reason": "Still calls derive.run_doc without repo, so the local app would publish in-repo edits as …/<file name> where the store publishes them repo-relative. local/** is out of scope; local/tests stay 304 OK only because their fixtures hold no edit tool calls."
+  },
+  {
+   "ref": "CR-014-2 close-out criterion",
+   "reason": "docs/backlog/pbi/PBI-014.md is outside allowed areas: the orchestrator adds the NFR-22 criterion naming the verifier (owner, or a rendered-screenshot artefact under docs/backlog/evidence/)."
+  },
+  {
+   "ref": "CR-014-3",
+   "reason": "CLAUDE.md runs/<id> row and local/records.py SHAPES['run'] need optional findings and files lists; both files are outside allowed areas."
+  }
+ ],
+ "follow_ups": [
+  {
+   "ref": "local/collector.py",
+   "reason": "Pass repoPath to run_doc; add an equivalence fixture with an Edit tool call."
+  },
+  {
+   "ref": "CLAUDE.md store-path table runs/<id>",
+   "reason": "Document findings and files; note PARSER_VERSION 7 forces one full re-parse on the first refresh after merge."
+  },
+  {
+   "ref": "local/records.py SHAPES['run']",
+   "reason": "Add optional findings and files as 'list'."
+  },
+  {
+   "ref": "git worktrees",
+   "reason": "Edits made in a worktree (this project's normal build setup) publish as …/<file name>, since nothing in a transcript ties a worktree to repoPath; an owner decision could add worktree roots."
+  },
+  {
+   "ref": "Rendered appearance",
+   "reason": "Not browser-verified; stub-DOM suite only."
+  }
+ ]
+}

@@ -1,3 +1,11 @@
 # Exporter output: regenerated on every refresh and pushed to the board's store
 out/
 __pycache__/
+
+# Review evidence is written inside each PBI worktree and read there by the push rail; a run
+# report must be bindable to a commit without that binding itself becoming a later commit.
+# Finished items' records are force-added once they are final.
+docs/backlog/reviews/
+# Live cross-session state: every session and worktree must read the one copy in the main checkout.
+docs/backlog/ledger.md
+docs/backlog/trust-store.json

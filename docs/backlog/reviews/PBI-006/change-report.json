@@ -1,0 +1,160 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-12",
+    "mode": "pbi",
+    "change_class": "standard",
+    "scope": "PBI-006 (FR-97 to FR-99, AC-73): introduce one data-adapter interface in site/index.html, with a store adapter over window.claude.use('db') and a local API adapter over the PBI-005 server's /api/snapshot and /api/events, chosen by where the page was loaded. Acceptance criteria: (1) AC-73 local half - loaded from the local server the page requests the snapshot from the local server and opens no store subscription; (2) AC-73 artifact half - loaded as the artifact the page opens store subscriptions and issues no HTTP request; (3) FR-97 - both adapters feed the same rendered board from the same data; (4) the local adapter degrades honestly when the server is unreachable (no silent blank board); (5) no answers document and no collector state can reach the page. Grounding path: ran-suite (all three configured suites run in the worktree C:/Users/jdk/dispatch-board-worktrees/PBI-006), plus a manual end-to-end check against the real local/server.py.",
+    "verdict": "DONE",
+    "summary": "2 files modified (site/index.html, tests/page.test.mjs), 9 page checks added, +255/-17 lines. Suites: python -m unittest discover -s tests 334 passed / 0 failed; node tests/page.test.mjs 108 checks passed / 0 failed (baseline 99); python -m unittest discover -s local/tests 261 passed / 0 failed. Baseline 334 / 99 / 261. Only allowed areas touched (site/**, tests/page.test.mjs); exporters/** and local/** unchanged. Nothing committed, staged, pushed or deployed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "site/index.html",
+      "change_kind": "modify",
+      "why": "Added the data-adapter seam: a storeAdapter over the artifact's store and a localAdapter over the local server's snapshot and Server-Sent Events stream, both offering the same collection(name, order, cb) / doc(path, cb) interface; the bootstrap picks the local adapter when window.__DISPATCH_LOCAL__ names a snapshot URL and the store adapter otherwise. Added a `source` variable with cannotReach() / connectingTo() helpers so the connecting and out-of-reach states name whichever source the page is actually using, and the store-path wording is unchanged.",
+      "acceptance_refs": ["AC-73", "FR-97", "FR-98", "FR-99", "degrade-honestly", "no-answers"]
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "change_kind": "modify",
+      "why": "env() gained a `local` option that installs the marker, a fetch stub and a drivable EventSource stub, and installs throwing fetch/EventSource stubs otherwise so an artifact page that reached for HTTP would fail the run. Added section 21: nine checks over the adapter seam.",
+      "acceptance_refs": ["AC-73", "FR-97", "FR-98", "FR-99", "degrade-honestly", "no-answers"]
+    }
+  ],
+  "tests": [
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "added",
+      "status": "pass",
+      "covers": "AC-73, the artifact half: with no local marker the page opens exactly the eight store subscriptions and makes no HTTP request (the fetch/EventSource stubs throw if it does)"
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "added",
+      "status": "pass",
+      "covers": "AC-73, the local half: with the marker present (and window.claude also present, so the marker is what decides) the page requests /api/snapshot, opens /api/events?since=<snapshot version> and opens no store subscription"
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "added",
+      "status": "pass",
+      "covers": "FR-97: the whole rendered board - all ten panels, both pickers, the status text, the branch crumb, the as-of header and the footer - is deep-equal between the store adapter and the local adapter over the same fixtures with unique sort keys. Mutation-checked: reversing the local adapter's comparator fails this check"
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "added",
+      "status": "pass",
+      "covers": "live push: a change event's `set` redraws the board without a second snapshot request, and a path in `deleted` removes the record"
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "added",
+      "status": "pass",
+      "covers": "a reset event re-fetches the snapshot and redraws from it"
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "added",
+      "status": "pass",
+      "covers": "a stream error the browser will retry (readyState 1) says nothing; one it has given up on (readyState 2) sets the 'Live updates from the local server stopped' footer"
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "added",
+      "status": "pass",
+      "covers": "honest degrade: a local server that is not running, answers 503, or returns a body that is not the snapshot draws the out-of-reach board naming the local server (app bar Offline, Overview and Agent catalogue 'This view cannot reach the local server.', footer '... so it shows no data.'), opens no stream, and logs a console.warn with its error rather than a console.error"
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "added",
+      "status": "pass",
+      "covers": "a snapshot carrying answers/a1, collector_state/x and a record outside every watched collection renders byte-identically to the same snapshot without them, and no marker string from those records reaches the DOM"
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "added",
+      "status": "pass",
+      "covers": "adapter choice: a marker that names no snapshot URL is not taken as the local server; the store adapter runs and no fetch is made"
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "all 99 pre-existing page checks, including the store-adapter offline states ('This view cannot reach the live store.'), the late-store Connecting state, the catalogue-offline state and the retired tabs/* guard"
+    },
+    {
+      "path": "local/tests/test_server.py",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "the local server's wrapping of the real site/index.html (one html/head/body, hoisted title, the marker in the head, the file's bytes in the body) - unchanged by this work"
+    }
+  ],
+  "acceptance": [
+    {
+      "criterion": "AC-73 (local half): when the page is loaded from the local server, it requests the data snapshot from the local server",
+      "met": "yes",
+      "evidence": "Check 'AC-73, the local half': stub.asked === ['/api/snapshot'], one EventSource opened at '/api/events?since=7' (the snapshot's own version), and Object.keys(subs) is empty. Grounded further by a manual end-to-end run: local/server.py was started against a real SQLite database built with local/db.py, its real /api/snapshot body was fed to the page's inline script, and the page rendered the project picker in order with the live project selected, 'Building' from status/dispatch-board, the 'main' branch crumb, the session filter, project-scoped Dispatch runs, project usage (DB-ALL) and the 'data as of' header from meta/lastRefresh."
+    },
+    {
+      "criterion": "AC-73 (artifact half): when the page is loaded as the artifact, it opens store subscriptions",
+      "met": "yes",
+      "evidence": "Check 'AC-73, the artifact half': the eight expected subscription keys are present, and env() installs fetch/EventSource stubs that throw, so any HTTP reach from the artifact path would fail the run. Every pre-existing store check still passes."
+    },
+    {
+      "criterion": "FR-97: the page obtains all its data through one data-adapter interface, and both adapters produce the same rendered result",
+      "met": "yes",
+      "evidence": "The bootstrap holds one `adapter` and calls only collection()/doc() on it; neither the renderers nor the picker code changed. Check 'FR-97': rendered(local) deep-equals rendered(store) across all ten panels, both pickers, statusText, crumb, asOf and foot. Mutation-checked non-vacuous (reversing the local comparator fails it)."
+    },
+    {
+      "criterion": "FR-98 / FR-99: the adapter follows where the page was loaded, and the artifact never uses the local API",
+      "met": "yes",
+      "evidence": "Detection is window.__DISPATCH_LOCAL__ with a string `snapshot` URL - the marker the local server's wrapper injects (confirmed present in the real served page) and the artifact never carries. The local check runs with window.claude also present and still opens no store subscription; the 'adapter choice' check shows a marker without a snapshot URL falls back to the store adapter."
+    },
+    {
+      "criterion": "The local adapter degrades honestly when the server is unreachable - no silent blank board",
+      "met": "yes",
+      "evidence": "The first snapshot read is awaited before any watcher is registered, so its failure reaches the bootstrap, which sets offline and the footer naming the local server. Check 'local adapter: an unreachable, refusing or unreadable local server ...' covers a rejected fetch, a 503 and a body that is not JSON; each draws Offline plus 'This view cannot reach the local server.' and opens no stream. A stream the browser has given up retrying sets its own footer line. Verified against the real server too: with no database, /api/snapshot answers 503, which is exactly the covered path."
+    },
+    {
+      "criterion": "Nothing in the page leaks the answers collection or collector state",
+      "met": "yes",
+      "evidence": "The local adapter reads only the paths its six registered watchers name (four collection prefixes, two document paths); every other key in the records map is never touched. Check 'local adapter: answers, collector state and a record outside every watched collection ...' feeds a snapshot carrying answers/a1, collector_state/x and a bare 'sessions' path and asserts the rendered board is identical to one without them and that no marker string reaches the DOM. No page code names 'answers' or 'collector'."
+    },
+    {
+      "criterion": "Worker close-out: all three configured suites green on the worktree head",
+      "met": "yes",
+      "evidence": "python -m unittest discover -s tests: Ran 334, OK. node tests/page.test.mjs: all 108 page checks passed. python -m unittest discover -s local/tests: Ran 261, OK. Baseline 334 / 99 / 261; the page suite rose by the 9 added checks and no existing check changed."
+    },
+    {
+      "criterion": "Code-review gate passed (review-agents:code-reviewer GO)",
+      "met": "no",
+      "evidence": "Not this agent's to assert. The change is handed to code-reviewer for the GO / NO-GO verdict; code-writer never grades its own work."
+    }
+  ],
+  "not_done": [],
+  "follow_ups": [
+    {
+      "ref": "CLAUDE.md, the page-test bullet under 'Tests, run all three'",
+      "reason": "It lists what node tests/page.test.mjs checks and does not yet mention the data-adapter seam. CLAUDE.md is outside this PBI's allowed_areas (site/**, tests/page.test.mjs), so it was left alone; the owner or a docs PBI should add it."
+    },
+    {
+      "ref": "CLAUDE.md, 'How data gets onto the page'",
+      "reason": "It still says 'The page holds no data. It subscribes to the artifact's store' without the local-server alternative. Same allowed-areas reason."
+    },
+    {
+      "ref": "Offline fonts (PBI-005 spec row Q-13, reviewer's round-1 note)",
+      "reason": "The locally served page still fetches Schibsted Grotesk from fonts.googleapis.com / fonts.gstatic.com. That was logged against site/** for PBI-006 or a new PBI; it is not part of FR-97 to FR-99 and was left out to keep the diff to the adapter seam. Owner decision."
+    },
+    {
+      "ref": "Store-adapter document deletion, for whoever next touches the seam",
+      "reason": "The store adapter's doc() reports null for a document that does not exist and the local adapter reports null for a path absent from the snapshot, so the two agree; but the local adapter learns of a deletion only through the stream's `deleted` list or a reset. That is the server's contract and is exercised by the change/delete check, not a gap - recorded so it is not rediscovered as one."
+    },
+    {
+      "ref": "PBI-005 spec row Q-11 (which detection signal PBI-006 chooses)",
+      "reason": "Resolved: the marker is the signal, not the absence of window.claude. The absence of window.claude also happens in the artifact without its db capability, which must keep showing the store's out-of-reach board - so the marker is the only signal that separates the two. Worth recording in the PBI's evidence at close-out."
+    }
+  ]
+}

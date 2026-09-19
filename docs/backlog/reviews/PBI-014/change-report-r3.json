@@ -1,0 +1,97 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-13",
+    "mode": "finding",
+    "change_class": "standard",
+    "scope": "Apply the two code-writer-assigned conditions of PBI-014's final GO-WITH-CONDITIONS review (findings.json CR-014-8, CR-014-9) in the git worktree C:/Users/jdk/dispatch-board-worktrees/PBI-014, minimally, without reopening anything the review settled. CR-014-8 (Medium): reword the run-detail note so a worktree-relative file (published as …/<name> because the board cannot map a worktree back to repoPath) is not asserted to be outside the project's repository. CR-014-9 (Low): exclude a refused or failed edit tool call from \"files it edited\", and treat a home-relative (~/…) or drive-relative (C:foo) path as unplaceable so it publishes withheld (…/<name>) rather than with its folders. CR-014-7 (local/collector.py, deferred to follow-up PBI-027) and CR-014-3 (CLAUDE.md docs chore) are explicitly out of scope. Grounding path: ran-suite (all three configured suites run from the worktree root).",
+    "verdict": "DONE",
+    "summary": "4 files modified (site/index.html, exporters/derive.py, tests/page.test.mjs, tests/test_derive.py); 4 tests added (2 page checks, 2 Python unit tests), all passing. Full suites: python -m unittest discover -s tests: 360 OK (358 baseline + 2 added); node tests/page.test.mjs: 121 passed (2 assertions added within an existing check, no new 'ok' line); python -m unittest discover -s local/tests: 304 OK, unchanged (local/** untouched, out of scope). No console.error added. Diff on top of the reviewed tree: 4 files, 11 lines removed / 59 lines added (70 total) — site/index.html 1/1, tests/page.test.mjs 2/4, exporters/derive.py 8/30, tests/test_derive.py 0/24. Nothing staged, committed or pushed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "site/index.html",
+      "change_kind": "modify",
+      "why": "CR-014-8: the …/ note asserted a file was 'outside the project's repository', which is false for the 65 of 140 recorded dispatch-board edits made in a git worktree of the repository. Reworded to say the board could not place the file inside the repository, covering both the worktree case and the genuinely-outside case, without asserting either.",
+      "acceptance_refs": [
+        "CR-014-8"
+      ]
+    },
+    {
+      "path": "exporters/derive.py",
+      "change_kind": "modify",
+      "why": "CR-014-9(a): an Edit/Write/MultiEdit/NotebookEdit call was recorded as an edit from its tool_use block alone, before its tool_result was known; a refused or failed call still published the file as edited. Added failed_edit() to note a tool_use id whose tool_result carries is_error, and agent_summary() now drops that id's file. CR-014-9(b): publishable_files() treated a home-relative (~/…) or drive-relative (C:foo) path as a plain relative path, publishing its folders; both are now matched by UNPLACEABLE and withheld as …/<name>, same as a path genuinely outside the repository.",
+      "acceptance_refs": [
+        "CR-014-9a",
+        "CR-014-9b"
+      ]
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "change_kind": "modify",
+      "why": "Pin CR-014-8's corrected wording on the AC-82 run-detail check, and assert the old, false-for-worktrees wording is gone.",
+      "acceptance_refs": [
+        "CR-014-8"
+      ]
+    },
+    {
+      "path": "tests/test_derive.py",
+      "change_kind": "modify",
+      "why": "Add a failing-first test for each CR-014-9 case: a refused/failed edit call is excluded, and a home- or drive-relative path publishes withheld.",
+      "acceptance_refs": [
+        "CR-014-9a",
+        "CR-014-9b"
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "path": "tests/page.test.mjs",
+      "kind": "modified",
+      "status": "pass",
+      "covers": "CR-014-8: the run-detail note's corrected wording, and that the old 'outside the project's repository' wording is gone"
+    },
+    {
+      "path": "tests/test_derive.py::Sessions::test_a_refused_or_failed_edit_call_is_not_counted_as_edited",
+      "kind": "added",
+      "status": "pass",
+      "covers": "CR-014-9(a): a refused or failed Edit call is not published as a file the run edited"
+    },
+    {
+      "path": "tests/test_derive.py::Sessions::test_run_doc_treats_a_home_or_drive_relative_path_as_unplaceable",
+      "kind": "added",
+      "status": "pass",
+      "covers": "CR-014-9(b): a ~/… or drive-relative C:foo path publishes withheld (…/<name>), not with its folders"
+    }
+  ],
+  "acceptance": [
+    {
+      "criterion": "CR-014-8: the …/ note no longer asserts a worktree-relative file is outside the project's repository, and is true for both the worktree and genuinely-outside cases",
+      "met": "yes",
+      "evidence": "site/index.html:598 reworded; tests/page.test.mjs asserts the new wording and asserts the old wording is absent; node tests/page.test.mjs: 121 passed"
+    },
+    {
+      "criterion": "CR-014-9(a): a refused or failed edit tool call is excluded from 'files it edited'",
+      "met": "yes",
+      "evidence": "derive.py: failed_edit() + agent_summary() filter by tool_result is_error; test_a_refused_or_failed_edit_call_is_not_counted_as_edited passes"
+    },
+    {
+      "criterion": "CR-014-9(b): a ~/… or drive-relative C:foo path is treated as unplaceable and publishes withheld",
+      "met": "yes",
+      "evidence": "derive.py: UNPLACEABLE regex added to publishable_files(); test_run_doc_treats_a_home_or_drive_relative_path_as_unplaceable passes"
+    }
+  ],
+  "not_done": [],
+  "follow_ups": [
+    {
+      "ref": "CR-014-7",
+      "reason": "Out of allowed_areas (local/**); tracked as follow-up PBI-027, not touched here."
+    },
+    {
+      "ref": "CR-014-3",
+      "reason": "Out of allowed_areas (CLAUDE.md); a docs chore before close-out, not touched here."
+    }
+  ]
+}

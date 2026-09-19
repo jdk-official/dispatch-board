@@ -1,5 +1,35 @@
 {
   "buildState": {
+    "PBI-002": {
+      "state": "done",
+      "review": "GO (round 2; round 1's two Lows applied)",
+      "open": "Done: PR #12 squash-merged by the owner (049f27e) and finalized. The page fixes are live. AC-62's 20-load check was accepted by the owner (\"accept but keep the test active\"): it stopped at 5 loads in Edge (4 drew, 1 was empty at 5 s, undetermined), and it stays active as a standing re-run whenever a visible browser is available; a load still blank at 12 s reopens FR-85.",
+      "commit": "049f27e"
+    },
+    "PBI-008": {
+      "state": "done",
+      "review": "GO (round 2, 2 Low recorded; round 1 GO-WITH-CONDITIONS, all applied)",
+      "open": "Done: PR #16 squash-merged by the owner (f2e58e6) and finalized. Every refresher tick writes meta/lastRefresh, and the page header shows 'data as of <time>', amber with 'stale' after 20 minutes. A tick now always has at least one write, so refresh.py never prints 'nothing to push' again: CLAUDE.md's refresh procedure, its store-path table and PRD FR-46 still describe the old behaviour and need a docs chore.",
+      "commit": "f2e58e6"
+    },
+    "PBI-019": {
+      "state": "done",
+      "review": "Spec gate 3 rounds (revision 3 approved); code review round 2 GO (round 1 NO-GO, all fixed)",
+      "open": "Done: PR #15 squash-merged by the owner (b23df89) and finalized. The collector reads each transcript from where it stopped and derives records equal to the exporter's through the shared derive module, with the network-path and mass-delete guards and age-only pruning. Its first push was refused by the secret scan on a made-up folder path in a test constant; renamed with the owner's approval.",
+      "commit": "b23df89"
+    },
+    "PBI-004": {
+      "state": "done",
+      "review": "GO (round 2; round 1 GO-WITH-CONDITIONS, all applied)",
+      "open": "Done: PR #14 squash-merged by the owner (d10d9e6) and finalized. exporters/derive.py holds the exporters' parsing and derivation, standard library only and importable by the collector; the exporters' output is unchanged (byte-identical on a frozen copy of real data, and a real-data refresh after the merge changed nothing).",
+      "commit": "d10d9e6"
+    },
+    "PBI-024": {
+      "state": "done",
+      "review": "GO (round 2; round 1 GO-WITH-CONDITIONS, all three applied)",
+      "open": "Done: PR #13 squash-merged by the owner (7bcd2fd) and finalized. The board exporter marks a tab it keeps from an earlier export with carriedSince (FR-190); the page's warning shipped in PBI-002.",
+      "commit": "7bcd2fd"
+    },
     "PBI-017": {
       "state": "done",
       "review": "GO-WITH-CONDITIONS (round 3; both notes logged in PBI-002)",
@@ -37,9 +67,9 @@
       "commit": "7fd96cb"
     },
     "PBI-001": {
-      "state": "conditions",
+      "state": "done",
       "review": "GO-WITH-CONDITIONS (round 2; conditions applied and checked; round 1 NO-GO fixed)",
-      "open": "PR #10 is open and waiting for the owner's merge (squash); suites 267 / 57 / 90 pass on 9aeff32. Round 1 found a High (a verifier that declared a fallback could show as exercised); rounds 2 and 3 fixed it and six other findings. Branch pbi/PBI-001-exporter-hardening: the FR-80 to FR-84 and FR-133 hardening, plus the follow-ups other reviews logged here (a token in remotes, manual-row validation, the reserved meta/lastRefresh, Later bullets).",
+      "open": "Done: PR #10 squash-merged by the owner (d4023c6) and finalized. The carried-tab marker named in its title (FR-190 / AC-125) was not built here; it shipped in PBI-024. Branch pbi/PBI-001-exporter-hardening: the FR-80 to FR-84 and FR-133 hardening, plus the follow-ups other reviews logged here (a token in remotes, manual-row validation, the reserved meta/lastRefresh, Later bullets).",
       "commit": "9aeff32"
     },
     "PBI-013": {
@@ -47,8 +77,56 @@
       "review": "GO (code review round 2; round 1's five conditions fixed)",
       "open": "Done: PR #9 squash-merged by the owner (602eab9) and finalized. The forecast is live on the Claude usage tab and the Overview. The estimate method still needs the owner's record in PRD A-34.",
       "commit": "602eab9"
+    },
+    "PBI-011": {
+      "state": "done",
+      "review": "Code review round 2 GO (round 1 NO-GO: 1 High, 5 Medium, 2 Low, all fixed test-first); 3 Low follow-ups",
+      "open": "Done: PR #18 squash-merged (a23afd8). The review findings ledger: per work item, the open and resolved findings, the rounds so far and the rounds to GO, derived in the shared module and published as projectTabs/<projectId>.findings. Round 1 caught two defects that would each have published false information — an un-bumped parser version replayed 43 cached rows with no findings, and a round whose findings live in a file rather than the reply was treated as authoritative; both would have shown never-fixed findings as Resolved.",
+      "commit": "a23afd8"
+    },
+    "PBI-005": {
+      "state": "done",
+      "review": "Spec gate 2 rounds (revision 2 approved); code review round 2 GO (round 1 NO-GO: 1 High, 3 Medium, 7 Low, 1 Info, all fixed)",
+      "open": "Done: PR #19 squash-merged (3e3ec44). The local server: the page, a record-shaped snapshot and a live event stream on 127.0.0.1 only, with a Host allow-list, an Origin check on every non-GET, no CORS, a read-only (query_only=1) database opener and the network-path guard. The round-1 High was a test that proved nothing — the stall test never overflowed its queue (0 queue.Full events measured), leaving the whole drop path untested behind a green criterion. Fixing the tests then surfaced a real defect: CPython leaves request_version at HTTP/0.9 during send_error, so the 505 returned no status line and no headers. AC-68's in-browser leg is deliberately PBI-007's, not claimed here.",
+      "commit": "3e3ec44"
+    },
+    "PBI-026": {
+      "state": "done",
+      "review": "Code review GO at round 1; 2 Low follow-ups",
+      "open": "Done: PR #20 squash-merged (5baa922). The local record shapes accept the findings tab, so the local app can hold what PBI-011 publishes. Reviewed as the input-validator widening it is: fullmatch verified at the call site and an adversarial id sweep confirmed exactly one new id form. Criterion R-1 named records.shapes.json as a file that must change; it encodes no tab names at all, so that half was corrected at close-out rather than ticked.",
+      "commit": "5baa922"
+    },
+    "PBI-006": {
+      "state": "done",
+      "review": "Code review round 2 GO with zero findings (round 1 GO-WITH-CONDITIONS: 1 Medium, 5 Low, all applied)",
+      "open": "Done: PR #21 squash-merged (10e6659). The page reaches its data through an adapter chosen at load — the artifact store as before, or the local server — and renders the same board either way. Selection is by the window.__DISPATCH_LOCAL__ marker, not the absence of window.claude, because an artifact without its db capability also lacks window.claude and must still show the store's board. First time the two halves of the local-first system ran together: PBI-005's spec-gate S-4 finding was confirmed to hold across the seam against a real headless server.",
+      "commit": "10e6659"
+    },
+    "PBI-025": {
+      "state": "done",
+      "review": "Spec gate 2 rounds (revision 4 after a post-approval correction the code review caused); code review round 2 GO with zero findings",
+      "open": "Done: PR #23 squash-merged (560e296). The collector writes each project's five projectTabs records and its status record locally, with tab assembly moved into the shared derive module. Completes the local-first path: collector to SQLite to server to page. The spec gate caught a data-loss bug before any code existed — deriving the owned-tabs set from records.TAB_NAMES would have deleted the findings ledger every 60-second pass. The code review then found the spec itself wrong on the carry rule, and found the spec gate's UnicodeDecodeError hole repeated on the git path. Known gap by design: pulls is excluded locally, so the local GitHub tab carries no pull requests.",
+      "commit": "560e296"
+    },
+    "PBI-014": {
+      "state": "done",
+      "review": "Code review round 1 NO-GO (1 High, 2 Medium, 3 Low), fixed test-first; round 2 GO-WITH-CONDITIONS, all applied; AC-82 and NFR-22 approved by the owner on rendered screenshots (2026-09-19)",
+      "open": "Done: PR #24 squash-merged (4bbbad8). Picking a run on the Dispatch tab opens its detail: verdict summary, the round's own findings, the files it edited, and its duration. Close-out waited on the owner's visual check; screenshots of both themes cleared it in one approval.",
+      "commit": "4bbbad8"
+    },
+    "PBI-027": {
+      "state": "partial",
+      "review": "In build",
+      "open": "Building 2026-09-19: the local collector passes the repository, so the local app shows the same file paths as the board. PBI-007's deployment waits on it.",
+      "commit": ""
+    },
+    "PBI-009": {
+      "state": "partial",
+      "review": "Spec gate passed (revision 3); owner answered rows 1a, 1b and 2 on 2026-09-19",
+      "open": "Building 2026-09-19: the 'Waiting on you' panel (pending questions, idle-after-asking, refusals). Holds the page group's slot.",
+      "commit": ""
     }
   },
   "notWorkedOut": [],
-  "boardNote": "The plan was approved on 2026-09-11 (spec revision 5). Done: **PBI-017**, **PBI-018**, **PBI-022**, **PBI-023**, **PBI-003**, **PBI-021** (the six leftover store documents are deleted, with copies in snapshot/tabs/) and **PBI-013** (the usage limit forecast is live). **PBI-016** (Unraid) was moved to Later by the owner. Awaiting the owner: the merge of PR #10 (**PBI-001**, exporter hardening, review GO-WITH-CONDITIONS with every condition applied). After it: **PBI-002** (page fixes) and **PBI-004** (shared derivation module)."
+  "boardNote": "The plan was approved on 2026-09-11 (spec revision 5). Done: **PBI-017**, **PBI-018**, **PBI-022**, **PBI-023**, **PBI-003**, **PBI-021** (the six leftover store documents are deleted, with copies in snapshot/tabs/), **PBI-013** (the usage limit forecast is live), **PBI-001** (exporter hardening), **PBI-024** (the carried-tab marker), **PBI-004** (the shared derivation module), **PBI-002** (page fixes; its 20-load check stays active), **PBI-019** (the collector), **PBI-008** (the 'data as of' stale-board warning), and on 2026-09-12 **PBI-011** (the review findings ledger), **PBI-005** (the local server), **PBI-026** (local shapes accept the findings tab), **PBI-006** (the page data-adapter seam) and **PBI-025** (local tab and status records). **PBI-016** (Unraid) was moved to Later by the owner.\n\n**The local-first path is complete**: collector to SQLite to server to page, with every document the published board shows now derivable locally from one shared implementation. The one deliberate gap is `pulls` — listing pull requests needs `gh`, which contacts GitHub, and the collector never touches a network host, so the local GitHub tab carries no pull requests.\n\nNothing is in flight. **PBI-007** (log-on start through Task Scheduler, the on-PC deployment end to end) now has all three dependencies Done and is the natural next item; it also owns AC-68's in-browser demonstration leg, which PBI-005 deliberately did not claim. PBI-009, PBI-010, PBI-012, PBI-014 and PBI-020 are all dependency-clear. On 2026-09-19 **PBI-014** (run detail) closed once the owner approved its screenshots; **PBI-027** and **PBI-009** are building."
 }

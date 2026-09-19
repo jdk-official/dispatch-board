@@ -1,0 +1,42 @@
+{
+ "schema_version": "1",
+ "report": {
+  "agent": "code-writer",
+  "as_of_date": "2026-09-11",
+  "mode": "pbi",
+  "change_class": "standard",
+  "scope": "PBI-008 in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-008 (branch pbi/PBI-008-stale-board). Intent: refresh.py plans a meta/lastRefresh set on every plan (L-1..L-3) and the page shows 'data as of' with stale styling (L-4). Grounding: ran-suite. Stopped at the dispatcher's STOP condition: local/tests conformance fails because refresh.plan now writes out/meta/lastRefresh.json, and local/** is blocked.",
+  "verdict": "NOT-DONE",
+  "summary": "Refresher half implemented (exporters/refresh.py modified; tests/test_refresh.py: 3 named tests updated, 7 LastRefresh tests added). tests: 307 run, 286 pass, 21 fail (existing refresh tests whose exact write sets or 'nothing to push' premise now include the lastRefresh set; not edited, outside the allowed three). local/tests: ConformanceV1.setUpClass errors ('no record kind for out/meta/lastRefresh.json'); 72 run, 1 error. page: 89/89 pass (re-run; site/** untouched). L-4 page work not started because of the STOP. Nothing committed/pushed/deployed.",
+  "sensitivity": "sensitive"
+ },
+ "changes": [
+  {"path": "exporters/refresh.py", "change_kind": "modify", "why": "Every plan that passes the guards writes out/meta/lastRefresh.json {at: UTC seconds Z, writer: refresher}, records its digest in state and appends one set after the status loop, so no status counts it; meta is unmanaged, so it is never deleted and never counted by the mass-delete guard. The now-unreachable 'nothing to push' branches in plan() and main() are removed; docstrings updated.", "acceptance_refs": ["L-1", "L-3"]},
+  {"path": "tests/test_refresh.py", "change_kind": "modify", "why": "The three tests named in L-2 now expect the new counts; the new LastRefresh class pins L-1 and L-3.", "acceptance_refs": ["L-1", "L-2", "L-3"]}
+ ],
+ "tests": [
+  {"path": "tests/test_refresh.py::Plan.test_first_plan_sets_everything_and_the_status", "kind": "modified", "status": "pass", "covers": "AC-34: 13 sets + 1 update of meta/status"},
+  {"path": "tests/test_refresh.py::UpdatedAt.test_unlinked_session_change_does_not_bump", "kind": "modified", "status": "pass", "covers": "AC-42: sessions/o + meta/lastRefresh, no status"},
+  {"path": "tests/test_refresh.py::UpdatedAt.test_deleted_linked_run_bumps", "kind": "modified", "status": "pass", "covers": "AC-44: delete + status update + meta/lastRefresh"},
+  {"path": "tests/test_refresh.py::LastRefresh (7 tests)", "kind": "added", "status": "pass", "covers": "one set per plan with at/writer shape; set even when nothing else changed; commit records it; refused plans (mass-delete, answers) write/plan nothing; never bumps a status; never deleted; never counts toward the mass-delete guard"},
+  {"path": "tests/test_refresh.py (21 other existing tests, e.g. Plan.test_vanished_run_is_deleted, Cli.test_nothing_to_push)", "kind": "existing", "status": "fail", "covers": "exact write sets / plan-is-None premises that the extra lastRefresh set on every plan contradicts"},
+  {"path": "local/tests/test_conformance.py::ConformanceV1 (setUpClass)", "kind": "existing", "status": "fail", "covers": "documents() maps no record kind to out/meta/lastRefresh.json; test_every_kind_the_v1_exporters_write_was_seen would also need 'lastRefresh'"}
+ ],
+ "acceptance": [
+  {"criterion": "L-1 every plan has exactly one set of meta/lastRefresh {at UTC seconds Z, writer refresher}; --commit records it; refused plans write and plan nothing", "met": "yes", "evidence": "LastRefresh tests pass; refresh.main against a temporary out/ (tests' Out helper, stub exporters) exited 0 with 14 writes including set meta/lastRefresh, file {\"at\": \"2026-09-11T21:04:48Z\", \"writer\": \"refresher\"}"},
+  {"criterion": "L-2 AC-34/AC-42/AC-44 counts rise by one in the three named tests", "met": "partial", "evidence": "The three named tests pass, but 21 other existing refresh tests fail for the same reason and were not edited (hard limit: only the three may change)"},
+  {"criterion": "L-3 never bumps status updatedAt/live, never deleted, never counts toward mass-delete", "met": "yes", "evidence": "LastRefresh.test_it_never_bumps_a_status, test_it_is_never_deleted, test_it_never_counts_toward_the_mass_delete_guard pass"},
+  {"criterion": "L-4 page 'data as of' header, --changes + 'stale' past 20 min, timer re-evaluates, absent/unreadable at shows nothing", "met": "no", "evidence": "Not started: stopped at the local/tests STOP condition"},
+  {"criterion": "Close-out: all three suites green", "met": "no", "evidence": "tests 307 run / 21 fail; local/tests ConformanceV1 setUpClass error; page 89/89 pass (re-run, no new checks since L-4 not started)"}
+ ],
+ "not_done": [
+  {"ref": "local/tests/test_conformance.py::ConformanceV1.setUpClass", "reason": "Fixture.documents() raises 'no record kind for out/meta/lastRefresh.json' (FOLDERS and the meta/status special case do not cover meta/lastRefresh), and test_every_kind_the_v1_exporters_write_was_seen asserts the kind set without 'lastRefresh'. local/** is blocked, so this is the dispatcher's STOP condition."},
+  {"ref": "tests/test_refresh.py (21 existing tests)", "reason": "L-1 puts the set in every plan, so every exact-set assertion and every 'plan is None / nothing to push' assertion changes, not just the three L-2 names: Plan.test_commit_then_nothing_to_push, test_nothing_to_push_removes_a_stale_pending_file, test_generated_at_alone_is_not_a_change, test_retired_tabs_are_never_deleted, test_unmanaged_collections_are_never_deleted, test_vanished_run_is_deleted, test_vanished_project_tab_is_deleted, test_vanished_project_is_deleted_with_the_flag; UpdatedAt.test_unlinked_run_change_does_not_bump, test_running_unlinked_run_does_not_bump, test_linked_session_change_bumps, test_linked_run_change_bumps, test_project_tab_change_bumps, test_project_document_change_bumps; ProjectStatus.test_later_writes_merge, test_a_change_bumps_only_its_own_project, test_live_is_per_project; Catalogue.test_a_catalogue_change_is_one_write_and_moves_no_status, test_a_new_generated_at_alone_is_not_a_change, test_deleting_the_catalogue_is_refused; Cli.test_nothing_to_push. No implementation can satisfy AC-42 while leaving the structurally identical test_unlinked_run_change_does_not_bump unchanged. Mechanical fix: add LAST to each expected set, replace assertIsNone(plan) with keys == {LAST}, commit count 14 -> 15, and drop or restate Cli.test_nothing_to_push (that output no longer exists)."},
+  {"ref": "L-4 site/index.html + tests/page.test.mjs", "reason": "Not started because of the STOP."}
+ ],
+ "follow_ups": [
+  {"ref": "scope: local/tests/test_conformance.py", "owner": "orchestrator / PBI-019 or a scoped chore", "note": "Map meta/lastRefresh to kind 'lastRefresh' in Fixture.documents() and add it to the expected kind set, or re-scope PBI-008 to allow that edit."},
+  {"ref": "scope: tests/test_refresh.py", "owner": "orchestrator", "note": "Authorise updating the 21 listed tests (adding the lastRefresh set is additive, not weakening); then re-dispatch code-writer to finish L-4."},
+  {"ref": "docs", "owner": "docs chore after merge", "note": "CLAUDE.md refresh procedure and /loop prompt still mention 'nothing to push', which no longer occurs."}
+ ]
+}

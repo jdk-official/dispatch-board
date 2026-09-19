@@ -1,0 +1,74 @@
+{
+ "schema_version": "1",
+ "report": {
+  "agent": "code-writer",
+  "as_of_date": "2026-09-12",
+  "mode": "pbi",
+  "change_class": "standard",
+  "scope": "PBI-011 (review findings ledger, FR-111, FR-112, AC-77): derive review-lane findings from a run's structured JSON result in exporters/derive.py (F-1), publish them per project as projectTabs/<id>.findings via exporters/export_sessions.py (F-2), and add a findings ledger view to site/index.html (F-3), pinning AC-77 and the empty case; ran-suite grounding, all three configured suites executed locally.",
+  "summary": "3 files modified under exporters/ and site/, 3 test files modified under tests/; python -m unittest discover -s tests: 322 passed / 0 failed (was 307); node tests/page.test.mjs: 99 passed / 0 failed (was 96); python -m unittest discover -s local/tests: 194 passed / 0 failed, unchanged; nothing committed, staged or pushed.",
+  "sensitivity": "sensitive",
+  "verdict": "DONE-WITH-CONDITIONS"
+ },
+ "changes": [
+  {
+   "path": "exporters/derive.py",
+   "change_kind": "modify",
+   "why": "F-1: add findings_of() (parses a review-lane run's trailing fenced JSON findings block, tolerant of no block or malformed JSON) and findings_doc() (groups a project's finished cr-lane rounds per work item into open/resolved findings, rounds, roundsToGo); agent_row() now attaches findings_of() to a cr-lane row's own findings list, kept off the published run document",
+   "acceptance_refs": ["F-1", "AC-77"]
+  },
+  {
+   "path": "exporters/export_sessions.py",
+   "change_kind": "modify",
+   "why": "F-2: write one projectTabs/<projectId>.findings document per project with at least one finished code-review round, reusing the existing projectTabs folder/collection (no new collection, refresh.py's guards untouched)",
+   "acceptance_refs": ["F-2", "AC-77"]
+  },
+  {
+   "path": "site/index.html",
+   "change_kind": "modify",
+   "why": "F-3: add a Findings ledger tab/panel fed by projectTabs/<id>.findings, per work item showing open findings (--changes), resolved findings (--go) and review rounds (with rounds-to-GO once reached), all text through esc()/md(); the empty case (no findings document) says so and renders no error",
+   "acceptance_refs": ["F-3", "AC-77"]
+  },
+  {
+   "path": "tests/test_derive.py",
+   "change_kind": "modify",
+   "why": "unit tests for findings_of() (no JSON, malformed JSON, text after the fence, empty findings list, file:line from subject) and findings_doc() (AC-77's two-round scenario, roundsToGo, rows outside the cr lane or with no PBI id, a still-running or cut-off review not yet a round)",
+   "acceptance_refs": ["F-1", "AC-77"]
+  },
+  {
+   "path": "tests/test_export_sessions.py",
+   "change_kind": "modify",
+   "why": "end-to-end tests over synthetic transcripts: AC-77's exact projectTabs/<id>.findings shape, the roundsToGo case, no findings document when a project has no finished review round, and run documents carrying no findings field",
+   "acceptance_refs": ["F-2", "F-4", "AC-77"]
+  },
+  {
+   "path": "tests/page.test.mjs",
+   "change_kind": "modify",
+   "why": "pins AC-77 on the page (F1 and F3 resolved, F2 open, 2 rounds), the rounds-to-GO case, and the empty case (no findings document: the view says so, no console.error)",
+   "acceptance_refs": ["F-3", "AC-77"]
+  }
+ ],
+ "tests": [
+  {"path": "tests/test_derive.py::FindingsOf", "kind": "added", "status": "pass", "covers": "findings_of() parsing tolerance and file:line extraction"},
+  {"path": "tests/test_derive.py::FindingsDoc", "kind": "added", "status": "pass", "covers": "findings_doc() grouping, AC-77, roundsToGo, running/killed reviews excluded"},
+  {"path": "tests/test_export_sessions.py::Findings", "kind": "added", "status": "pass", "covers": "the exported projectTabs/<id>.findings document, AC-77, the no-document case, run documents unchanged"},
+  {"path": "tests/page.test.mjs (section 20)", "kind": "added", "status": "pass", "covers": "the findings ledger view: AC-77, rounds-to-GO, the empty case, no console.error"},
+  {"path": "tests (full discover -s tests)", "kind": "existing", "status": "pass", "covers": "the exporters' existing behaviour is unchanged (F-4)"},
+  {"path": "local/tests (full discover -s local/tests)", "kind": "existing", "status": "pass", "covers": "the local-first app's record shapes stay conformant; count unchanged at 194"}
+ ],
+ "acceptance": [
+  {"criterion": "F-1: derive.py records each finding's id, severity, title, file:line and remediation from a review-lane run's trailing structured JSON, attributed to project/work item/round via the run's own project, pbis and read order; no JSON yields no findings and no error; malformed JSON is skipped without a crash; the function is pure (no I/O)", "met": "yes", "evidence": "derive.findings_of() and findings_doc(), tests/test_derive.py FindingsOf/FindingsDoc all pass"},
+  {"criterion": "F-2: the board exporter writes one projectTabs/<projectId>.findings document per project holding, per work item, open findings, resolved findings and review rounds (with rounds-to-GO where reached), reusing the projectTabs collection with no new collection and no refresh.py guard change", "met": "yes", "evidence": "export_sessions.py writes projectTabs/<id>.findings.json only for a project with a finished code-review round; tests/test_export_sessions.py Findings pass; refresh.py untouched; local/tests conformance stays green"},
+  {"criterion": "F-3: site/index.html shows a findings ledger per work item (open/resolved/rounds, rounds-to-GO), matching AC-77 exactly, with the empty case saying so and logging no console error; colours only via --changes (open) / --go (resolved), never --human, all text through esc()/md()", "met": "yes", "evidence": "site/index.html renderFindings(); tests/page.test.mjs section 20 (AC-77, rounds-to-GO, empty case) pass; node tests/page.test.mjs: 99/99"},
+  {"criterion": "F-4: the other exporter documents are unchanged, the existing suites stay green with nothing weakened, and the page's other tabs are untouched", "met": "yes", "evidence": "tests/test_export_sessions.py confirms run documents carry no 'findings' field; full suites: tests 322/322, page 99/99, local/tests 194/194 (unchanged count), no existing test edited or skipped"},
+  {"criterion": "AC-77: round 1 of a PBI-001 review listing F1, F2, F3 and round 2 listing only F2 shows F1 and F3 resolved, F2 open, and 2 rounds so far", "met": "yes", "evidence": "tests/test_derive.py::FindingsDoc.test_ac77_two_rounds_open_and_resolved, tests/test_export_sessions.py::Findings.test_ac77_two_rounds_open_and_resolved, tests/page.test.mjs section 20 all pin this exact scenario and pass; manual run over synthetic fixtures reproduced the same document (pasted in the report)"}
+ ],
+ "not_done": [
+  {"ref": "CLAUDE.md store-path table", "reason": "out of scope per the PBI (explicitly named): the new projectTabs/<id>.findings entry is left for a follow-up docs chore"},
+  {"ref": "local/records.py TAB_NAMES / _ID_FORMS['tab']", "reason": "local/** is outside this work item's allowed areas. The local-first app's tab id form only accepts spec/assumptions/decisions/backlog/git, so a projectTabs/<id>.findings document would fail local/records.store_path()/validate() once the local server actually holds one. Today's local/tests conformance fixture never produces a code-review round with structured findings, so its 194 tests stay green unchanged, but this is a real gap for whichever PBI next touches local/records.py: it should add 'findings' to TAB_NAMES and give the 'tab' SHAPES entry the items field."}
+ ],
+ "follow_ups": [
+  {"ref": "local/records.py: add 'findings' to TAB_NAMES (and, if felt worth it, an 'items' shape hint) so the local-first app can hold a findings tab without failing its id-form check", "owner": "next code-writer touching local/**"},
+  {"ref": "CLAUDE.md: document the projectTabs/<projectId>.findings store path (written by export_sessions.py, not export_board.py, since it derives from run transcripts rather than repo files)", "owner": "docs-cluster writer, per the PBI's own deferred docs chore"}
+ ]
+}

@@ -1,0 +1,135 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-12",
+    "mode": "diff",
+    "scope": "PBI-026 uncommitted working-tree change in C:/Users/jdk/dispatch-board-worktrees/PBI-026 (branch pbi/PBI-026-findings-tab): local/records.py (TAB_NAMES widened by findings), local/tests/test_records.py (+3 tests), local/tests/test_conformance.py (+FindingsFixture, +ConformanceFindings). Intent rung: 2 (work-item acceptance criteria R-1..R-4 in docs/backlog/pbi/PBI-026.md; requires_spec false, no plan artefact supplied). Grounding path: repo-linters/tests -- all three configured suites executed from the worktree root under Python 3.14.5, plus an adversarial id probe against records.store_path and a mutation run with TAB_NAMES reverted. No Touchstone SARIF provided, so the security dimension is reasoning-plus-probe only.",
+    "summary": "0 CRITICAL, 0 HIGH, 0 MEDIUM, 2 LOW. Dimensions covered: correctness, security (code-level), maintainability, test-adequacy. Change class: standard (an input-validator widening on a public id form). Suites re-run independently and match the builder's claim exactly: python -m unittest discover -s tests = 334 passed/OK; node tests/page.test.mjs = 99/99 checks; python -m unittest discover -s local/tests = 265 passed/OK (261 baseline + 4 added). Mutation check: stashing only local/records.py and re-running local/tests fails exactly 3 of the 4 new tests (test_findings_is_a_valid_tab_name, test_tab_names_widened_by_exactly_one, ConformanceFindings::test_a_findings_tab_was_written_and_conforms), so the new tests genuinely bite; the fourth is a negative test that correctly passes in both states. An adversarial probe confirms the widening admits exactly one new id form. Flag-only: nothing changed, staged, committed, pushed or deployed.",
+    "sensitivity": "sensitive",
+    "verdict": "GO"
+  },
+  "findings": [
+    {
+      "id": "CR-026-01",
+      "severity": "LOW",
+      "title": "The tab id regex interpolates TAB_NAMES unescaped, so a future tab name carrying a regex metacharacter would silently widen the validator instead of failing loudly",
+      "subject": {
+        "type": "file",
+        "id": "local/records.py:103",
+        "name": "_ID_FORMS[tab] construction"
+      },
+      "evidence": [
+        {
+          "field": "code",
+          "value": "tab: re.compile(r'%s\\.(?:%s)' % (_PROJECT_ID, '|'.join(TAB_NAMES))) -- no re.escape on the joined names",
+          "sensitive": false
+        },
+        {
+          "field": "compiled_pattern_after_the_change",
+          "value": "[A-Za-z0-9_-]{1,100}\\.(?:spec|assumptions|decisions|backlog|git|findings)",
+          "sensitive": false
+        },
+        {
+          "field": "adversarial_probe_result",
+          "value": "Run against records.store_path(tab, ...) on the changed tree. ACCEPTED: alpha.findings, Xalpha.findings, alpha.git, a 100-char project id + .findings. REJECTED: alpha.findings.git, alpha.findingsX, alpha.spec|findings, alpha.finding, al.pha.findings, alpha..findings, alpha.findings\\n, alpha.findings-with-trailing-space, alpha.findings\\x00, .findings, alpha., alpha.FINDINGS, a 101-char project id, alpha.usage, alpha.notes, al+pha.findings, al-pha-with-space.findings, and the empty string. The widening admits exactly one new id form and nothing else.",
+          "sensitive": false
+        },
+        {
+          "field": "anchoring_verified_not_assumed",
+          "value": "local/records.py:207 applies form.fullmatch(record_id), not re.match; confirmed by reading the call site and by the probe rejecting alpha.findingsX, alpha.findings.git and the trailing-newline case.",
+          "sensitive": false
+        },
+        {
+          "field": "left_side_bound",
+          "value": "_PROJECT_ID = [A-Za-z0-9_-]{1,100} (local/records.py:95) contains no dot, so the separator cannot be absorbed into the project id; al.pha.findings is rejected. The alternation sits in a non-capturing group, so the new name cannot escape its branch.",
+          "sensitive": false
+        },
+        {
+          "field": "blast_radius_today",
+          "value": "Nil. Every current name matches [a-z]+, so the interpolation is inert. This is a latent trap, not a present defect. TAB_NAMES has exactly one consumer repo-wide (this line), confirmed by a full-tree grep.",
+          "sensitive": false
+        },
+        {
+          "field": "partial_compensating_control",
+          "value": "The new test_tab_names_widened_by_exactly_one (local/tests/test_records.py:517) pins the tuple exactly, so any future name change breaks a test and forces a reviewer to look. That is a review trigger, not a validation guard: an editor who updates the tuple and the pinned assertion together is never told the regex changed shape.",
+          "sensitive": false
+        }
+      ],
+      "impact": "Tab ids are an internal trust boundary: store_path and to_row are the gate deciding which documents the local app accepts from the exporters. Today the gate is exactly as tight as intended, and that was proven by probe rather than assumed. But the construction is the kind that fails open: a later tab name such as usage.v2, git+pulls or spec(new) would compile into a pattern accepting ids nobody wrote the list to accept, and the failure mode would be silent acceptance rather than a crash. The cost of the guard is one call; the cost of discovering it later is a validator that quietly stopped validating.",
+      "remediation": "In local/records.py:103, escape each name before joining: use re.escape on every TAB_NAMES entry inside the join. Optionally add a test (or module-level assertion) that every TAB_NAMES entry matches a lowercase-alphanumeric form, which documents the alphabet the alternation assumes and turns a future metacharacter into an immediate, named failure rather than a widened pattern. Neither is required for this change to be correct; both are cheap insurance on an input validator. The compiled pattern is byte-identical for any all-alphabetic tuple, so the change is behaviour-preserving today.",
+      "refs": [
+        "Error Handling at Boundaries",
+        "CWE-20 Improper Input Validation"
+      ],
+      "category": "maintainability"
+    },
+    {
+      "id": "CR-026-02",
+      "severity": "LOW",
+      "title": "FindingsFixture re-declares the shared fixture's whole transcript set instead of extending it, so a future edit to the base fixture will silently stop reaching the findings conformance test",
+      "subject": {
+        "type": "file",
+        "id": "local/tests/test_conformance.py:296",
+        "name": "FindingsFixture.transcripts"
+      },
+      "evidence": [
+        {
+          "field": "duplication",
+          "value": "FindingsFixture.transcripts() (test_conformance.py:296-327) overrides Fixture.transcripts() (test_conformance.py:165-191) by copying it: sessions B and C are byte-identical, the four self.agent(...) blocks for acw/arun/akill/agp are identical, and session A's jsonl differs only by an added launch for toolu_rev, the renumbered later records, and the arev notify. Roughly 25 of the 32 copied lines are unchanged from the base.",
+          "sensitive": false
+        },
+        {
+          "field": "divergence_risk",
+          "value": "The base transcripts() is the shared input for ConformanceV1. A change there (a new agent, a changed meta key, a record type the exporters learn to read) will not reach ConformanceFindings, which would keep asserting conformance against a transcript shape the exporters no longer see -- a test that still passes while no longer testing what it names.",
+          "sensitive": false
+        },
+        {
+          "field": "explanatory_comments_lost",
+          "value": "The base method's comments naming each session's role (Session A: a finished code-writer ...; Session B: linked, answered, but no record carries a readable time; Session C: linked to no project) are not carried into the copy, so the duplicate reads as an opaque block.",
+          "sensitive": false
+        },
+        {
+          "field": "what_is_nonetheless_right",
+          "value": "The fixture does drive the real pipeline: Fixture.export() calls export_board.main, export_sessions.main and export_catalogue.main (test_conformance.py:227-239) and documents() walks the real out/ tree, so projectTabs/alpha.findings is genuinely produced by export_sessions.py:290-309 rather than hand-built. The added completed review round (arev) is what makes derive.findings_doc return a non-empty items map; the base fixture's only reviewer run is still running, which is precisely why the gap stayed invisible at baseline.",
+          "sensitive": false
+        }
+      ],
+      "impact": "Test-fixture drift is the quiet kind: nothing fails, the suite stays green, and the conformance guarantee the work item was written to install erodes with no signal. Since the whole point of R-3 is that the gap PBI-011 found cannot reappear unnoticed, a fixture able to fall silently out of step with the exporters weakens exactly the property being bought.",
+      "remediation": "Have FindingsFixture.transcripts() call super().transcripts() and then add only what is new -- append the extra launch and notify records to session A and write the arev agent -- rather than re-declaring sessions B and C and the four unchanged agents. If the base session-A record list is not easy to extend in place, factor it into a small overridable helper (for example a session_a_records() method the subclass appends to) so there is one declaration of the shared shape.",
+      "refs": [
+        "Consistency With Existing Code",
+        "Testing Discipline"
+      ],
+      "category": "test-adequacy"
+    }
+  ],
+  "not_audited": [
+    {
+      "ref": "Security dimension (code-level) for this change",
+      "reason": "No Touchstone aggregated SARIF or summary.json was provided and the repo ships no SAST configuration, so the security pass is reasoning plus a hand-written adversarial probe against records.store_path rather than scanner-grounded. The change surface is one tuple literal of lowercase ASCII names feeding one regex, with no I/O, no deserialisation, no credential, and no new network or filesystem path, so the reasoning surface is small and was fully enumerated -- but no scanner ran."
+    },
+    {
+      "ref": "PBI-026 R-1, the second half naming local/records.shapes.json",
+      "reason": "Not verifiable as written, and satisfied vacuously. The criterion's premise was independently checked and is false: local/records.shapes.json is a serialisation of records.SHAPES only (indent 2, sorted keys), its tab entry is required generatedAt (str) plus optional source (str), and a full-text scan for each of the six tab names returns zero occurrences. TAB_NAMES is not part of SHAPES and therefore cannot appear in the mirror, so the builder's reasoning holds. The mirror's guard is still real and unweakened: test_the_committed_json_copy_equals_shapes (local/tests/test_records.py:301) compares the committed file against a fresh canonical dump of records.SHAPES and still passes unmodified, and its CRLF sibling still proves only line endings are forgiven. The criterion is met in substance (a findings document validates against the tab shape and round-trips with its store path preserved, proven by ConformanceFindings) but the named file correctly did not change. See follow-ups for the wording correction."
+    },
+    {
+      "ref": "Behaviour of the live board and the local app against real store data",
+      "reason": "Read-only review. The exporters were exercised only through the test suites' temporary fixtures; neither the refresher, the collector, the local server nor the published artifact was run against the real store. Out of scope for this change and this gate."
+    }
+  ],
+  "follow_ups": [
+    {
+      "ref": "PBI-026 close-out: correct R-1's wording",
+      "note": "Agreed. R-1 names local/records.shapes.json as a file that must change, but that file mirrors SHAPES only and encodes no tab name, so half the criterion is satisfied vacuously and could never have been satisfied any other way. Correct it at close-out to something the artefact can bear, for example: findings is a valid tab name in local/records.py, and local/records.shapes.json still mirrors SHAPES exactly (it encodes no tab name, so it needs no change). Record the substantive proof against the criterion: projectTabs/<projectId>.findings validates as a tab record and round-trips through to_row/from_row with its store path preserved. This is a criterion-wording defect, not a code defect: a documentation correction, not a change to this diff."
+    },
+    {
+      "ref": "C:/Users/jdk/dispatch-board/CLAUDE.md -- the store-path table",
+      "note": "Documentation drift inherited from PBI-011, not caused by this change and outside PBI-026's allowed_areas. The table's row still reads tab = spec, assumptions, decisions, backlog, git and attributes the projectTabs collection solely to export_board.py, while export_sessions.py:290-309 owns the whole lifecycle of the findings document (write and delete). After this change, local/records.py:91 is the only place the six names are enumerated and the human-facing table disagrees with it. Worth a one-line correction in a documentation pass so the table, the exporter and the validator agree."
+    },
+    {
+      "ref": "local/records.py:103 -- escaping guard (CR-026-01)",
+      "note": "If taken, it is a one-line change with no behavioural effect on any current name, so it can ride with this change or be banked as a tidy-up. Verify with the same adversarial probe used in this review."
+    }
+  ]
+}

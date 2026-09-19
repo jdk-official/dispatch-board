@@ -1,0 +1,108 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-11",
+    "mode": "finding",
+    "change_class": "standard",
+    "scope": "Fix code-review round 1 findings CR-PBI003-01..05 on the uncommitted PBI-003 change (worktree C:/Users/jdk/dispatch-board-worktrees/PBI-003) against spec revision 4. Grounding: ran-suite.",
+    "verdict": "DONE",
+    "summary": "5 files modified (local/records.py, local/schema.py, local/tests/test_records.py, local/tests/test_schema.py, local/tests/test_conformance.py); records.shapes.json unchanged; 9 tests added. local 90 passed; root 205 passed; page 49 passed. Nothing committed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "local/records.py",
+      "change_kind": "modify",
+      "why": "ValueError contract for to_row/from_row; non-finite float rejection; docstrings",
+      "acceptance_refs": [
+        "CR-PBI003-02"
+      ]
+    },
+    {
+      "path": "local/schema.py",
+      "change_kind": "modify",
+      "why": "unquoted DDL identifiers",
+      "acceptance_refs": [
+        "CR-PBI003-03"
+      ]
+    },
+    {
+      "path": "local/tests/test_records.py",
+      "change_kind": "modify",
+      "why": "CRLF-tolerant shapes-copy check; literal spec 3.1 pin; error-contract tests",
+      "acceptance_refs": [
+        "CR-PBI003-01",
+        "CR-PBI003-02",
+        "CR-PBI003-04"
+      ]
+    },
+    {
+      "path": "local/tests/test_schema.py",
+      "change_kind": "modify",
+      "why": "foreign runs(x) table test; unquoted-names test",
+      "acceptance_refs": [
+        "CR-PBI003-03"
+      ]
+    },
+    {
+      "path": "local/tests/test_conformance.py",
+      "change_kind": "modify",
+      "why": "rmtree onexc/onerror chmod-and-retry cleanup; cleanup test",
+      "acceptance_refs": [
+        "CR-PBI003-05"
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "path": "local/tests (9 added)",
+      "kind": "added",
+      "status": "pass",
+      "covers": "CRLF copy, spec pin with 4 mutations, to_row/from_row ValueError cases, non-finite floats, foreign runs(x), unquoted DDL, read-only cleanup"
+    },
+    {
+      "path": "local/tests, tests/, page",
+      "kind": "existing",
+      "status": "pass",
+      "covers": "90 / 205 / 49"
+    }
+  ],
+  "acceptance": [
+    {
+      "criterion": "CR-PBI003-01",
+      "met": "yes",
+      "evidence": "CRLF temp copy red then green; reindented copy still fails"
+    },
+    {
+      "criterion": "CR-PBI003-02",
+      "met": "yes",
+      "evidence": "error-contract tests red then green"
+    },
+    {
+      "criterion": "CR-PBI003-03",
+      "met": "yes",
+      "evidence": "foreign-table test red then green"
+    },
+    {
+      "criterion": "CR-PBI003-04",
+      "met": "yes",
+      "evidence": "pin passes; 4 mutations fail it"
+    },
+    {
+      "criterion": "CR-PBI003-05",
+      "met": "yes",
+      "evidence": "red run leaked 2 folders; green run leaked 0"
+    }
+  ],
+  "follow_ups": [
+    {
+      "ref": "CR-PBI003-01-real-checkout",
+      "note": "Prove on a real commit-and-clone with core.autocrlf=true (the orchestrator runs it)."
+    },
+    {
+      "ref": "code-reviewer-round-2",
+      "note": "Round-2 GO/NO-GO."
+    }
+  ]
+}

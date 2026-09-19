@@ -1,0 +1,293 @@
+{
+ "schema_version": "1",
+ "audit": {
+  "agent": "code-reviewer",
+  "as_of_date": "2026-09-12",
+  "mode": "diff",
+  "scope": "Uncommitted working-tree change in C:/Users/jdk/dispatch-board-worktrees/PBI-014 (base 560e296): exporters/derive.py, site/index.html, tests/page.test.mjs, tests/test_derive.py, tests/test_export_sessions.py. Intent rung 2 (work item with acceptance criteria): docs/backlog/pbi/PBI-014.md (AC-82), read against PRD FR-121 / AC-82 / A-33 / spec ledger row 11, parent spec revision 5 (NFR-22 at specs/dispatch-board.md:216) and CLAUDE.md's store-path table and design rules. PBI-014 is requires_spec:false and supplies no plan-grade approach, so no deviation ceremony was run; an AC-alignment pass was. Grounding path: repo suites run read-only by this reviewer, a read-only probe of the live parser cache (out/.cache/sessions.json) and of the published out/ tree, and an adversarial escaping probe run against this worktree's page in a scratch copy of the page harness; no Touchstone SARIF supplied, so the security dimension is reasoning plus my own probes.",
+  "summary": "1 HIGH, 2 MEDIUM, 3 LOW across correctness, maintainability and test-adequacy; no security finding. Change class: standard (page view plus one shared exporter projection; no schema, auth, crypto or migration). Dimensions covered: security, correctness, maintainability, test-adequacy. Suites re-measured by this reviewer on the working tree, confirming the builder's numbers exactly: python -m unittest discover -s tests 349 OK; node tests/page.test.mjs 117 OK; python -m unittest discover -s local/tests 304 OK (local/** unedited). Flag-only review: nothing was edited, staged, committed, pushed, published or refreshed.",
+  "sensitivity": "sensitive",
+  "verdict": "NO-GO"
+ },
+ "findings": [
+  {
+   "id": "CR-014-1",
+   "severity": "HIGH",
+   "title": "AC-82's \"files touched\" is declared undeliverable on the page, but the transcripts hold the data and the stated privacy obstacle is one this board already accepts - so a PRD requirement is being narrowed by the builder rather than by the owner, and AC-82 cannot honestly be ticked at close-out",
+   "subject": {
+    "type": "change",
+    "id": "site/index.html:606",
+    "name": "the run detail files line vs AC-82"
+   },
+   "evidence": [
+    {
+     "field": "site/index.html:606-608",
+     "value": "data-files paragraph: \"The board records no files for this run: it keeps each run's result summary, not the files it changed.\", and when findings exist \"Files its findings name: <...>. The board keeps each run's result summary, so it does not record which files the run itself changed.\" The panel delivers verdict summary, findings and duration; the fourth element of FR-121/AC-82, files touched, is replaced by a statement of the limit.",
+     "sensitive": false
+    },
+    {
+     "field": "exporters/derive.py:282-284",
+     "value": "response() records tool use as names only: tool_use content appends c.get('name', '') and nothing else. The builder's first claim is accurate as stated about response().",
+     "sensitive": false
+    },
+    {
+     "field": "exporters/derive.py:455 and :458",
+     "value": "the same transcript walk already reads tool INPUTS elsewhere - c.get('input').get('task_id') and c.get('input').get('skill') - so reading an Edit/Write/MultiEdit/NotebookEdit input.file_path is an addition to an existing capability, not a new seam. The broader claim that the exporter never reads tool inputs is an overstatement.",
+     "sensitive": false
+    },
+    {
+     "field": "CLAUDE.md store-path table, sessions/<id> row",
+     "value": "the board already publishes each session's cwd (the absolute working folder) unredacted, and CLAUDE.md states run labels and session titles are published unredacted too. The privacy argument against publishing local paths is therefore not decisive, and board.config.json carries each project's repoPath, which makes relativising edited paths straightforward.",
+     "sensitive": false
+    },
+    {
+     "field": "docs/backlog/pbi/PBI-014.md:37",
+     "value": "AC-82 is still written in full (\"verdict summary, findings, files touched and duration\") and unchecked; PRD A-33 routes feature 8's parsing and attribution rules to spec ledger row 11, whose recorded decision is \"The PRD defaults as written\". No owner-recorded narrowing of AC-82 exists in the PRD, the spec ledger or the PBI file.",
+     "sensitive": false
+    },
+    {
+     "field": "PRD A-17",
+     "value": "AC-82 is a demonstration AC, so it is ticked by a human-visible demonstration at close-out - exactly the moment a narrowed criterion would be signed off as met.",
+     "sensitive": false
+    }
+   ],
+   "impact": "The wording on the page is honest and I would keep it, but the disposition is not the builder's to make. As it stands PBI-014 would close with AC-82 ticked while a quarter of its requirement text is unbuilt, and the justification on record (the data does not exist, plus privacy) does not survive inspection: the file paths are in the agent transcripts, the parser already reads tool inputs for other purposes, and absolute local paths are already published elsewhere on this board. That is a requirement quietly narrowed at the gate, which is the failure mode the owner's row-11 \"PRD defaults as written\" decision exists to prevent.",
+   "remediation": "Pick one and record it. Either (a) build it: record each run's edited paths from the Edit/Write/MultiEdit/NotebookEdit input.file_path values in derive.response(), relativised against the project's repoPath from board.config.json and dropped when they fall outside it, bump PARSER_VERSION because that does add a parsed field, and show them in the panel's files line; or (b) defer it to the owner: leave the panel's honest wording exactly as written, and before close-out get the owner's recorded decision narrowing AC-82/FR-121 - a spec-ledger row or a PRD note, not a line in a change report - then tick AC-82 against the narrowed text. Do not tick AC-82 as written.",
+   "refs": [
+    "PRD FR-121",
+    "PRD AC-82",
+    "PRD A-33 / spec ledger row 11",
+    "docs/backlog/pbi/PBI-014.md:37",
+    "Correctness: unmet acceptance criterion"
+   ],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-014-2",
+   "severity": "MEDIUM",
+   "title": "NFR-22 is mandatory for every page PBI, and this page PBI has no criterion for it and no actor who verifies it - so the new view's design conformance rests on nobody and a later regression has nothing to fail",
+   "subject": {
+    "type": "file",
+    "id": "docs/backlog/pbi/PBI-014.md:37",
+    "name": "PBI-014 acceptance criteria vs NFR-22"
+   },
+   "evidence": [
+    {
+     "field": "docs/backlog/specs/dispatch-board.md:216",
+     "value": "\"Every page PBI must meet the design rules for new views (PRD NFR-22).\"",
+     "sensitive": false
+    },
+    {
+     "field": "docs/backlog/pbi/PBI-014.md:37-38",
+     "value": "the criteria are AC-82 and the worker close-out (three suites green, code-review GO). Neither names NFR-22, NFR-9, NFR-10, NFR-13 or NFR-14, and no design or visual reviewer is dispatched by this PBI.",
+     "sensitive": false
+    },
+    {
+     "field": "docs/prd/dispatch-board.md:570 (NFR-22)",
+     "value": "requires every next-iteration view to meet NFR-9, NFR-10, NFR-13 and NFR-14 and to keep --human for waiting-on-a-human items only. My own inspection finds the change conformant: the four figures use tile() (NFR-13); the only new colour values are var(--rule-2), var(--ink-2), var(--ink-3) and color-mix(in srgb, var(--live) 10%, transparent), so no hex, rgb() or hsl() literal outside :root (NFR-9); --human is not used (NFR-10); every field goes through esc() or md() (NFR-14); .rowbtn inherits the sans face and the only mono is class=\"id\" on finding ids and file:line, which mirrors the existing ledger row at site/index.html:968-969. That is one reviewer's inspection, not a criterion.",
+     "sensitive": false
+    }
+   ],
+   "impact": "A requirement the parent spec calls mandatory for this class of work item is verified by nothing: no criterion, no check, no named actor. Today the panel happens to conform, so the cost is not a broken view - it is that the close-out will imply NFR-22 was met when nothing tested it, and the next page PBI inherits the same hole.",
+   "remediation": "Add an explicit NFR-22 criterion to PBI-014 naming the four NFRs and who verifies it, and satisfy it the way the page suite already satisfies NFR-9 and NFR-14 elsewhere: a check that the new panel introduces no colour literal outside :root, uses tile() for its figures and never emits --human. Raise the systemic half with the owner separately (see follow-ups).",
+   "refs": [
+    "PRD NFR-22",
+    "PRD NFR-9, NFR-10, NFR-13, NFR-14",
+    "docs/backlog/specs/dispatch-board.md:216",
+    "Testing Discipline"
+   ],
+   "category": "test-adequacy"
+  },
+  {
+   "id": "CR-014-3",
+   "severity": "MEDIUM",
+   "title": "The run document now publishes a findings field that neither CLAUDE.md's store-path table nor local/records.py's run shape records, so the documented contract for the board's most-read collection is incomplete in both places a maintainer would check",
+   "subject": {
+    "type": "change",
+    "id": "exporters/derive.py:745",
+    "name": "run_doc's new findings key vs the recorded run shape"
+   },
+   "evidence": [
+    {
+     "field": "exporters/derive.py:745-746",
+     "value": "if r.get('hasFindingsBlock'): doc['findings'] = r['findings'] - a new published field on runs/<id>.",
+     "sensitive": false
+    },
+    {
+     "field": "CLAUDE.md, runs/<id> row of the store-path table",
+     "value": "enumerates session, project, seq, lane, label, kind, verdict, tok, min, from, feeds, group, agentType, start - and no findings.",
+     "sensitive": false
+    },
+    {
+     "field": "local/records.py:35-49",
+     "value": "SHAPES['run'] lists required session/project/seq/lane/label/kind/verdict/tok/min and optional from/feeds/group/agent/agentType/start/end; findings is absent. I confirmed the builder's claim that it still validates: local/records.py:195-197 documents that fields SHAPES does not list are allowed, and local/tests/test_conformance.py:294 already drives a review round carrying a findings block, so real run documents with the new field do pass the conformance check - local/tests is 304 OK, unedited.",
+     "sensitive": false
+    },
+    {
+     "field": "derive.run_doc is shared",
+     "value": "local/collector.py imports the same derivation, so the local SQLite database gains the field too - and the shape document that governs that database is the one that does not mention it.",
+     "sensitive": false
+    }
+   ],
+   "impact": "Nothing breaks today: unlisted fields validate and conformance passes. The cost is that the two documents a maintainer consults for the run shape now both understate it, and the local app's declared record shape is the first place a future change would look before deciding a field is safe to drop. PBI-011 hit the same seam and left PBI-026 behind to fix it; repeating the pattern without recording it lets the drift compound.",
+   "remediation": "Both files are outside this PBI's allowed_areas (site/**, tests/page.test.mjs, exporters/**, tests/test_*.py), so do not widen the change. Follow PBI-011's precedent explicitly: add the findings key to CLAUDE.md's runs/<id> row as a declared docs chore, and add findings as an optional 'list' to local/records.py SHAPES['run'] as a PBI-026-style follow-up work item. Record both in PBI-014's close-out as out of scope, the way PBI-011 recorded its CLAUDE.md carve-out, so the debt is visible rather than implicit.",
+   "refs": [
+    "Consistency With Existing Code",
+    "CLAUDE.md store-path table",
+    "local/records.py:35",
+    "PBI-011 out-of-scope precedent"
+   ],
+   "category": "maintainability"
+  },
+  {
+   "id": "CR-014-4",
+   "severity": "LOW",
+   "title": "Deleting PBI-011's run-document test also removed the guard that derivation-internal row fields stay off the published document, and the replacement tests do not restore it",
+   "subject": {
+    "type": "change",
+    "id": "tests/test_export_sessions.py:1017",
+    "name": "the replaced PBI-011 test's residual guarantee"
+   },
+   "evidence": [
+    {
+     "field": "tests/test_export_sessions.py:1017 (was test_run_documents_carry_no_findings_field)",
+     "value": "the deleted assertion pinned two things at once: the ledger is the publication surface, and run_doc's explicit key list does not leak agent_row's internal fields.",
+     "sensitive": false
+    },
+    {
+     "field": "exporters/derive.py:494-498 and :735-747",
+     "value": "agent_row puts three row-internal fields on a cr row: findings, hasFindingsBlock and pbis. run_doc now publishes findings deliberately; hasFindingsBlock and pbis are excluded only by the whitelist at :735. A search of tests/ finds no assertion that either stays off a run document (the only other hasFindingsBlock reference is the unedited cache-version test at :1046).",
+     "sensitive": false
+    },
+    {
+     "field": "the replacement tests",
+     "value": "test_run_doc_leaves_findings_out_when_no_block_was_read and test_a_review_round_with_no_readable_block_publishes_no_findings_key assert only the absence of findings. All five new Python cases are real assertions on real behaviour - I read and re-ran them - but none covers the residual guarantee.",
+     "sensitive": false
+    }
+   ],
+   "impact": "Low: the whitelist in run_doc makes a leak unlikely by construction. But this change has just demonstrated that a whitelist gets edited, and pbis in particular is derived internal state that has never been published. With the guard gone, a future edit that switches run_doc to copy-with-exclusions, or adds another key, publishes it silently.",
+   "remediation": "Add one assertion to the new export-sessions test: on the review round that does carry a block, assert the published run document has no hasFindingsBlock and no pbis key. One line, and it restores what the deleted test was also protecting.",
+   "refs": [
+    "Testing Discipline",
+    "PBI-011 test_run_documents_carry_no_findings_field"
+   ],
+   "category": "test-adequacy"
+  },
+  {
+   "id": "CR-014-5",
+   "severity": "LOW",
+   "title": "The files caption invents file names from a finding's location by splitting at the first colon, so an absolute Windows path prints as \"C\", a two-file location silently loses the second, and a non-string location prints \"[object Object]\"",
+   "subject": {
+    "type": "file",
+    "id": "site/index.html:583",
+    "name": "runDetail files derivation"
+   },
+   "evidence": [
+    {
+     "field": "site/index.html:583",
+     "value": "const files = [...new Set((fs || []).map(f => String(f.location || '').split(':')[0].trim()).filter(Boolean))];",
+     "sensitive": false
+    },
+    {
+     "field": "reviewer probe (scratch copy of tests/page.test.mjs run against this worktree's page)",
+     "value": "with locations 'javascript:alert(1):9', \"'onmouseover='alert(1)\" and an object, the caption rendered: \"Files its findings name: javascript, 'onmouseover='alert(1), [object Object].\" Nothing escaped badly - the text is safe - but the names are nonsense presented as file names.",
+     "sensitive": false
+    },
+    {
+     "field": "read-only probe of out/projectTabs/*.findings.json",
+     "value": "35 distinct published locations today, all relative file:line - including 'exporters/export_board.py:395; tests/test_export_board.py:19' (two files, only the first survives the split) and 'site/index.html:470, 879-880, 958'. None currently triggers the absolute-path case, so this is latent, not live.",
+     "sensitive": true
+    },
+    {
+     "field": "exporters/derive.py:669",
+     "value": "location comes from a finding's subject.id, which is free text written by a review agent - PBI-011's own findings-r1.json carries an absolute path 'C:/Users/jdk/dispatch-board/out/.cache/sessions.json' in an evidence field, so an absolute path in a subject id is well within what agents write.",
+     "sensitive": true
+    }
+   ],
+   "impact": "Cosmetic misinformation in the one line of the panel that answers \"which files\" - the requirement this change is already weakest on. It degrades rather than crashes and no current data hits it, which is why this is LOW.",
+   "remediation": "Split the location on the last colon followed only by digits, ranges and commas rather than the first colon; split a multi-file location on ';' and ',' first; and skip any entry whose location is not a string. Pin the drive-letter case and the two-file case with a page check.",
+   "refs": [
+    "Correctness: robustness of a derived display value",
+    "Error Handling at Boundaries"
+   ],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-014-6",
+   "severity": "LOW",
+   "title": "The run detail's finding row is a near-verbatim copy of the findings ledger's row, so the two views of the same record will drift apart",
+   "subject": {
+    "type": "change",
+    "id": "site/index.html:585",
+    "name": "runDetail.row vs renderFindings.findingRow"
+   },
+   "evidence": [
+    {
+     "field": "site/index.html:585-587",
+     "value": "const row = f => ... id / severity / md(title) with a sub id location / md(remediation), four cells.",
+     "sensitive": false
+    },
+    {
+     "field": "site/index.html:968-970",
+     "value": "const findingRow = (f, open) => ... the same three lines of markup for id, severity, title-with-location and remediation, differing only in the extra open column the ledger adds.",
+     "sensitive": false
+    }
+   ],
+   "impact": "Two copies of the escaping and markup decisions for the board's most attacker-adjacent text. A future hardening or column change applied to one will be forgotten on the other, and the escaping check that covers one does not cover the other.",
+   "remediation": "Hoist a single findingCells(f) helper next to esc()/md() and have both the ledger row and the run detail row build on it, each adding only its own extra column. Same behaviour, one place where finding text meets markup.",
+   "refs": [
+    "Minimal Diff & Scope Discipline (YAGNI)",
+    "Consistency With Existing Code"
+   ],
+   "category": "maintainability"
+  }
+ ],
+ "not_audited": [
+  {
+   "ref": "Touchstone SARIF / SAST for the security dimension",
+   "reason": "No aggregated SARIF or summary.json was provided and the repo carries no SAST. The security pass is reasoning plus my own adversarial probe, which is the strongest grounding available here."
+  },
+  {
+   "ref": "AC-82 as a demonstration criterion (PRD A-17)",
+   "reason": "AC-82 is ticked by demonstration on live data. This was a read-only review: nothing was refreshed or published, so the live demonstration was not performed. The suite-level equivalent (page check 'AC-82: a picked code-reviewer run shows its verdict summary, each of its findings, the files they name and its duration') was run and passes."
+  },
+  {
+   "ref": "NFR-22 as an automated check",
+   "reason": "No repo-level design or visual check exists to run for it. The NFR-22 assessment in CR-014-2 is static inspection of the diff against NFR-9/10/13/14 only."
+  },
+  {
+   "ref": "Rendered appearance of the new panel in a browser",
+   "reason": "The page runs against a stub DOM in the suite; no browser rendering was exercised, so layout, contrast and reduced-motion behaviour of the new .rowbtn and tr.sel styles are unverified beyond their token use."
+  }
+ ],
+ "follow_ups": [
+  {
+   "ref": "The PBI-011 reversal - judged legitimate, no finding raised",
+   "reason": "I read PBI-011's PBI file, findings-r1.json, findings.json and handover before deciding. PBI-011's decision was scoped, not architectural: the deleted test sat under F-2 ('published as a project tab document ... so no new collection and no change to the mass-delete guard') and F-4 ('nothing else changes'), and its round-1 NO-GO on findings provenance was about a missed PARSER_VERSION bump and about which round is authoritative for resolution - never about whether a run may carry its own findings. Nothing in PBI-011's material argues against run-level findings. The reversal is also necessary: findings_doc (exporters/derive.py:687) skips any review round without r['pbis'], so a review naming no PBI id contributes nothing to the ledger at all, and a ledger finding carries round/lastSeen ordinals but no run id, so the ledger cannot answer 'the findings of THIS run' - which is exactly what FR-121 asks. Both documents are projections of one derivation in one pass, not two hand-maintained sources. The builder disclosed the reversal rather than hiding it and replaced the test with three that pin the tri-state (list / empty list / no key)."
+  },
+  {
+   "ref": "Cache safety - checked and clear, no PARSER_VERSION bump needed",
+   "reason": "This change adds no parsed field: findings and hasFindingsBlock were already written onto cr rows by PBI-011's parser 6, and run_doc only projects them at export time. A read-only probe of the live out/.cache/sessions.json confirms every cached session is signed [6, ...] and all 52 cached cr rows already carry both keys, so no cached row can serve a run document that is silently missing findings. PBI-011's regression test test_a_cache_from_the_previous_parser_version_is_not_reused is unedited and still passing."
+  },
+  {
+   "ref": "Churn on the first refresh after merge - smaller than the change report states",
+   "reason": "The report says the first refresh rewrites every run document. Measured against the live data it does not: run_doc adds the key only when hasFindingsBlock is true, so of 174 published run documents just 14 change, adding about 28 KB in total and at most 3.9 KB to any one document. That is one ordinary refresh batch, inside the 50-write split, and it touches no delete, so the mass-delete guard is unaffected. Worth correcting in the close-out so the record is accurate."
+  },
+  {
+   "ref": "Escaping - verified independently, no finding",
+   "reason": "I re-ran the builder's claim and then attacked it with my own payloads in a scratch copy of the page harness: an attribute-context breakout in a finding id and title ('X1\" onmouseover=\"alert(1)' and 'a\" autofocus onfocus=\"alert(1)'), a javascript: URL in a file:line, a nested triple-backtick fence wrapping an svg onload payload, a </td></tr><script> structural breakout in a remediation, markup inside a severity, a null title, an object location, and non-object entries in the findings array. Every one rendered inert: quotes as &quot;, tags escaped, no script, img, svg, on* attribute or javascript: href anywhere in the panel. md() is unchanged at site/index.html:276 (esc() first, then only code spans and bold), and runFindings' filter(f => f && typeof f === 'object') drops the string, null and number entries before they reach markup. NFR-14 holds for the new panel."
+  },
+  {
+   "ref": "Both adapters and the one-render-pass rule - both intact",
+   "reason": "The ten-panel equivalence fixture gains a review round as its newest run (EQ_REVIEW), emptyPanels is still asserted empty on the local side, and 'a detailed run's findings' is added to the no-panel-empty list, so the run detail panel is compared with real content on both sides rather than empty to empty - a strengthening. Picking a run calls renderAll() through the same single pass every other state change uses; the check 'the adapters cost the same work: one event, like one store snapshot, is one render pass' (tests/page.test.mjs:1547) is unedited and passes. The env() stub change from a no-op addEventListener to one that records handlers is also a strengthening: document-delegated clicks were previously untestable."
+  },
+  {
+   "ref": "Test-count arithmetic re-measured",
+   "reason": "tests 345 -> 349 (three new derive cases and one new export-sessions case; one existing export-sessions test renamed and inverted, the disclosed reversal). page 111 -> 117 (one per new ok()). local 304, unedited. Every new check asserts real behaviour - I read all ten and re-ran them - and the only removed assertion in the whole diff is the disclosed one. The tests diff weakens nothing else."
+  },
+  {
+   "ref": "For the owner: NFR-22 needs a criterion and an owner elsewhere",
+   "reason": "Beyond CR-014-2's fix inside this PBI, the parent spec makes NFR-22 mandatory for every page PBI while naming no criterion and no verifying actor anywhere. A sibling spec review reached the same conclusion. This is a spec-level decision for the owner, not something PBI-014 can close."
+  }
+ ]
+}

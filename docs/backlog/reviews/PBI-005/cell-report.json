@@ -1,0 +1,66 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "build-cell",
+    "as_of_date": "2026-09-12",
+    "pbi": "PBI-005",
+    "effective_tier": "assisted",
+    "gates": {
+      "code_review": "agent",
+      "external_review": "human",
+      "merge": "human",
+      "plan": "human",
+      "spec": "agent"
+    },
+    "overrides": [],
+    "sensitivity": "sensitive",
+    "summary": "Local server: the content-only page, a record-shaped data snapshot, a live event stream, 127.0.0.1 binding, a Host allow-list and Origin check with no CORS, a read-only (query_only=1) database opener and the network-path guard. Spec gate passed at revision 2 (round 1 CHANGES-REQUIRED, round 2 APPROVE-WITH-NOTES, both notes applied). Code review round 1 NO-GO (1 High, 3 Medium, 7 Low, 1 Informational), all fixed test-first; round 2 GO with 3 Low and 1 Informational as follow-ups. Canonical run 334/99/261 PASS bound to 270f2de after rebase onto main a23afd8.",
+    "verdict": "CELL-DONE"
+  },
+  "rounds": [
+    {
+      "n": 1,
+      "code_writer_verdict": "DONE",
+      "reviewer_verdict": "NO-GO",
+      "change_report_ref": "docs/backlog/reviews/PBI-005/change-report.json",
+      "findings_ref": "docs/backlog/reviews/PBI-005/findings-r1.json"
+    },
+    {
+      "n": 2,
+      "code_writer_verdict": "DONE-WITH-CONDITIONS",
+      "reviewer_verdict": "GO",
+      "change_report_ref": "docs/backlog/reviews/PBI-005/change-report-r2.json",
+      "findings_ref": "docs/backlog/reviews/PBI-005/findings.json"
+    }
+  ],
+  "events": [
+    {
+      "kind": "tier-resolved",
+      "detail": "standard, ceiling assisted -> assisted; ratified earned lift supervised"
+    },
+    {
+      "kind": "circuit-breaker",
+      "detail": "blocked-area breaker: PBI-005 granted exporters/board_config.py in allowed_areas while blocked_areas held exporters/**, and a blocked match wins (scope_guard.py:177-185). Both spec-gate rounds read the grant and called scope clean without noticing the collision. Put to the owner as a three-way choice; owner chose to narrow the block. blocked_areas is now exporters/export_*.py, exporters/derive.py, exporters/refresh.py, site/** — no surface widened, since allowed_areas still refuses any unnamed exporters file. No acceptance criterion or design decision changed."
+    },
+    {
+      "kind": "scope-check",
+      "detail": "scope_guard ok on 7 paths after both rounds; manifest re-synced from the main checkout twice (once after the blocked_areas correction, once after round 1 was recorded in the PBI file)"
+    },
+    {
+      "kind": "defect-found-by-repaired-test",
+      "detail": "The repaired AC-SV2 test surfaced a real defect round 1 had not found: CPython sets request_version only after its 505 and bad-version-400 checks, so it is still HTTP/0.9 when send_error runs and the base class suppresses the status line and every header — the 505 returned a bare 'bad request' with no Content-Type, Content-Length, Cache-Control or nosniff. _respond_plain now forces HTTP/1.1 in that state. Round 2 confirmed all six framework paths return a proper status line and 9 headers, and that an HTTP/0.9 request gets headers = {} in CPython 3.14 so it cannot pass the Host gate: such a client receives 403 and never any board data."
+    },
+    {
+      "kind": "review-verification",
+      "detail": "Round 2 re-measured rather than trusting the change-report: instrumented queue.Queue.put_nowait recorded 2 queue.Full events where round 1 recorded 0; an unbounded queue fails both tests; the watcher-race probe went from clients=1/alive=False/0 refreshes to alive=True/11 refreshes with the change delivered; each of the eight named fixes was mutated back and its test failed without it."
+    },
+    {
+      "kind": "security-surface",
+      "detail": "Re-verified independently in both rounds: 127.0.0.1/AF_INET with allow_reuse_address=False; six-method funnel; zero echo of Host, Origin, method token or request line across an 8-case sweep, in body and headers; no Access-Control-Allow-*; query_only=1 with file bytes, mtime, data_version and sqlite_master unchanged; AC-SV7 clean on snapshot and stream; no reset loop."
+    },
+    {
+      "kind": "canonical-run",
+      "detail": "334 / 99 / 261 PASS, bound to 270f2de; re-run after the rebase onto main a23afd8 so the report attests the tree that merges, not the pre-PBI-011 base"
+    }
+  ]
+}

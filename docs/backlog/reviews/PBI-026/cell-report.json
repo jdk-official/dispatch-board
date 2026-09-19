@@ -1,0 +1,55 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "build-cell",
+    "as_of_date": "2026-09-12",
+    "pbi": "PBI-026",
+    "effective_tier": "assisted",
+    "gates": {
+      "code_review": "agent",
+      "external_review": "human",
+      "merge": "human",
+      "plan": "human",
+      "spec": "agent"
+    },
+    "overrides": [],
+    "sensitivity": "sensitive",
+    "summary": "Adds `findings` to local/records.py TAB_NAMES so projectTabs/<projectId>.findings validates as a tab record locally, closing the gap PBI-011's build surfaced. records.shapes.json needed no change: it mirrors only SHAPES, which does not encode tab names. Code review GO at round 1 with 2 Low follow-ups. Canonical run 334/99/265 PASS bound to b185574.",
+    "verdict": "CELL-DONE"
+  },
+  "rounds": [
+    {
+      "n": 1,
+      "code_writer_verdict": "DONE",
+      "reviewer_verdict": "GO",
+      "change_report_ref": "docs/backlog/reviews/PBI-026/change-report.json",
+      "findings_ref": "docs/backlog/reviews/PBI-026/findings.json"
+    }
+  ],
+  "events": [
+    {
+      "kind": "tier-resolved",
+      "detail": "standard, ceiling assisted -> assisted; ratified earned lift supervised"
+    },
+    {
+      "kind": "scope-check",
+      "detail": "scope_guard ok on 3 paths; manifest re-synced from the main checkout after the PBI file was set to In Progress"
+    },
+    {
+      "kind": "validator-widening-verified",
+      "detail": "TAB_NAMES feeds a regex alternation at local/records.py:103, so this is a widening of an input validator. The reviewer verified form.fullmatch(record_id) at the call site (local/records.py:207) rather than assuming anchoring, then probed adversarially: accepted only alpha.findings, Xalpha.findings, alpha.git and a 100-char id; rejected alpha.findings.git, alpha.findingsX, alpha.spec|findings, al.pha.findings, alpha..findings, trailing newline/space/NUL, alpha.FINDINGS, 101 chars and al+pha.findings. _PROJECT_ID is [A-Za-z0-9_-]{1,100} with no dot, the dot is escaped, and the alternation sits in a non-capturing group. Exactly one new id form; TAB_NAMES has one consumer repo-wide, so no other kind's pattern moved."
+    },
+    {
+      "kind": "mutation-verified",
+      "detail": "Stashing only records.py fails 3 of the 4 new tests (test_findings_is_a_valid_tab_name, test_tab_names_widened_by_exactly_one, and ConformanceFindings::test_a_findings_tab_was_written_and_conforms). R-3 was genuinely red before the fix."
+    },
+    {
+      "kind": "criterion-wording-gap",
+      "detail": "Criterion R-1 names local/records.shapes.json as a file that must change, but that file mirrors only SHAPES (the tab kind's field spec) and contains zero occurrences of any tab name. Verified independently by the orchestrator and confirmed by the reviewer. That half of R-1 is satisfied vacuously; the wording is corrected at close-out rather than ticked as though both files moved."
+    },
+    {
+      "kind": "canonical-run",
+      "detail": "334 / 99 / 265 PASS, bound to b185574; branch was already level with main 3e3ec44, so no rebase was needed"
+    }
+  ]
+}

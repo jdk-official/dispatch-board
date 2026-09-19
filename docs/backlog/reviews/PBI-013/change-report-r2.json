@@ -1,0 +1,62 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-11",
+    "mode": "finding",
+    "change_class": "standard",
+    "scope": "Intent: apply the five conditions of code-reviewer round 1 (GO-WITH-CONDITIONS) to the PBI-013 usage-limit forecast, test-first, in site/index.html and tests/page.test.mjs only. Acceptance: CR-PBI013-01 time each gap from when work resumed (the later of the latest reset before the hit and the start of the first hourly bucket with main + sub > 0 at or after it; the first such bucket when there is no reset), with FORECAST_HOW and the forecastOf comment matching, plus an idle-gap page check whose answer differs from the reset-anchored one; CR-PBI013-02 never add the mean gap to a latest hit that has no resetsAt, and the SEVERAL fixture no longer pins that case; CR-PBI013-03 the passed-with-no-hit-since qualifier stays true on an idle board, with no timer logging console.error or throwing in the page test; CR-PBI013-04 'no forecast: usage not exported yet' when usage is absent, an accurate note for the too-little-timing-data state, and 'from N of the M recorded limit hits' when N < M; CR-PBI013-05 a skewed fixture (mean differs from median), a mixed fixture asserting the time and the N-of-M wording, and the idle-gap fixture. No exporter change. Grounding path: ran-suite (node tests/page.test.mjs, python -m unittest discover -s tests, python -m unittest discover -s local/tests, all from the worktree).",
+    "verdict": "DONE-WITH-CONDITIONS",
+    "summary": "2 files modified (site/index.html, tests/page.test.mjs). 5 page checks added and 6 section-11 checks updated. Page suite 68 passed / 0 failed (63 before + 5 new); tests 215 passed / 0 failed; local/tests 90 passed / 0 failed. Verification tier 3 (executable code), all three configured suites run. Red confirmed before the fix: the page suite failed on the new wording; the round-1 forecastOf run on the new fixtures gave IDLE 2099-01-02T18:23:20Z (expected 16:30Z) and NORESET 08:30Z shown as a time; the timer check was red because the round-1 interval never redraws. A read-only probe of the new forecastOf on out/projects/platform-catalogue.json gives a mean gap of 2.11 h and a forecast of 2026-09-10T23:36Z, matching the reviewer's resumption-based figure. Both files remain CRLF. Change-report not validated by the writer against tools/change_report_schema.py (out of bounds); the orchestrator validates it. Nothing committed, staged, pushed or deployed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "site/index.html",
+      "change_kind": "modify",
+      "why": "forecastOf times each gap from when work resumed instead of from the reset: the later of the latest reset before the hit and the start of the first hour with usage (main + sub > 0) that ends after it, or the first used hour when no reset came before; when the hourly usage has no qualifying hour it falls back to the reset. The mean is added to the latest reset. New states: 'absent' (no usage exported) and 'reset-unknown' (the latest hit's resetsAt is unreadable, so only the mean is returned and shown as 'N after reset'). Returns n (hits that gave a gap) and m (limitsOf count). Adds dur, hitsFrom ('N limit hits' or 'N of the M recorded limit hits'), NO_FORECAST and forecastNote (one usage-tab note per state); FORECAST_HOW and the forecastOf comment are rewritten to match the method. renderAll records whether the shown forecast has passed, and the existing 60-second interval calls renderAll only when that changes, so the passed marker appears on an idle board with a single redraw. The tone stays var(--rule-2), no motion, and numbers and times go through esc().",
+      "acceptance_refs": ["CR-PBI013-01", "CR-PBI013-02", "CR-PBI013-03", "CR-PBI013-04", "AC-80"]
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "change_kind": "modify",
+      "why": "env() records setInterval callbacks (returned as timers) so a check can run the page's minute timer. Section 11 gets a series() hourly helper and new or updated fixtures, each with its hand-computed working in a comment: SEVERAL skewed (gaps 1 h/1 h/7 h, 16:00Z; the median would give 14:00) with its last hit given a reset; ONE (16:30Z, passed); IDLE (16:30Z; the reset-anchored answer 18:23:20Z and the bucket-start variant 16:36:40Z are asserted to differ); MIXED (13:00Z, 'from 2 of the 3 recorded limit hits'); NORESET ('2 h 30 min after reset'). Also adds checks for the usage-absent tile, the per-state usage-tab notes, and the minute timer (no redraw while ahead, a passed marker once past, no repeat redraw, no console.error with malformed data).",
+      "acceptance_refs": ["CR-PBI013-01", "CR-PBI013-02", "CR-PBI013-03", "CR-PBI013-04", "CR-PBI013-05"]
+    }
+  ],
+  "tests": [
+    { "path": "tests/page.test.mjs", "kind": "modified", "status": "pass", "covers": "project view, SEVERAL skewed fixture: 2099-01-01T16:00Z, 'estimate from 3 limit hits', the same on the usage tab and the Overview; Limit hits 3" },
+    { "path": "tests/page.test.mjs", "kind": "modified", "status": "pass", "covers": "usage-tab note for the ok state; the tile tone is a token and never --human" },
+    { "path": "tests/page.test.mjs", "kind": "modified", "status": "pass", "covers": "session filter, ONE: 2026-09-10T16:30Z, 'estimate from 1 limit hit · passed with no hit since'" },
+    { "path": "tests/page.test.mjs", "kind": "modified", "status": "pass", "covers": "exported usage with no hits: 'no forecast: no limit hit recorded' on both tiles" },
+    { "path": "tests/page.test.mjs", "kind": "modified", "status": "pass", "covers": "Other sessions: a session with no hits shows no forecast; s4 with SEVERAL shows 16:00Z" },
+    { "path": "tests/page.test.mjs", "kind": "added", "status": "pass", "covers": "IDLE: 2099-01-02T16:30Z, differing from the reset-anchored 18:23:20Z and the bucket-start 16:36:40Z" },
+    { "path": "tests/page.test.mjs", "kind": "added", "status": "pass", "covers": "MIXED: 2099-01-03T13:00Z, 'estimate from 2 of the 3 recorded limit hits'; Limit hits 3" },
+    { "path": "tests/page.test.mjs", "kind": "added", "status": "pass", "covers": "NORESET: '2 h 30 min after reset' / 'reset time of the latest hit not recorded', not 08:30" },
+    { "path": "tests/page.test.mjs", "kind": "added", "status": "pass", "covers": "usage absent: the Overview tile says 'no forecast: usage not exported yet'" },
+    { "path": "tests/page.test.mjs", "kind": "added", "status": "pass", "covers": "minute timer: no redraw while ahead; passed marker once past; no second redraw; no console.error" },
+    { "path": "tests/page.test.mjs", "kind": "modified", "status": "pass", "covers": "malformed usage.limits and untimed hits: no crash or console.error, including after running the minute timer" },
+    { "path": "tests/page.test.mjs", "kind": "existing", "status": "pass", "covers": "the 57 page checks outside section 11" },
+    { "path": "tests", "kind": "existing", "status": "pass", "covers": "python -m unittest discover -s tests: 215 tests OK" },
+    { "path": "local/tests", "kind": "existing", "status": "pass", "covers": "python -m unittest discover -s local/tests: 90 tests OK" }
+  ],
+  "acceptance": [
+    { "criterion": "CR-PBI013-01 (MEDIUM): each gap is timed from when work resumed, FORECAST_HOW and the comment match, and a failing-first idle-gap page check differs from the reset-anchored answer", "met": "yes", "evidence": "IDLE check passes with 2099-01-02T16:30Z; the round-1 method gives 18:23:20Z for the same fixture. On the real platform-catalogue export the new forecastOf gives a 2.11 h mean and 23:36Z." },
+    { "criterion": "CR-PBI013-02 (LOW): the mean gap is not added to a latest hit that has no resetsAt, and SEVERAL no longer pins that case", "met": "yes", "evidence": "NORESET check passes ('2 h 30 min after reset'); SEVERAL's latest hit now has resetsAt 13:00Z." },
+    { "criterion": "CR-PBI013-03 (LOW): the passed qualifier stays true on an idle board, and no timer can log console.error or throw", "met": "yes", "evidence": "The minute-timer check passes; the timer runs with every malformed-limits and untimed fixture under noPageErrors." },
+    { "criterion": "CR-PBI013-04 (LOW): usage-absent text, FR-118 text kept, accurate untimed note, N-of-M wording", "met": "yes", "evidence": "The usage-absent, no-hit, untimed and MIXED checks pass with the exact texts asserted." },
+    { "criterion": "CR-PBI013-05 (LOW): skewed, mixed and idle-gap fixtures with hand-computed working", "met": "yes", "evidence": "SEVERAL (mean 16:00Z vs median 14:00Z), MIXED (13:00Z, '2 of the 3') and IDLE (16:30Z) pass, with working in comments." },
+    { "criterion": "AC-80 / FR-117 / FR-118 and the design rules remain met", "met": "yes", "evidence": "The section-11 checks pass (68/68); the diff adds no colour literal or animation; numbers and times go through esc()." }
+  ],
+  "not_done": [
+    { "ref": "change-report-validation", "reason": "Not validated by the writer with tools/change_report_schema.py (out of bounds); the orchestrator validates it." },
+    { "ref": "visual-check", "reason": "The tile and note were not seen in a browser; rendered HTML is covered by the page suite only." }
+  ],
+  "follow_ups": [
+    { "ref": "code-reviewer", "note": "Hand the working-tree change to code-reviewer for round 2 (GO / NO-GO)." },
+    { "ref": "usage-hourly-malformed", "note": "A non-list usage.hourly, or null entries in it, still makes the existing usageChart throw (hours.map). An Array.isArray guard and an entry check in usageChart would fix it." },
+    { "ref": "forecast-method-owner", "note": "Owner method decision still open (spec ledger row 11 / PRD A-34 name no method). Round 2 anchors the forecast on the latest reset; a usage-rate model per brief feature 6 is a possible refinement." },
+    { "ref": "timer-redraw", "note": "When a shown forecast passes on an idle board, the minute timer redraws all tabs once, which resets scroll positions inside scrolled panels at that moment." },
+    { "ref": "claude-md-docs", "note": "CLAUDE.md does not describe the forecast tile, its states or its method; route to the docs writers once the change is accepted." }
+  ]
+}

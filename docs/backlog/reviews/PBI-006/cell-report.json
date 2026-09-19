@@ -1,0 +1,70 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "build-cell",
+    "as_of_date": "2026-09-12",
+    "pbi": "PBI-006",
+    "effective_tier": "assisted",
+    "gates": {
+      "code_review": "agent",
+      "external_review": "human",
+      "merge": "human",
+      "plan": "human",
+      "spec": "agent"
+    },
+    "overrides": [],
+    "sensitivity": "sensitive",
+    "summary": "Page data-adapter seam: the page reaches its data through an adapter chosen at load — the artifact store as before, or the PBI-005 local server's /api/snapshot and /api/events — and renders the same board either way. Selection is by the window.__DISPATCH_LOCAL__ marker rather than the absence of window.claude, because an artifact without its db capability also lacks window.claude and must still show the store's board; that detection signal was the one design decision the parent spec's row Q-11 left to this PBI. Code review round 1 GO-WITH-CONDITIONS (1 Medium, 5 Low), all six applied; round 2 GO with zero findings. Canonical run 334/111/265 PASS bound to 4d0db2d after rebase onto main 5baa922.",
+    "verdict": "CELL-DONE"
+  },
+  "rounds": [
+    {
+      "n": 1,
+      "code_writer_verdict": "DONE",
+      "reviewer_verdict": "GO-WITH-CONDITIONS",
+      "change_report_ref": "docs/backlog/reviews/PBI-006/change-report.json",
+      "findings_ref": "docs/backlog/reviews/PBI-006/findings-r1.json"
+    },
+    {
+      "n": 2,
+      "code_writer_verdict": "DONE",
+      "reviewer_verdict": "GO",
+      "change_report_ref": "docs/backlog/reviews/PBI-006/change-report-r2.json",
+      "findings_ref": "docs/backlog/reviews/PBI-006/findings.json"
+    }
+  ],
+  "events": [
+    {
+      "kind": "tier-resolved",
+      "detail": "standard, ceiling assisted -> assisted; ratified earned lift supervised"
+    },
+    {
+      "kind": "scope-check",
+      "detail": "scope_guard ok on 2 paths (site/index.html, tests/page.test.mjs); no edit to exporters/** or local/**, confirmed byte-clean by the round-2 reviewer"
+    },
+    {
+      "kind": "cross-component-verification",
+      "detail": "First end-to-end exercise of the two halves of the local-first system. The builder started the real local/server.py over a real SQLite database and drove the page's inline script with its actual /api/snapshot. The round-2 reviewer repeated it headlessly and confirmed PBI-005's spec-gate S-4 finding holds across the seam: the reset event carries id: <version>, change events carry ids, and the server takes the larger of since/Last-Event-ID, so no reconnect loop is possible."
+    },
+    {
+      "kind": "conditions-applied",
+      "detail": "Round 1's Medium was that the FR-97 equivalence check compared rendered innerHTML across all ten panels but the fixture left five empty on both sides, so the strongest claim in the PBI rested on comparing emptiness to emptiness. The fixture now carries a spec tab, an assumptions row awaiting a human, a decisions tab with carriedSince, a backlog in all four states plus a Later idea, a findings tab with open and resolved entries, and a git tab with an OPEN and a MERGED pull request; the check asserts emptyPanels() is [] on both sides before the deep-equal. The reviewer confirmed that replaying the round-1 fixture leaves six of ten panels empty, so the finding was real and is now closed. The five Lows were also applied: a 200 carrying a non-snapshot body now takes the honest degrade path rather than silently drawing an empty board; a marker missing its events URL falls back instead of opening undefined?since=N; both marker URLs must be same-origin; a change event causes one render pass rather than eight; and the write-only version was removed."
+    },
+    {
+      "kind": "adversarial-verification",
+      "detail": "Round 2 probed the new sameOrigin() with 19 hostile URLs, refusing the userinfo trick, the https://127.0.0.1:8765.evil.test/ prefix lookalike, all three backslash-to-another-host forms, other-scheme, other-port, file:, about:, vbscript:, data:, javascript:, ipv6 and a foreign-origin blob:. Embedded credentials and a page-origin blob: are accepted and are genuinely the page's own origin. URLs are validated, not rewritten, and there is no <base> element in the page or in _wrap_page(), so the validation base and the fetch base are the same. The reviewer also forced a reader to throw inside the render hold and confirmed the finally releases it and the next event still draws."
+    },
+    {
+      "kind": "no-regression-to-the-published-board",
+      "detail": "The published artifact runs the store adapter. The eight store subscriptions are unchanged in shape, and env() installs throwing fetch/EventSource stubs so any HTTP reach fails the run — a mutant routed down the local path fails rather than passes, which makes this a measured claim rather than an assumption. The page contains exactly one console.error, the pre-existing one at site/index.html:1107; an empty records map still draws an ordinary empty board rather than the offline one, and that over-correction mutant dies."
+    },
+    {
+      "kind": "test-integrity",
+      "detail": "Page checks 99 -> 111 across the two rounds. The test diff has exactly two deleted lines (a header comment and the env() signature); nothing was weakened. The reviewer's own 18-mutant sweep kills the builder's 8/8 plus 5 more; the 5 survivors are unpinned correct guards, logged as follow-ups — the notable one being that the render hold's finally is itself untested."
+    },
+    {
+      "kind": "canonical-run",
+      "detail": "334 / 111 / 265 PASS, bound to 4d0db2d; re-run after the rebase onto main 5baa922 so the report attests the tree that merges rather than the pre-PBI-026 base the branch was cut from"
+    }
+  ]
+}

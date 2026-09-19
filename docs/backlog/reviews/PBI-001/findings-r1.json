@@ -1,0 +1,206 @@
+{
+ "schema_version": "1",
+ "audit": {
+  "agent": "code-reviewer",
+  "as_of_date": "2026-09-11",
+  "mode": "diff",
+  "scope": "Uncommitted working-tree diff of worktree C:/Users/jdk/dispatch-board-worktrees/PBI-001 (branch pbi/PBI-001-exporter-hardening, base 7fd96cb): exporters/export_sessions.py, exporters/board_config.py, exporters/export_board.py, exporters/refresh.py, CLAUDE.md, tests/test_export_sessions.py, tests/test_export_board.py, tests/test_refresh.py, plus the change report. Intent rung 1 (plan): PBI-001.md (AC-57/58/59/61/86, C-16, Notes follow-ups 1-9 with prescribed approaches) under the approved parent spec, cross-checked against PRD FR-80/81/82/84/133/137, C-16, AC-90. Grounding: repo suites run read-only (tests/ 252 OK, node page test 57/57, local/tests 90 OK; git status unchanged after the runs) plus throwaway probes in the session scratchpad (public_remote and github_repo over 18 URL forms, old vs new later_items on the real specs, verdict_of on verifier-contract-shaped results, config checks on the real board.config.json). Touchstone SARIF not provided: security is reasoning plus probes only.",
+  "summary": "Change class: standard. 1 HIGH, 1 MEDIUM, 2 LOW, all correctness; security, maintainability and test-adequacy reviewed with no standalone finding (the missing tests are folded into CR-PBI001-01 and -02). Security: userinfo stripping holds for every form git prints (https user, user:token, percent-encoded or raw @ in the password, ssh://user@, scp git@host:, padded whitespace, fetch and push lines, uppercase scheme); gh --repo is derived from the stripped line and passed as an argv list; no credential reaches out/ or stderr. The AC-86 guard runs before any plan is recorded, removes a stale pending plan and is not lifted by --allow-mass-delete. The AC-57 carry is sound and self-heals on the next readable parse. PARSER_VERSION 4 to 5 only forces a re-parse and cannot by itself delete pushed documents. The Later-list change leaves the real spec exports identical (dispatch-board main 10 ideas, worktree 9, platform-catalogue 0). RUN_LANES and RUN_KINDS match local/records.shapes.json and the drift test reads it as data. Tests use temp dirs, a refuse_gh default and FakeGh; no real gh, out/, ~/.claude or live board is touched. Verdict NO-GO on CR-PBI001-01. Flag-only: nothing changed, staged, committed, pushed, run against the real out/, or deployed.",
+  "sensitivity": "sensitive",
+  "verdict": "NO-GO"
+ },
+ "findings": [
+  {
+   "id": "CR-PBI001-01",
+   "severity": "HIGH",
+   "title": "A verifier that declared a fallback is published as exercised whenever its result goes on to say what could not be exercised, so the board claims verification that never happened",
+   "subject": {
+    "type": "change",
+    "id": "exporters/export_sessions.py:242-248",
+    "name": "verdict_of() for lane ver (TOKEN line 62, VERIFIER_TOKENS line 67)"
+   },
+   "evidence": [
+    {
+     "field": "code",
+     "value": "allowed = REVIEW_TOKENS + (VERIFIER_TOKENS if lane == ver else ()) if lane in REVIEW_LANES else BUILD_TOKENS ... return found[-1] if lane in REVIEW_LANES else found[0]. ver is in REVIEW_LANES, so the LAST bare match wins.",
+     "sensitive": false
+    },
+    {
+     "field": "probe",
+     "value": "verdict_of on [fallback-declared - no headless entrypoint; the live path was not exercised] gives exercised; a result whose JSON block has outcome fallback-declared followed by [the flow was not exercised] gives exercised; [The live path was not exercised: no headless entrypoint.] gives exercised; [Outcome: Exercised] gives None",
+     "sensitive": false
+    },
+    {
+     "field": "verifier contract",
+     "value": "agent-catalog plugins/review-agents/agents/verifier.md:71 - Inline headline first: lead with the outcome (exercised / fallback-declared), then one line naming the flow and what was observed (or why it could not be); the JSON carries report.outcome and fallback_reason",
+     "sensitive": false
+    },
+    {
+     "field": "change-report caveat",
+     "value": "follow_ups [verifier matching] discloses only the no-leading-word case; the probe shows a leading bare fallback-declared is also overridden by a later [not exercised]",
+     "sensitive": false
+    }
+   ],
+   "impact": "FR-84 exists to publish the verifier outcome word honestly. The catalogue verifier is told to lead with its outcome and then explain why it could not run, which naturally contains [not exercised] or [could not be exercised]. With the last-match rule and no negation handling, the fallback-declared case reads as exercised, the opposite of what the verifier reported, and the owner sees a change as verified when it was not. A capitalised Exercised and the JSON outcome key are not recognised at all. No test covers a fallback-declared result that mentions the word exercised. Deviation class: problematic-departure from FR-84 (record that word); the literal AC-61 case is met.",
+   "remediation": "For lane ver, match the verifier outcome first: a labelled outcome (the JSON outcome key or an Outcome: label) as the top tier, then a bold, code or Verdict-labelled word, then the FIRST bare word (the verifier leads with its outcome, like the builders), case-insensitively, and never a word preceded by a negation such as not, never or could not be. Prefer fallback-declared when both words appear bare. Add tests: a fallback-declared headline followed by [not exercised]; the JSON outcome block; a capitalised Exercised; and the plain exercised case already present.",
+   "refs": [
+    "FR-84",
+    "AC-61",
+    "Testing Discipline",
+    "Error Handling at Boundaries"
+   ],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-PBI001-02",
+   "severity": "MEDIUM",
+   "title": "The new runs.manual validator still accepts ids that are unsafe file names, so a row id like ../x or a/b escapes out/runs or crashes the export with a traceback instead of the promised named error",
+   "subject": {
+    "type": "change",
+    "id": "exporters/board_config.py:121-123",
+    "name": "manual() id check; used at exporters/export_sessions.py:140 and written at :808"
+   },
+   "evidence": [
+    {
+     "field": "code",
+     "value": "for key in (id, label, verdict, from): if (key in (id, label) or key in row) and not isinstance(row.get(key), str): raise ... This is a type check only; export_sessions.py:808 then writes os.path.join(out, runs, r[id] + .json).",
+     "sensitive": false
+    },
+    {
+     "field": "probe",
+     "value": "board_config.manual with a row whose id is ../escape is accepted; so is a row whose id is the empty string",
+     "sensitive": false
+    },
+    {
+     "field": "local contract",
+     "value": "local/records.py:96-101 - run ids must match _SEGMENT: no slash or backslash, no control characters, not . or .., non-empty; to_row rejects anything else",
+     "sensitive": false
+    },
+    {
+     "field": "doc claim",
+     "value": "CLAUDE.md (worktree) refresh step 1: Each runs.manual row needs a string id and label ... A bad row fails with an error naming it.",
+     "sensitive": false
+    }
+   ],
+   "impact": "The Notes follow-up validates manual rows so that anything the local to_row would reject is refused at config load; the run-id form is part of that rejection and is left open. An id with a separator makes write_json raise FileNotFoundError after out/sessions, out/runs and out/projects have already been emptied, so refresh.py aborts with a traceback rather than a named error. A .. id writes the run outside out/runs where refresh.py never plans it, so it silently disappears. An empty id writes out/runs/.json, which the dotfile-skipping glob never pushes. The rows are written by the owner and the orchestrator session (trusted config), and the crash predates this change, so this is MEDIUM rather than HIGH.",
+   "remediation": "In board_config.manual(), require id to be a single safe path segment: reuse board_config.ID, or copy the local _SEGMENT form as RUN_LANES was copied and cover it with the same drift idea. Raise the same named ValueError. Add ManualRows cases for ../x, a/b, a backslash b, ., .. and the empty string.",
+   "refs": [
+    "CWE-22 (defence in depth, trusted config)",
+    "PBI-001 Notes: manual rows / to_row parity",
+    "Error Handling at Boundaries",
+    "Testing Discipline"
+   ],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-PBI001-03",
+   "severity": "LOW",
+   "title": "Nested Later sub-items are now dropped silently, so text the spec author wrote under an idea vanishes from the Backlog tab with no warning",
+   "subject": {
+    "type": "file",
+    "id": "exporters/export_board.py:106-107",
+    "name": "later_items() nested branch"
+   },
+   "evidence": [
+    {
+     "field": "code",
+     "value": "elif m or nested: nested = True  # a nested item, or a line that continues one",
+     "sensitive": false
+    },
+    {
+     "field": "probe",
+     "value": "An idea [- **A**: one] followed by a 4-space [- nested] and a 2-space [back to A?]: old description [one - nested back to A?], new description [one]. The real spec output is unchanged (no nested items today).",
+     "sensitive": false
+    }
+   ],
+   "impact": "Before this change a nested point was at least visible, merged into its idea description; now it is discarded and nothing says so. The plan said to treat deeper lines as nested items and left how they render open (PBI-018 optional note), so dropping them is a problematic-departure (content is lost; not equivalent-or-better). No real export changes today.",
+   "remediation": "Either keep nested items in the description (for example appended as joined text) until the page can render a list, or print one stderr warning per idea whose nested items were left out, as the plan alternative suggested. Pin the chosen behaviour with a test.",
+   "refs": [
+    "PBI-001 Notes CR-018-01",
+    "Minimal Diff & Scope Discipline (YAGNI)"
+   ],
+   "category": "correctness"
+  },
+  {
+   "id": "CR-PBI001-04",
+   "severity": "LOW",
+   "title": "A running row in a session whose main transcript cannot be parsed still stays running forever, so the FR-80 stuck-live symptom remains on the session-level path",
+   "subject": {
+    "type": "file",
+    "id": "exporters/export_sessions.py:765-770",
+    "name": "main() session-level except branch"
+   },
+   "evidence": [
+    {
+     "field": "code",
+     "value": "except Exception as e: ... if not hit: continue; fresh[sid] = hit  # keeps the old signature ... The cached rows are reused as they are; carried() is not applied.",
+     "sensitive": false
+    },
+    {
+     "field": "change-report",
+     "value": "follow_ups [session-level carry]: When a whole session cannot be parsed, export_sessions keeps its last result as-is, so a running row there is not reclassified",
+     "sensitive": false
+    }
+   ],
+   "impact": "FR-80 is worded [if an agent transcript cannot be re-read]; when the session parse fails, no agent transcript is re-read either, so its running rows keep the session live and the pipeline animated until the session reads again. The trigger is rare (the main transcript is unreadable, or an unexpected record shape raises), and the writer disclosed it.",
+   "remediation": "In the except branch, when reusing hit, map its rows through carried(r, st[window], t0) into a copy of the result (leave the cached signature alone so the session is still re-read next run), and add a test with a session whose parse raises while one agent row is running.",
+   "refs": [
+    "FR-80",
+    "AC-57"
+   ],
+   "category": "correctness"
+  }
+ ],
+ "not_audited": [
+  {
+   "ref": "Touchstone SARIF",
+   "reason": "Not provided; the security dimension is reasoning plus throwaway probes, not SAST."
+  },
+  {
+   "ref": "Real verifier transcripts",
+   "reason": "CR-PBI001-01 is grounded in the catalogue verifier output contract and probes, not in a replay of a real verifier notification: transcript content was not opened (sensitive) and refresh.py was not run against the real out/."
+  },
+  {
+   "ref": "PBI close-out AC: both suites green on the head commit",
+   "reason": "The change is uncommitted; the suites were verified on the working tree only. Re-run on the head commit once it exists."
+  },
+  {
+   "ref": "AC-57 under a real Windows file lock",
+   "reason": "Only the simulated unreadable agent (flaky_read) was exercised; a real sharing-violation read was not reproduced."
+  },
+  {
+   "ref": "Page rendering of verifier verdict words",
+   "reason": "site/** is blocked for this PBI and page tests are unchanged; how exercised and fallback-declared show on Dispatch was not judged."
+  }
+ ],
+ "follow_ups": [
+  {
+   "ref": "plan-defect: Later-list nesting rule",
+   "note": "The PBI rule (any marker with up to 3 leading spaces is a new idea) contradicts CommonMark: a conventional 2-space sub-bullet under [- a] is a nested item at the parent content column, but becomes its own idea card; likewise a wrapped line starting [N. ] with N other than 1 becomes a new idea although only [1.] may interrupt a paragraph. The writer followed the plan; update the PBI/spec rule (nest relative to the parent item content column) rather than the code. No real export is affected today."
+  },
+  {
+   "ref": "justified-improvement: carried() with no readable end",
+   "note": "Treating a running row with no readable end as past the window is the only terminating choice and self-heals on the next readable parse, because a result with skipped agents is never reused from the cache. A future end (clock skew) keeps the row running until the window passes that time. Acceptable; no change needed."
+  },
+  {
+   "ref": "CLAUDE.md runs table",
+   "note": "The touched runs row still lists lanes orch/req/plan/cw/tw/cr/ver/human; the exporter also emits other and manual rows now accept it (the refresh section lists nine). Align the table."
+  },
+  {
+   "ref": "Kept git tab bytes",
+   "note": "A git tab exported before this change is kept byte-for-byte when a repo becomes unreadable. If any out/projectTabs/*.git.json ever held a credentialed remote it would persist until the repo reads again; current origins have none, so check once and move on."
+  },
+  {
+   "ref": "Minor tidy",
+   "note": "github_repo() repeats the github_origin() loop and calls GITHUB_URL.match twice (export_board.py:329-330); consider one helper returning the matched origin URL."
+  },
+  {
+   "ref": "docs",
+   "note": "The writer follow-up stands: close A-45 and mark FR-80/81/82/84/133 met in the PRD, tick the PBI ACs, after the fixes land (docs/** is outside this PBI areas)."
+  },
+  {
+   "ref": "re-review",
+   "note": "Round 2 needs CR-PBI001-01 fixed with its tests (and ideally -02); -03 and -04 can ride as conditions."
+  }
+ ]
+}

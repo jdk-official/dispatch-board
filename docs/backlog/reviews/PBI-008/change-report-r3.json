@@ -1,0 +1,112 @@
+{
+ "schema_version": "1",
+ "report": {
+  "agent": "code-writer",
+  "as_of_date": "2026-09-11",
+  "mode": "finding",
+  "change_class": "standard",
+  "scope": "Apply code-reviewer's PBI-008 findings.json (verdict GO-WITH-CONDITIONS, 1 MEDIUM CR-1, 3 LOW CR-2/CR-3/CR-4) to the uncommitted change in worktree C:/Users/jdk/dispatch-board-worktrees/PBI-008 (branch pbi/PBI-008-stale-board, base d10d9e6), against PBI-008.md criterion L-4 ('the time comes from at, rendered through esc(); an unreadable at shows no text and logs no error; each case is pinned by a page check'). Grounding path: ran-suite, in the worktree only.",
+  "verdict": "DONE",
+  "summary": "5 files modified (exporters/refresh.py, tests/test_refresh.py, site/index.html, tests/page.test.mjs; local/tests/test_conformance.py untouched this round). 2 page checks added (98 total in tests/page.test.mjs: 94 base + the 2 five-minute/corrupt-at strengthenings, covering 6 corrupt-at values and 1 hostile-at value across their assertions), 2 unit tests renamed (no test removed or weakened). Suites: python -m unittest discover -s tests = 307 passed; node tests/page.test.mjs = 96 checks passed; python -m unittest discover -s local/tests = 90 passed, unchanged count. Nothing committed, staged or pushed.",
+  "sensitivity": "sensitive"
+ },
+ "changes": [
+  {
+   "path": "tests/page.test.mjs",
+   "change_kind": "modify",
+   "why": "CR-1 (MEDIUM): strengthen the meta/lastRefresh page checks so they fail if the rendered time is not derived from lastRefresh.at (two different at values under one frozen clock must render two different, exactly-matching formatted times) and add a hostile-at check pinning that markup can never reach the DOM, escaped or not. CR-2 (LOW): replace the single 'not-a-time' assertion with a loop covering null, 0, true, a number, an object and a bad string, all of which must render no text.",
+   "acceptance_refs": ["PBI-008 L-4"]
+  },
+  {
+   "path": "site/index.html",
+   "change_kind": "modify",
+   "why": "CR-2 (LOW): asOfInfo() now requires lastRefresh.at to be a string before constructing a Date, so null, 0 and true (which new Date() otherwise coerces to a valid 1970 date) fall into the same silent 'unreadable at' path as a bad string, per L-4.",
+   "acceptance_refs": ["PBI-008 L-4"]
+  },
+  {
+   "path": "tests/test_refresh.py",
+   "change_kind": "modify",
+   "why": "CR-3 (LOW): renamed Cli.test_nothing_to_push and its companion Plan.test_commit_then_nothing_to_push, which named a behaviour ('nothing to push') the change deletes, to test_a_quiet_tick_prints_only_the_last_refresh_write / test_commit_then_a_quiet_tick_prints_only_the_last_refresh_write, naming what they now prove. Assertions and the explanatory comment are unchanged.",
+   "acceptance_refs": ["PBI-008 L-2"]
+  },
+  {
+   "path": "exporters/refresh.py",
+   "change_kind": "modify",
+   "why": "CR-4 (LOW): rewrapped the plan() docstring's 137-character run-on line to the file's usual ~100-115 character width, so the MassDelete/AnswersRefused sentence starts at the left margin instead of mid-line.",
+   "acceptance_refs": []
+  }
+ ],
+ "tests": [
+  {
+   "path": "tests/page.test.mjs",
+   "kind": "modified",
+   "status": "pass",
+   "covers": "meta/lastRefresh 5-minute case now asserts the rendered time is exactly the formatted 'at' (verified to fail when the page's when(lastRefresh.at) is swapped for when(Date.now()))"
+  },
+  {
+   "path": "tests/page.test.mjs",
+   "kind": "added",
+   "status": "pass",
+   "covers": "two different at values under one frozen clock render two different, exactly-matching texts, pinning that the header derives from at, not the clock (CR-1)"
+  },
+  {
+   "path": "tests/page.test.mjs",
+   "kind": "modified",
+   "status": "pass",
+   "covers": "corrupt at values (null, 0, true, a number, an object, 'not-a-time') each render no text and no console error (CR-2; failed against the pre-fix site/index.html before the guard was added)"
+  },
+  {
+   "path": "tests/page.test.mjs",
+   "kind": "added",
+   "status": "pass",
+   "covers": "a hostile at (img/onerror fragment) renders no text and no fragment of it reaches the DOM, escaped or not (CR-1's esc() clause)"
+  },
+  {
+   "path": "tests/test_refresh.py",
+   "kind": "modified",
+   "status": "pass",
+   "covers": "renamed tests still assert main()/plan() print exactly one write (meta/lastRefresh) on an otherwise-quiet tick (CR-3)"
+  },
+  {
+   "path": "tests/test_refresh.py",
+   "kind": "existing",
+   "status": "pass",
+   "covers": "full python -m unittest discover -s tests run, 307 passed"
+  },
+  {
+   "path": "local/tests/test_conformance.py",
+   "kind": "existing",
+   "status": "pass",
+   "covers": "full python -m unittest discover -s local/tests run, 90 passed, count unchanged"
+  }
+ ],
+ "acceptance": [
+  {
+   "criterion": "CR-1 (MEDIUM): a page check fails if the displayed time is not derived from lastRefresh.at, and a hostile at is escaped with no HTML injected and no console error",
+   "met": "yes",
+   "evidence": "New checkpoint feeds two different at values under one frozen Date.now and asserts two different, exactly-formatted texts; confirmed it fails (wrong time shown) when when(lastRefresh.at) is temporarily swapped for when(Date.now()) in site/index.html, then reverted. Separate checkpoint feeds at = '2026-09-11T12:00:00Z<img src=x onerror=alert(1)>' and asserts asOf().innerHTML is empty and contains no <img/onerror fragment; noPageErrors() confirms no console.error."
+  },
+  {
+   "criterion": "CR-2 (LOW): a non-string at (null, 0, true, a number, an object) renders no 'data as of' text and logs no error, same as an unparsable string",
+   "met": "yes",
+   "evidence": "asOfInfo() now requires typeof lastRefresh.at === 'string' before constructing a Date. New loop in tests/page.test.mjs feeds null, 0, true, 12345, {} and 'not-a-time' and asserts asOf().innerHTML === '' for each; this loop failed against the unfixed site/index.html (null rendered 'data as of Jan 1, 01:00 AM (stale)') before the guard was added, confirming the test is real."
+  },
+  {
+   "criterion": "CR-3 (LOW): a test name reflects the behaviour it proves, not the removed 'nothing to push' branch",
+   "met": "yes",
+   "evidence": "Cli.test_nothing_to_push -> test_a_quiet_tick_prints_only_the_last_refresh_write; Plan.test_commit_then_nothing_to_push -> test_commit_then_a_quiet_tick_prints_only_the_last_refresh_write. Both keep their original assertions and explanatory comment; full suite still 307/307."
+  },
+  {
+   "criterion": "CR-4 (LOW): the plan() docstring is rewrapped to the file's usual width",
+   "met": "yes",
+   "evidence": "The 137-character line is now three lines of 102/98/63 characters, matching the file's existing ~100-115 character wrapping; MassDelete/AnswersRefused sentence now starts at the left margin. Cosmetic only, no assertions changed; full suite still 307/307."
+  }
+ ],
+ "not_done": [],
+ "follow_ups": [
+  {
+   "ref": "docs/prd/dispatch-board.md FR-46/FR-52 test-name citations",
+   "note": "FR-46 and FR-52 cite Plan.test_commit_then_nothing_to_push and Cli.test_nothing_to_push by their old names. docs/prd/** is outside PBI-008's allowed_areas, so it was not edited here; the PRD's test-name citations should be updated in the same docs chore already deferred for CLAUDE.md's refresh-procedure text."
+  }
+ ]
+}

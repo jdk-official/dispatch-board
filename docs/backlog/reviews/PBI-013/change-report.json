@@ -1,0 +1,57 @@
+{
+  "schema_version": "1",
+  "report": {
+    "agent": "code-writer",
+    "as_of_date": "2026-09-11",
+    "mode": "pbi",
+    "change_class": "standard",
+    "scope": "Intent: show an estimated time of the next usage-limit hit, from the view's usage.limits and usage.hourly, with no exporter or local change. Acceptance: AC-80 (FR-117, FR-118): with no limit hit recorded the page shows 'no forecast: no limit hit recorded'; with at least one, a time labelled as an estimate, on the Claude usage tab and as a compact Overview tile, following the project or session view. Method: ledger row 11 and PRD A-34 defer to 'the PRD default as written', which names no method; implemented the simplest method consistent with brief feature 6 (lines 192-193): the mean time from when work last resumed (the latest reset before the hit, else the start of the recorded hourly usage) to each hit, added to the latest hit or reset. Grounding path: ran-suite (node tests/page.test.mjs, python -m unittest discover -s tests, python -m unittest discover -s local/tests).",
+    "verdict": "DONE-WITH-CONDITIONS",
+    "summary": "2 files modified (site/index.html, tests/page.test.mjs); 6 page checks added. Page suite 63 passed / 0 failed (baseline 57); tests suite 215 passed / 0 failed; local/tests 90 passed / 0 failed. Verification tier 3, all three configured suites run. Change-report not validated against tools/change_report_schema.py, whose only copy is under ~/.claude, which was out of bounds. Nothing committed, staged, pushed or deployed.",
+    "sensitivity": "sensitive"
+  },
+  "changes": [
+    {
+      "path": "site/index.html",
+      "change_kind": "modify",
+      "why": "Adds limitsOf (usage.limits read as a list of objects only), forecastOf (the estimate method) and forecastTile, which shows the estimate, or 'no forecast: no limit hit recorded', or 'no forecast: too little timing data to estimate', in the neutral --rule-2 tone. Adds the tile to the Claude usage tab, the project Overview and the Other sessions Overview, plus a note in the Usage limits panel on how the estimate is derived and that it is not a plan meter. Moves the chart, usage panel and Limit-hits tiles to limitsOf so a malformed usage.limits no longer throws.",
+      "acceptance_refs": ["AC-80", "FR-117", "FR-118", "S-18"]
+    },
+    {
+      "path": "tests/page.test.mjs",
+      "change_kind": "modify",
+      "why": "Section 11: forecast checks with hand-computed expected times, covering the project view, the session filter, Other sessions, the no-hit text, the method note, the tile tone and malformed usage.limits.",
+      "acceptance_refs": ["AC-80"]
+    }
+  ],
+  "tests": [
+    { "path": "tests/page.test.mjs", "kind": "added", "status": "pass", "covers": "project view with 3 hits stored out of order: 2099-01-01T16:00Z, 'estimate from the last 3 limit hits', identical on the usage tab and the Overview" },
+    { "path": "tests/page.test.mjs", "kind": "added", "status": "pass", "covers": "method note (estimate, 'average time from a reset', 'not a plan meter'); forecast tile tone is a token and never --human" },
+    { "path": "tests/page.test.mjs", "kind": "added", "status": "pass", "covers": "session filter with 1 hit: 2026-09-10T16:30Z from the session's own usage, 'estimate from the last 1 limit hit · passed with no hit since'" },
+    { "path": "tests/page.test.mjs", "kind": "added", "status": "pass", "covers": "project with no limits: exact text 'no forecast: no limit hit recorded' on the usage tab and the Overview" },
+    { "path": "tests/page.test.mjs", "kind": "added", "status": "pass", "covers": "Other sessions: a session with no hits shows no forecast; a session with 3 hits shows its own estimate" },
+    { "path": "tests/page.test.mjs", "kind": "added", "status": "pass", "covers": "malformed usage.limits ('x', 7, {}, null, a bare object, [null, 3, 'x', [], [hit]]) and untimed hits: no crash, no console.error, no-forecast text, Limit hits 0" },
+    { "path": "tests/page.test.mjs", "kind": "existing", "status": "pass", "covers": "the 57 existing page checks" },
+    { "path": "tests", "kind": "existing", "status": "pass", "covers": "python -m unittest discover -s tests: 215 tests" },
+    { "path": "local/tests", "kind": "existing", "status": "pass", "covers": "python -m unittest discover -s local/tests: 90 tests" }
+  ],
+  "acceptance": [
+    { "criterion": "AC-80 / FR-118: with no usage-limit hit recorded, the page shows 'no forecast: no limit hit recorded'", "met": "yes", "evidence": "check 'forecast, project view with no limit hit' and the Other sessions and malformed-limits checks pass" },
+    { "criterion": "AC-80 / FR-117: with at least one hit recorded, the page shows a time labelled as an estimate", "met": "yes", "evidence": "the 1-hit and 3-hit checks match hand-computed times; the tile reads 'estimate from the last N limit hits'" },
+    { "criterion": "Shown on the Claude usage tab and as a compact Overview tile, using the view's usage (project combined, session filter, Other sessions)", "met": "yes", "evidence": "the project-view, session-filter and Other-sessions forecast checks each assert the usage tab and the Overview" },
+    { "criterion": "S-18 and the design rules: an estimate not a meter, derivation stated, tokens only and never --human, no motion, store text through esc()", "met": "yes", "evidence": "the method-note and tile-tone check passes; the diff adds no colour literal and no animation" },
+    { "criterion": "Malformed usage.limits: no crash and no console.error", "met": "yes", "evidence": "check 'forecast: malformed usage.limits ...' passes with noPageErrors after every load" },
+    { "criterion": "The forecast method follows spec ledger row 11", "met": "partial", "evidence": "Row 11 and PRD A-34 name no method beyond 'the PRD default as written'. Implemented the simplest method consistent with brief feature 6 and stated it in the UI note; it needs the reviewer's or owner's confirmation." }
+  ],
+  "not_done": [
+    { "ref": "forecast-method", "reason": "The spec does not fully fix the method; the one implemented is a documented choice and needs code-reviewer or owner confirmation." },
+    { "ref": "change-report-validation", "reason": "Not validated with tools/change_report_schema.py by the writer: the only copy is under ~/.claude, which this task put out of bounds. The orchestrator validates it." },
+    { "ref": "visual-check", "reason": "The tile and note were not seen in a browser; no preview was available. Rendered HTML is covered by the page suite only." }
+  ],
+  "follow_ups": [
+    { "ref": "code-reviewer", "note": "Hand the working-tree change to review-agents:code-reviewer for the GO / NO-GO gate." },
+    { "ref": "usage-hourly-malformed", "note": "A non-list usage.hourly still makes the existing usageChart throw (hours.map). Out of scope here; an Array.isArray guard would fix it." },
+    { "ref": "forecast-method-owner", "note": "If the owner wants brief feature 6's 'current rate of use' reflected more directly (for example a usage-weighted budget rather than elapsed time), record it as a ledger decision; the page change would stay in forecastOf." },
+    { "ref": "claude-md-docs", "note": "CLAUDE.md does not yet describe the forecast tile or its method; route to the docs writers when the change is accepted." }
+  ]
+}

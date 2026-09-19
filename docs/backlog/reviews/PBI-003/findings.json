@@ -1,0 +1,35 @@
+{
+  "schema_version": "1",
+  "audit": {
+    "agent": "code-reviewer",
+    "as_of_date": "2026-09-11",
+    "mode": "changeset",
+    "scope": "Round 2 of 2. Six untracked files under local/ in C:/Users/jdk/dispatch-board-worktrees/PBI-003 (branch pbi/PBI-003-records-schema, base fd7b926). Intent rung 1: docs/backlog/specs/pbi-003-records-schema.md revision 4 plus the post-gate section 3.1 clarification. Grounding: the three suites; error-contract, schema and shapes-copy probes; 12 mutation probes; a scratch commit and clone under core.autocrlf=true; temp-folder counts; reasoning. No SARIF or SAST.",
+    "summary": "0 CRITICAL, 0 HIGH, 0 MEDIUM, 0 LOW. All five round-1 findings resolved (CRLF clone 90/90; ValueError contract; unquoted DDL; literal SHAPES pin matches section 3.1; no temp leaks). Suites: local 90, root 205, page 49. 12 mutations each fail the suite. Scope: exactly six files. Stricter row contract is a justified improvement. Verdict GO.",
+    "sensitivity": "sensitive",
+    "verdict": "GO"
+  },
+  "findings": [],
+  "not_audited": [
+    {
+      "ref": "security dimension",
+      "reason": "No SARIF or SAST; reasoning only; nothing found."
+    },
+    {
+      "ref": "Python below 3.14",
+      "reason": "Only 3.14.5 available; the onerror branch and below-3.12 skips not exercised."
+    },
+    {
+      "ref": "T2 git-tab case without git",
+      "reason": "git present; HAS_GIT=False branch not exercised."
+    }
+  ],
+  "follow_ups": [
+    "PBI-019: to_row/from_row raise RecursionError on ~100,000-level nesting and TypeError for an unhashable kind, though the docstrings say ValueError; unreachable from the exporters.",
+    "PBI-019: lone surrogates fail at INSERT with UnicodeEncodeError (as in v1).",
+    "PBI-019: create_schema stamps version 1 on a foreign index-less table with wrong columns (e.g. statuses(x)); accepted by spec section 4 (I-6).",
+    "PBI-006: portable datetime definition before validating against records.shapes.json.",
+    "PBI-005: no inverse of store_path in records.",
+    "A-2 chore: declare the minimum Python version (3.11+)."
+  ]
+}

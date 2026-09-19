@@ -1,0 +1,116 @@
+{
+ "schema_version": "1",
+ "audit": {
+  "agent": "code-reviewer",
+  "as_of_date": "2026-09-11",
+  "mode": "diff",
+  "scope": "Round 2 (final round) of the uncommitted change in the worktree C:/Users/jdk/dispatch-board-worktrees/PBI-008 (branch pbi/PBI-008-stale-board, base d10d9e6): exporters/refresh.py, tests/test_refresh.py, local/tests/test_conformance.py, site/index.html, tests/page.test.mjs. Intent rung 2 (work item with acceptance criteria): docs/backlog/pbi/PBI-008.md, criteria AC-34, AC-42, AC-44, AC-74, L-1 to L-4, its out-of-scope list and its close-out line. Round 1 is preserved at docs/backlog/reviews/PBI-008/findings-r1.json; this round re-checks CR-1 to CR-4, verifies the builder's round-3 report (change-report-r3.json) claim by claim, and checks that no assertion was loosened. Grounding path: the three repo suites run read-only, plus four sabotage runs against scratch copies of site/index.html (PAGE_HTML pointed at the copy; the worktree was never edited), plus reasoning. No Touchstone SARIF provided, so the security dimension is reasoning-only.",
+  "sensitivity": "sensitive",
+  "verdict": "GO",
+  "summary": "Change class: standard. Dimensions covered: correctness, security (code-level), maintainability, test-adequacy. Counts by severity: 0 CRITICAL, 0 HIGH, 0 MEDIUM, 2 LOW. Suites re-run read-only on the round-2 state: python -m unittest discover -s tests = 307 OK; node tests/page.test.mjs = 96 checks passed; python -m unittest discover -s local/tests = 90 OK (unchanged, as required). The builder's claimed 307 / 96 / 90 is confirmed. Round-1 findings: CR-1 (MEDIUM) resolved in substance - sabotage A (the page's esc(when(lastRefresh.at)) swapped for esc(when(Date.now()))) exits 1 at the new exact-match check with actual 'data as of Sep 11, 01:00 PM', so the rendered time is genuinely pinned to the document's at; the esc() half is pinned by outcome only (finding CR-5, LOW). CR-2 (LOW) resolved - asOfInfo() now requires typeof lastRefresh.at to be a string, and sabotage B (that guard reverted) exits 1 on the first member of the new loop (null rendered 'data as of Jan 1, 01:00 AM (stale)'), so the corrupt-at loop is real. CR-3 (LOW) resolved - Cli.test_nothing_to_push and Plan.test_commit_then_nothing_to_push renamed to name what they now prove, assertions and comments intact. CR-4 (LOW) resolved - the 137-character docstring line is now four lines of 102/102/98/63 characters, matching the file's width, with the same text. AC-alignment: AC-34, AC-42, AC-44, AC-74 and L-1 to L-4 all met. No assertion was weakened this round (see the first not_audited entry for the evidence), and nothing outside allowed_areas was touched: git status shows exactly the five permitted files modified and no untracked file, and local/tests/test_conformance.py was not changed at all this round. Verification-gate tier 3 (executable code) plus two renames, verified by the three full configured suites and by four independent sabotage runs against scratch copies. Flag-only review: nothing was changed, staged, committed, pushed or deployed; the worktree is byte for byte as it was found."
+ },
+ "findings": [
+  {
+   "id": "CR-5",
+   "severity": "LOW",
+   "title": "The hostile-at check proves no markup reaches the DOM but never exercises esc(), and its label says it did, so L-4's rendered-through-esc clause stays unpinned",
+   "subject": {
+    "type": "file",
+    "id": "tests/page.test.mjs:1280",
+    "name": "page check 19, hostile-at case"
+   },
+   "evidence": [
+    {
+     "field": "check",
+     "value": "const hostile = the ISO time with an img/onerror fragment appended; e.fire(...); assert.equal(asOf().innerHTML, ''); assert.doesNotMatch(asOf().innerHTML, /<img|onerror/i); then ok('... rendered through esc(), no HTML injected, no console error')",
+     "sensitive": false
+    },
+    {
+     "field": "sabotage probe (run)",
+     "value": "A scratch copy of site/index.html with esc() removed from the asOf line only - esc(when(lastRefresh.at)) changed to when(lastRefresh.at) - passes all 96 page checks (PAGE_HTML pointed at the copy, exit 0). The hostile string is rejected one step earlier, by new Date() returning Invalid Date, so it never reaches esc().",
+     "sensitive": false
+    },
+    {
+     "field": "why it cannot bite",
+     "value": "site/index.html:271 - when = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString(...); }. Any at that renders must have parsed as a date, and what reaches innerHTML is toLocaleString output, never the input, so esc() on that line is defence in depth no input can exercise.",
+     "sensitive": false
+    },
+    {
+     "field": "criterion",
+     "value": "PBI-008 L-4: the time comes from at, rendered through esc(); each case is pinned by a page check.",
+     "sensitive": false
+    }
+   ],
+   "impact": "The property L-4 actually cares about - no fragment of a hostile at reaching the DOM - is pinned, and it holds for a stronger reason than the check states: when() launders every value through toLocaleString, so injection here is impossible by construction, not merely escaped. Nothing wrong would ship. Two small residues remain: the ok() label asserts the value was rendered through esc() when the run never enters esc(), so the suite's own report overstates what it proved; and a future edit dropping esc() from that line would go unnoticed. Both are cosmetic while when() stands between at and the DOM, which is why this is LOW and not the MEDIUM it inherited from CR-1.",
+   "remediation": "Reword the ok() label and the comment above it to state what the run proves - a hostile at fails to parse and renders nothing, so no fragment can reach the DOM - instead of claiming esc() ran. If the esc() clause is ever to be pinned mechanically, the only honest way is a direct check on esc() itself, since no at value can carry markup past when(). Neither change is required for merge.",
+   "refs": [
+    "Testing Discipline",
+    "Code Commenting",
+    "PBI-008 L-4"
+   ],
+   "category": "test-adequacy"
+  },
+  {
+   "id": "CR-6",
+   "severity": "LOW",
+   "title": "PRD FR-46 still requires the nothing-to-push output this change deletes, and now cites three test names that no longer exist, so the requirements doc contradicts the shipped code",
+   "subject": {
+    "type": "file",
+    "id": "docs/prd/dispatch-board.md:306",
+    "name": "PRD FR-46"
+   },
+   "evidence": [
+    {
+     "field": "prd",
+     "value": "FR-46: if no document differs from the pushed state and no status update is due, the refresh script shall print nothing to push and leave no pending plan. (Met: Plan.test_commit_then_nothing_to_push, test_nothing_to_push_removes_a_stale_pending_file, Cli.test_nothing_to_push.)",
+     "sensitive": false
+    },
+    {
+     "field": "code",
+     "value": "exporters/refresh.py main(): the branch that printed nothing to push and returned 0 is deleted, and plan() now always appends the meta/lastRefresh set, so the condition FR-46 describes can no longer arise.",
+     "sensitive": false
+    },
+    {
+     "field": "test names",
+     "value": "All three cited tests were renamed by this change - two this round (test_a_quiet_tick_prints_only_the_last_refresh_write, test_commit_then_a_quiet_tick_prints_only_the_last_refresh_write) and one in round 1 (test_nothing_to_push_replaces_a_stale_pending_file). A grep over docs/prd/dispatch-board.md finds the old names at lines 306 and 312.",
+     "sensitive": false
+    }
+   ],
+   "impact": "FR-46 is now a requirement the code deliberately no longer meets, marked Met by three tests that cannot be found by name, and FR-52 at line 312 cites one of the same old names. This is correct behaviour by PBI-008 - FR-103 supersedes FR-46 by design, and the PBI's out-of-scope list already defers the matching CLAUDE.md procedure text to a post-merge docs chore - and docs/prd/** is outside allowed_areas, so the worker was right not to edit it. It is raised only so the drift is not lost: until that chore lands, the requirements document asserts a deleted behaviour and the CLAUDE.md /loop instruction still guards on a string that can never be printed.",
+   "remediation": "Fold the PRD into the docs chore already deferred for CLAUDE.md: supersede FR-46 with FR-103's wording (every tick now carries at least one write), refresh the FR-46 and FR-52 test-name citations, and add a meta/lastRefresh row to CLAUDE.md's store-path table. No code change, and it must not be done from this worktree, because docs/prd/** and CLAUDE.md are outside this PBI's allowed_areas.",
+   "refs": [
+    "Consistency With Existing Code",
+    "PBI-008 out-of-scope"
+   ],
+   "category": "maintainability"
+  }
+ ],
+ "not_audited": [
+  {
+   "ref": "A literal round-1 versus round-2 file diff",
+   "reason": "The change is uncommitted and no round-1 snapshot was kept, so a literal r1-to-r2 diff was impossible; weakening was ruled out indirectly instead, and the evidence is conclusive. git numstat against base d10d9e6 shows tests/page.test.mjs 76 insertions and 0 deletions and site/index.html 18 insertions and 0 deletions, so no pre-existing line was removed from either. Every assertion findings-r1.json quotes verbatim is still present, the five round-1 ok() labels are all still among the seven now in page check 19 (94 to 96 checks equals the two added), and the two places that changed both gained assertions: the corrupt-at case went from one value to a six-value class, and the 5-minute case gained an exact-equality check beside its prefix match. The 30 deleted lines in tests/test_refresh.py and the 9 in exporters/refresh.py were read one by one: they are round-1 count updates, this round's two renames, and the deleted nothing-to-push branch, each replaced by an equal-or-stronger assertion."
+  },
+  {
+   "ref": "site/index.html - rendered appearance",
+   "reason": "No browser: the page checks run against a stub DOM, so .faint.stale resolving to var(--changes) and never var(--human) was verified by reading the CSS (site/index.html:37, where .faint.stale at specificity 0,2,0 beats .faint at 0,1,0) and asserted by class name in the checks, not rendered."
+  },
+  {
+   "ref": "security dimension",
+   "reason": "No Touchstone SARIF and no SAST in this repo, so code-level security is reasoning-only. Re-reviewed this round and clean: the one new externally visible value is lastRefresh.at, which cannot reach the DOM as markup because when() returns either the empty string or toLocaleString output; the new type guard closes the malformed-input class (null, 0, true, a number, an object, a bad string - all now silent, all pinned); there is no new secret, deserialization, path, command or authz surface; the store's write rule is admin-only and unchanged."
+  }
+ ],
+ "follow_ups": [
+  {
+   "ref": "Post-merge docs chore (CLAUDE.md and docs/prd/dispatch-board.md)",
+   "note": "Carried from round 1 and now firmer - see finding CR-6. CLAUDE.md's refresh procedure (line 54) still says refresh.py prints nothing to push if none, and the /loop instruction (line 73) still guards on that string; PRD FR-46 (line 306) still requires it, and FR-46 and FR-52 cite renamed tests. Both files are outside this PBI's allowed_areas and the PBI defers them by design, so the chore should land with or immediately after the merge, and should also add a meta/lastRefresh row to CLAUDE.md's store-path table."
+  },
+  {
+   "ref": "tests/page.test.mjs - the exact-match check duplicates the page's date-format options",
+   "note": "The new check builds its expected string with its own toLocaleString options object, copied from when() at site/index.html:271. That duplication is what makes the check exact and is the right trade, but a future cosmetic change to when()'s options will fail it for a formatting reason rather than a behavioural one. Worth a one-line comment pointing at when() so the next reader knows where to update it."
+  },
+  {
+   "ref": "exporters/refresh.py:192 - at is stamped when plan() runs, not when the write lands",
+   "note": "Carried unchanged from round 1: the value records when the refresher built the plan, a little before the operator's write_db completes. It errs in the conservative direction (the board reads very slightly older than it is) and meta/lastRefresh is appended last, so it is pushed after the data it describes. No change needed; noted so the 20-minute threshold is understood to include push latency."
+  }
+ ]
+}
