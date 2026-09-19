@@ -93,7 +93,8 @@
   svg { max-width: 100%; height: auto; display: block; }
 
   /* backlog cells */
-  .cells { display: grid; grid-template-columns: repeat(13, minmax(96px, 1fr)); gap: 8px; }
+  /* Cells wrap to the width available, so the backlog never needs a sideways scroll however many items it holds. */
+  .cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
   .cell { position: relative; background: var(--surface); border: 1px solid var(--rule-2); border-radius: 6px; padding: 12px 10px 10px; overflow: hidden; display: grid; gap: 6px; align-content: start; min-height: 96px; }
   .cell::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--tone, transparent); }
   .cell .nm { font-size: 12px; line-height: 1.35; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -209,7 +210,7 @@
   }
   footer { padding: 18px 0 32px; border-top: 1px solid var(--rule); color: var(--ink-3); font-size: 12px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
 
-  @media (max-width: 1100px) { .g-2-1, .g-1-1, .g-3 { grid-template-columns: 1fr; } .cells { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); } }
+  @media (max-width: 1100px) { .g-2-1, .g-1-1, .g-3 { grid-template-columns: 1fr; } }
   @media (max-width: 640px) {
     .wrap { padding: 0 16px; } .crumb, .updated { display: none; } .brand { flex-wrap: wrap; } .picker select { max-width: 44vw; }
     .track { grid-template-columns: 1fr; gap: 6px; } .facts { grid-template-columns: 1fr; gap: 2px; } .facts dd { margin-bottom: 8px; }
@@ -628,7 +629,7 @@
       <div class="tiles">${tiles}</div>
       <div class="panel" style="margin-bottom:16px">
         <div class="ph"><h3>Backlog</h3><div class="legend"><span><i style="background:var(--go)"></i>Built and reviewed</span><span><i style="background:var(--changes)"></i>Conditions open</span><span><i style="background:var(--live)"></i>Partly built</span><span><i style="background:var(--rule-2)"></i>Not started</span></div></div>
-        <div class="pb scroll"><div class="cells">${cells}</div></div>
+        <div class="pb"><div class="cells">${cells}</div></div>
       </div>
       <div class="panel" style="margin-bottom:16px">
         <div class="ph"><h3>Pipeline</h3><div class="legend"><span><i style="background:var(--human)"></i>Human decision</span><span><i style="background:var(--changes)"></i>Feedback loop</span><span><i style="background:var(--live)"></i>Running agent</span><span class="faint">${isLive(renderNow) ? 'Live' : 'Paused'}</span></div></div>
