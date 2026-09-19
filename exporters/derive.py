@@ -48,11 +48,12 @@ NEGATED = re.compile(r"(?:\b(?:not|never|no|cannot|without|unable\s+to|rather\s+
                      r"(?:[\s-]+(?:be|been|being|yet|fully|actually|really))*[\s*`-]*$", re.I)
 RATE_LIMIT = re.compile(r"hit your (?:session|weekly|usage) limit", re.I)
 FIX = re.compile(r'\b(review|LOWs?|notes|fix(?:es)?|CR-\d)', re.I)
-# A builder's stated test count: the first integer followed by "tests". A count grouped with commas is read whole,
-# and the look-behind stops "1,234 tests" or "0.5 tests" being read from its last digits.
-STATED_TESTS = re.compile(r'(?<![\d,.])(\d{1,3}(?:,\d{3})+|\d+)\s+tests\b', re.I)
-# A builder's stated coverage: the first percentage straight before or after the word "coverage".
-STATED_COVERAGE = re.compile(r'coverage[\s:=]*(\d+(?:\.\d+)?)\s*%|(?<![\d.])(\d+(?:\.\d+)?)\s*%\s*coverage', re.I)
+# A builder's stated test count: the first integer followed by "tests" on the same line (only spaces/tabs between
+# them, never a newline). A count grouped with commas is read whole, and the look-behind stops "1,234 tests" or
+# "0.5 tests" being read from its last digits. The negative lookahead on "/" keeps a "tests/…" path from matching.
+STATED_TESTS = re.compile(r'(?<![\d,.])(\d{1,3}(?:,\d{3})+|\d+)[ \t]+tests(?!/)\b', re.I)
+# A builder's stated coverage: the first percentage straight before or after the word "coverage", on the same line.
+STATED_COVERAGE = re.compile(r'coverage[ \t:=]*(\d+(?:\.\d+)?)[ \t]*%|(?<![\d.])(\d+(?:\.\d+)?)[ \t]*%[ \t]*coverage', re.I)
 # A review-lane run's structured findings: the LAST fenced code block at the very end of its result. Split in
 # two so findings_of() can try each fence in turn and keep the rightmost match: FENCE_START finds every fence
 # opening, FENCE_JSON (matched from just after one, with re.Pattern.match's pos) requires the greedy body --

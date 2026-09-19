@@ -427,6 +427,14 @@ class StatedFigures(unittest.TestCase):
         self.assertEqual(derive.stated_tests('DONE. 700 TESTS green.'), 700)
         self.assertEqual(derive.stated_coverage('COVERAGE: 92%'), 92)
 
+    def test_the_number_and_the_word_must_share_a_line(self):
+        self.assertIsNone(derive.stated_tests('Tier 3\nTests: 410 passed'))
+        self.assertEqual(derive.stated_coverage('pass rate 100%\nCoverage: 88%'), 88)
+
+    def test_a_tests_path_is_not_a_stated_count(self):
+        self.assertIsNone(derive.stated_tests('Section 24\n\ntests/page.test.mjs 139 checks'))
+        self.assertIsNone(derive.stated_tests('see 24 tests/page.test.mjs'))
+
 
 def cr(rid, pbi, findings, kind='changes', start=0, has_block=True):
     return {'id': rid, 'lane': 'cr', 'pbis': [pbi], 'kind': kind, 'start': ts(start), 'findings': findings,
