@@ -116,6 +116,17 @@ def stop(m, aid):
     return reply(m, 'msg-stop-' + aid, tools=[('toolu_stop_' + aid, 'TaskStop', {'task_id': aid})])
 
 
+def ask(m, tid, *questions):
+    return reply(m, 'm-ask-' + tid, tools=[(tid, 'AskUserQuestion', {'questions': [{'question': q} for q in questions]})])
+
+
+def denial(m, tid, kind, detail):
+    # A permission refusal: a plain-string tool_result carrying toolDenialKind, as Claude Code writes it.
+    return {'type': 'user', 'timestamp': ts(m), 'message': {'role': 'user', 'content': [
+        {'type': 'tool_result', 'tool_use_id': tid, 'is_error': True, 'content': detail}]},
+        'toolDenialKind': kind, 'toolUseResult': 'Error: ' + detail}
+
+
 def notify(m, aid, result, tokens, ms):
     body = ('<task-notification><task-id>%s</task-id><status>completed</status><result>%s</result>'
             '<subagent_tokens>%s</subagent_tokens><duration_ms>%s</duration_ms></task-notification>') % (aid, result, tokens, ms)
@@ -164,13 +175,17 @@ class Fixture:
 
     def transcripts(self):
         # Session A: a finished code-writer (followed by the runs.manual row), a running reviewer, a stopped
-        # test-writer and a general-purpose agent (lane "other"); one skill use with a time, one without.
+        # test-writer and a general-purpose agent (lane "other"); one skill use with a time, one without; an
+        # unanswered question and a permission refusal, left waiting since the owner never replies again.
         self.jsonl(os.path.join(self.root, FOLDER, SID_A + '.jsonl'), [
             user(0, 'Please build the widget'),
             launch(1, 'toolu_cw'), launch(2, 'toolu_run'), launch(3, 'toolu_kill'), launch(4, 'toolu_gp'),
             reply(5, 'm-skill-timed', tools=[('toolu_sk1', 'Skill', {'skill': 'eng:tdd'})]),
             untimed(reply(6, 'm-skill-untimed', tools=[('toolu_sk2', 'Skill', {'skill': 'eng:untimed'})])),
             stop(7, 'akill'),
+            ask(20, 'toolu_ask', 'Which colour?'),
+            reply(21, 'm-bash', tools=[('toolu_bash', 'Bash', {'command': 'rm -rf /'})]),
+            denial(22, 'toolu_bash', 'permission-rule', 'Permission to run rm has been denied.'),
             notify(30, 'acw', 'All green. DONE', '5000', '1740000'),
             notify(31, 'agp', 'Looked around.', '800', '60000'),
         ])
@@ -456,6 +471,16 @@ class ConformanceV1(unittest.TestCase):
 
     def test_show_first_prompt_is_on(self):
         self.assertEqual(self.of('session')[SID_A]['firstPrompt'], 'Please build the widget')
+
+    def test_a_session_with_a_waiting_question_and_refusal_conforms(self):
+        # Exercised end to end through export_sessions.py, not just by hand-built documents: the exported waiting
+        # object is checked here and, like every other session, against SHAPES by test_every_document_validates.
+        waiting = self.of('session')[SID_A]['waiting']
+        self.assertEqual(len(waiting['questions']), 1)
+        self.assertEqual(waiting['questions'][0]['source'], 'ask')
+        self.assertEqual(waiting['refusals'],
+                         [{'at': ts(22), 'kind': 'permission-rule', 'tool': 'Bash',
+                           'detail': 'Permission to run rm has been denied.'}])
 
     def test_a_project_with_no_sessions_has_null_usage_and_last(self):
         gamma = self.of('project')['gamma']
