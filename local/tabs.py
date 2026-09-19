@@ -49,7 +49,8 @@ def owns(record_id):
 
 
 def _stdout(run, root, args):
-    r = run(['git', *args], cwd=root, capture_output=True, text=True, encoding='utf-8', timeout=TIMEOUT)
+    r = run(['git', *args], cwd=root, capture_output=True, text=True, encoding='utf-8', timeout=TIMEOUT,
+            **export_board.no_window_flags())
     return (r.stdout or '').strip()
 
 
@@ -57,7 +58,7 @@ def is_repo(run, root):
     """True when root is inside a git work tree. A git that cannot be run raises here, where export_board's
     answers False: locally that is a failure to report and carry the last tab through, not a plain folder."""
     r = run(['git', 'rev-parse', '--is-inside-work-tree'], cwd=root, capture_output=True, text=True,
-            encoding='utf-8', timeout=TIMEOUT)
+            encoding='utf-8', timeout=TIMEOUT, **export_board.no_window_flags())
     return r.returncode == 0 and (r.stdout or '').strip() == 'true'
 
 

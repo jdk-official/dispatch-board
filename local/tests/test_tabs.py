@@ -51,7 +51,8 @@ class FakeRun:
 
     def __call__(self, cmd, cwd=None, **kw):
         args = tuple(cmd[1:])
-        self.calls.append({'cmd': list(cmd), 'cwd': cwd, 'timeout': kw.get('timeout')})
+        self.calls.append({'cmd': list(cmd), 'cwd': cwd, 'timeout': kw.get('timeout'),
+                           'creationflags': kw.get('creationflags')})
         for key in ((cwd, args), cwd):
             if key in self.raises:
                 raise self.raises[key]
@@ -293,6 +294,29 @@ class Carry(TabsCase):
         self.l.run_pass(self.cfg, now=self.l.now + 60)
         self.assertEqual(self.l.stored('tab')['alpha.git'], dict(first, carriedSince=self.since(60)))
         self.assertIn('project alpha: cannot read its git repository (TimeoutExpired', self.l.e.err)
+
+
+# ---------------------------------------------------------------- Windows console suppression
+
+class WindowsLaunch(TabsCase):
+    """A console-less parent (pythonw.exe, the log-on scheduled tasks) makes Windows pop a new console window
+    for every git child unless the launch carries CREATE_NO_WINDOW."""
+
+    def test_every_git_call_carries_create_no_window_on_windows(self):
+        root = self.l.repo('alpha')
+        with swapped(export_board, 'WINDOWS', True):
+            self.l.run_pass(self.l.cfg([project('alpha', root, sessions=[SID])]))
+        made = [c for c in self.l.run.calls if c['cwd'] == root]
+        self.assertTrue(made)
+        self.assertEqual({c['creationflags'] for c in made}, {subprocess.CREATE_NO_WINDOW})
+
+    def test_no_creationflags_off_windows(self):
+        root = self.l.repo('alpha')
+        with swapped(export_board, 'WINDOWS', False):
+            self.l.run_pass(self.l.cfg([project('alpha', root, sessions=[SID])]))
+        made = [c for c in self.l.run.calls if c['cwd'] == root]
+        self.assertTrue(made)
+        self.assertEqual({c['creationflags'] for c in made}, {None})
 
 
 # ---------------------------------------------------------------- the network boundary
