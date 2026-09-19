@@ -945,6 +945,13 @@ class Board(unittest.TestCase):
         docs = derive.spec_docs('app', paths, SPEC, None, '', '', [], [], {}, 'NOW', extra)
         self.assertEqual([p['id'] for p in docs['backlog']['pbis']], ['PBI-001', 'PBI-002'])
 
+    def test_added_items_are_ordered_by_pbi_number_not_by_text(self):
+        paths = {'spec': 'docs/spec.md'}
+        extra = [{'id': 'PBI-100', 'title': 'Hundred', 'status': 'Proposed'},
+                 {'id': 'PBI-99', 'title': 'Ninety-nine', 'status': 'Proposed'}]
+        docs = derive.spec_docs('app', paths, SPEC, None, '', '', [], [], {}, 'NOW', extra)
+        self.assertEqual([p['id'] for p in docs['backlog']['pbis']], ['PBI-001', 'PBI-002', 'PBI-99', 'PBI-100'])
+
     def test_no_extra_pbis_leaves_the_backlog_as_it_was(self):
         paths = {'spec': 'docs/spec.md'}
         docs = derive.spec_docs('app', paths, SPEC, None, '', '', [], [], {}, 'NOW')

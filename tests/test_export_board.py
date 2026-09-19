@@ -313,6 +313,14 @@ class ExportProject(ReposCase):
         pbis = self.r.tabs()['app.backlog']['pbis']
         self.assertEqual([p['id'] for p in pbis], ['PBI-001', 'PBI-002', 'PBI-030'])
 
+    def test_a_pbi_file_with_no_id_in_its_frontmatter_is_left_out_with_a_warning(self):
+        root = self.r.repo('app', dict(FULL, **{
+            'docs/backlog/pbi/PBI-060-x.md': '---\ntitle: "No id here"\nstatus: Proposed\n---\n\n# Body\n'}))
+        self.r.data('app', DATA)
+        self.assertEqual(self.r.run([project('app', root)]), 0)
+        self.assertEqual([p['id'] for p in self.r.tabs()['app.backlog']['pbis']], ['PBI-001', 'PBI-002'])
+        self.assertIn('PBI-060', self.r.err)
+
     def test_a_project_without_a_pbi_folder_exports_exactly_as_before(self):
         root = self.r.repo('app', FULL)
         self.r.data('app', DATA)

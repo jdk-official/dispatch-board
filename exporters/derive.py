@@ -1222,6 +1222,13 @@ def plan_depends_text(raw):
     return ', '.join(ids) if ids else '—'
 
 
+def plan_pbi_number(pid):
+    """The numeric part of a PBI id ("PBI-99" -> 99), so added items sort in id order rather than text order
+    (where "PBI-100" would come before "PBI-99"). An id with no digits sorts last rather than raising."""
+    m = re.search(r'\d+', pid)
+    return int(m.group()) if m else math.inf
+
+
 def plan_yes_no(raw):
     """A PBI file's true/false frontmatter value as the PBI table's yes/no text; anything else unchanged."""
     return {'true': 'yes', 'false': 'no'}.get((raw or '').strip().lower(), raw or '')
@@ -1316,7 +1323,7 @@ def spec_docs(pid, paths, spec, prd, brief, design, adrs, rounds, data, now, ext
                       'group': fm.get('conflict_group', ''), 'risk': fm.get('conflict_risk', ''),
                       'requiresSpec': plan_yes_no(fm.get('requires_spec', '')),
                       'state': state, 'review': review, 'open': open_items, 'commit': commit, 'afterPlan': True})
-    pbi_rows += sorted(added, key=lambda r: r['id'])
+    pbi_rows += sorted(added, key=lambda r: plan_pbi_number(r['id']))
 
     return {
         'spec': {

@@ -88,8 +88,8 @@ PBI_DIR = 'docs/backlog/pbi'  # PBI files intake adds after the plan gate, read 
 
 def intake_pbi_files(root, pid):
     """Frontmatter for every PBI_DIR/PBI-*.md file below root, in file-name order; [] without that folder. A
-    file that cannot be read, or whose frontmatter cannot be read, is skipped with a warning on stderr -- one
-    bad file must not cost the rest of the project's backlog."""
+    file that cannot be read, whose frontmatter cannot be read, or whose frontmatter has no id, is skipped
+    with a warning on stderr -- one bad file must not cost the rest of the project's backlog."""
     folder = os.path.join(root, *PBI_DIR.split('/'))
     if not os.path.isdir(folder):
         return []
@@ -99,9 +99,13 @@ def intake_pbi_files(root, pid):
             continue
         rel = PBI_DIR + '/' + name
         try:
-            found.append(derive.frontmatter(read(root, rel), rel, warn))
+            fm = derive.frontmatter(read(root, rel), rel, warn)
+            if not fm.get('id'):
+                raise ValueError('no id')
         except (OSError, ValueError) as e:
             warn('project %s: %s: unreadable frontmatter (%s); skipped' % (pid, rel, e))
+            continue
+        found.append(fm)
     return found
 
 
