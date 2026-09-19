@@ -50,7 +50,6 @@
 | ID | Title | Branch | Worktree | Session tag | Started (UTC) |
 |----|-------|--------|----------|-------------|---------------|
 | PBI-007 | Log-on start through Task Scheduler and the on-PC deployment end to end (FR-90, FR-91, NFR-17, NFR-18, NFR-21) | `pbi/PBI-007-logon-start` | C:/Users/jdk/dispatch-board-worktrees/PBI-007 | 7e0c4f3c | 2026-09-12T16:05:00Z |
-| PBI-037 | Retire the v1 artifact and its refresher: final store export, final status message, loop stopped, procedures marked retired (S-40) | `pbi/PBI-037-retire-v1-artifact` | C:/Users/jdk/dispatch-board-worktrees/PBI-037 | 7e0c4f3c | 2026-09-19T17:40:00Z |
 <!-- Revision 6 decomposed 2026-09-19 into PBI-031 to PBI-038. The owner approved the batch, asked "Put PBI-031 to PBI-038 on the BOARD as shown, and start PBI-037 (freeze the published artifact) now?", verbatim: "Approve batch, start 037". PBI-037 is docs/Low, so it runs beside PBI-010 (page/High). -->
 | PBI-010 | Work-item status derived from runs, shown beside the hand-kept state during a shadow period (feature 4, FR-113) | `pbi/PBI-010-derived-status` | C:/Users/jdk/dispatch-board-worktrees/PBI-010 | 7e0c4f3c | 2026-09-19T13:49:57Z |
 <!-- PBI-010 started 2026-09-19 the moment PBI-012 closed and freed the page slot. Spec gate passed (revision 3); external review approved by the owner 2026-09-19 ("Approve the build"); ships in shadow mode, the switch to derived status stays the owner's (Q-3). First PBI whose PR the pr-steward raises. -->
@@ -111,3 +110,4 @@
 | PBI-028 | Local record shapes name the session's waiting list and check a run's files are strings | https://github.com/jdk-official/dispatch-board/pull/31 | [↪](done-log.md#pbi-028) |
 | PBI-012 | Test and coverage trend, cost per work item and per agent type (features 5 and 7, FR-114–FR-116, FR-119, FR-120) | https://github.com/jdk-official/dispatch-board/pull/34 | [↪](done-log.md#pbi-012) |
 | PBI-029 | No console windows from the scheduled collector | https://github.com/jdk-official/dispatch-board/pull/35 | [↪](done-log.md#pbi-029) |
+| PBI-037 | Retire the v1 artifact and its refresher: final store export, final status message, loop stopped, procedures marked retired (S-40) | https://github.com/jdk-official/dispatch-board/pull/42 | [↪](done-log.md#pbi-037) |

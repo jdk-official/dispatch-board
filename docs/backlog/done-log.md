@@ -2,6 +2,13 @@
 
 <!-- On-demand archive of completed-PBI evidence. NEVER loaded at session start; the BOARD ## Done
      index anchors here by ID. One ## <PBI-ID> section per completed PBI. -->
+## PBI-037
+- title: Retire the v1 artifact and its refresher: final store export, final status message, loop stopped, procedures marked retired (S-40)
+- PR: https://github.com/jdk-official/dispatch-board/pull/42 · merge: `85654f8` · class: standard · tier: assisted · cell-verdict: CELL-DONE
+- allowed_areas: docs/backlog/evidence/**, snapshot/**, CLAUDE.md, README.md
+- evidence: T4 evidence and final snapshot committed before the owner-approved final write (meta/status v56, status/dispatch-board v104). Canonical run bound to 13e23ce: 412/139/430. Accounted code-review-r1 GO, 0 findings. Handover docs/backlog/handovers/PBI-037.md
+- outcome: resolved_method=squash (declared) / observed_method=squash, level record. The v1 artifact is frozen; its refresh and publish procedures are retired.
+
 ## PBI-029
 - title: No console windows from the scheduled collector
 - PR: https://github.com/jdk-official/dispatch-board/pull/35 · merge: `8bd2621` · class: standard · tier: assisted · cell-verdict: CELL-DONE
