@@ -1,9 +1,9 @@
 ---
 title: Dispatch board — next iteration (agent catalogue, local-first app, features) and v1 defect fixes
-status: draft
+status: approved
 spec_version: 6
 revision: 6
-approved_revision: 5
+approved_revision: 6
 parent_prd: docs/prd/dispatch-board.md
 ---
 
@@ -13,11 +13,10 @@ parent_prd: docs/prd/dispatch-board.md
      Approved at the plan gate on 2026-09-11 (see Plan-gate record). This document is the parent
      authority for every PBI it spawns. -->
 
-**Status: revision 5 approved at the plan gate on 2026-09-11; revision 6 is a DRAFT (2026-09-19)
-awaiting its own plan gate.** Revision 5's PBIs are decomposed into `docs/backlog/pbi/` and listed on
-`docs/backlog/BOARD.md`. Everything revision 6 adds is marked **(rev 6, draft)** or sits under a heading
-that says so; nothing marked that way is approved, decomposed or on the BOARD. Revision 5's approved text
-is unchanged except where a line says "rev 6 proposes", and those lines only point at the draft.
+**Status: revision 6 approved at the plan gate on 2026-09-19** (revision 5 was approved on 2026-09-11).
+Revision 6 was approved as committed at `db14c0b` (spec blob `8fbdd3eb`); see the Plan-gate record. Markers
+reading **(rev 6, draft)** date from before that approval and now mark what revision 6 added. Revision 6's
+PBIs (PBI-031 to PBI-038) are decomposed only after the owner reviews the batch.
 
 **Revision history.**
 - **Revision 2:** the owner added PBI-017 (the agent catalogue tab, built first) and PBI-018 (future iterations on the Backlog).
@@ -604,8 +603,8 @@ Not filled until revision 6 passes its own plan gate. The record above is revisi
 - **Revision 6, round 5 after plan-gate-review-r7.** Round 7 (`docs/backlog/reviews/dispatch-board/plan-gate-review-r7.md`) returned APPROVE-WITH-NOTES, with no further round needed; its notes are applied here, and the Round-7 table says where.
 - **Resolver signals to declare:** `--change-class epic`, `--security-path` (PBI-031 opens the local server's first write surface, and `security_paths` is empty, rows 45 and 49), and `--high-impact-assumed` (row 50). The plan gate therefore resolves to the owner, whatever tier applies.
 - **Independent review (rev 6):** round 4 (`docs/backlog/reviews/dispatch-board/plan-gate-review-r4.md`) and round 5 (`docs/backlog/reviews/dispatch-board/plan-gate-review-r5.md`) returned CHANGES-REQUIRED, and so did round 6 (`docs/backlog/reviews/dispatch-board/plan-gate-review-r6.md`). Round 7 (`docs/backlog/reviews/dispatch-board/plan-gate-review-r7.md`) returned APPROVE-WITH-NOTES; its notes are applied, and no further round is needed.
-- **Owner's approval (rev 6):** _pending_. It is quoted verbatim here once given, with the commit it approves: `<commit id>` (revision 6 is committed before the owner is asked, and this placeholder is filled in the transcription).
-- **Approval question (rev 6):** "Approve the dispatch-board plan, spec revision 6 at commit `<commit id>`? Approving accepts the 14 default answers still open (rows 28–31, 33, 35, 36, 38, 41 and 46–50) and freezes the published claude.ai page today (PBI-037). The one high-impact default is row 50: when you approve a plan on the board, your approval is tied to the exact saved version of the spec you were looking at. If the text was changed before your approval was recorded, the check fails. Edits made afterwards, such as splitting the plan into work items, are allowed, and the check only reports them."
+- **Owner's approval (rev 6):** **"Approve"**, the owner's answer on 2026-09-19 to the approval question below, which named commit `db14c0b` (the spec's git blob there is `8fbdd3eba4a1042e2dfdbeb1689369eb015eb390`). Approved by the owner (jdk). The approval accepts the 14 rows still ASSUMED at that commit, rows 28–31, 33, 35, 36, 38, 41 and 46–50, including row 50 (high impact). Resolver: `--change-class epic --security-path --high-impact-assumed` gave `gates.plan = human` (overrides `high_impact_assumed`, `security_path`), so the owner's approval was required and is the approval. This record is its own pull request, never squashed with later edits (PG6-r7-2).
+- **Approval question (rev 6):** "Approve the dispatch-board plan, spec revision 6 at commit `db14c0b`? Approving accepts the 14 default answers still open (rows 28–31, 33, 35, 36, 38, 41 and 46–50) and freezes the published claude.ai page today (PBI-037). The one high-impact default is row 50: when you approve a plan on the board, your approval is tied to the exact saved version of the spec you were looking at. If the text was changed before your approval was recorded, the check fails. Edits made afterwards, such as splitting the plan into work items, are allowed, and the check only reports them."
 - **Assumptions resolved (rev 6):** rows 25, 32, 34 and 37, by the owner on 2026-09-19.
   - Row 25, asked "Row 25: board answers only work on the board on this PC, with no answering away from it. Accept?": "Accept, this PC only (Recommended)".
   - Row 34, asked "Row 34: does approving a plan on the board pass the plan gate by itself, or should it also need a one-line chat confirmation naming the answer's id?": "Board approval alone".
