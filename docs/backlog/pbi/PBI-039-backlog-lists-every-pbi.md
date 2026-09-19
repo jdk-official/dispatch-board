@@ -1,7 +1,7 @@
 ---
 id: PBI-039
 title: "The Backlog tab lists every PBI, not only the plan's"
-status: Proposed
+status: In Progress
 change_class: standard
 depends_on: []
 allowed_areas: ["exporters/derive.py", "exporters/export_board.py", "tests/test_derive.py", "tests/test_export_board.py", "site/index.html", "tests/page.test.mjs"]

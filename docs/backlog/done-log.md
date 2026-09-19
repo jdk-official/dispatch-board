@@ -2,6 +2,13 @@
 
 <!-- On-demand archive of completed-PBI evidence. NEVER loaded at session start; the BOARD ## Done
      index anchors here by ID. One ## <PBI-ID> section per completed PBI. -->
+## PBI-010
+- title: Work-item status derived from runs, shown beside the hand-kept state during a shadow period (feature 4, FR-113)
+- PR: https://github.com/jdk-official/dispatch-board/pull/46 · merge: `f4e92ed` · class: standard · tier: assisted · cell-verdict: CELL-DONE
+- allowed_areas: exporters/**, tests/test_*.py, site/**, tests/page.test.mjs, projects/**
+- evidence: Canonical run bound to 76030d8: 441/140/430. Accounted code-review-r1 GO, 2 Low follow-ups into PBI-030 (owner). Page view hidden at the owner's choice. Handover docs/backlog/handovers/PBI-010.md
+- outcome: resolved_method=squash (declared) / observed_method=squash, level record. Derived work-item state exported; no page view; switch stays the owner's.
+
 ## PBI-007
 - title: Log-on start through Task Scheduler and the on-PC deployment end to end (FR-90, FR-91, NFR-17, NFR-18, NFR-21)
 - PR: https://github.com/jdk-official/dispatch-board/pull/28 · merge: `7c6bcb6` · class: standard · tier: assisted · cell-verdict: CELL-DONE

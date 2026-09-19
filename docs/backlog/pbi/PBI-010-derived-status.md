@@ -1,7 +1,7 @@
 ---
 id: PBI-010
 title: "Work-item status derived from runs, shown beside the hand-kept state during a shadow period (feature 4, FR-113)"
-status: In Progress
+status: Done
 change_class: standard
 depends_on: [PBI-004]
 allowed_areas: ["exporters/**", "tests/test_*.py", "site/**", "tests/page.test.mjs", "projects/**"]
@@ -37,14 +37,19 @@ allowed `exporters/**`, `tests/test_*.py`, `site/**`, `tests/page.test.mjs`, `pr
 
 **From the PRD** (`docs/prd/dispatch-board.md` section 7), matched to FR-113:
 
-- [ ] **AC-78** When the latest code-reviewer run naming PBI-001 in a platform-catalogue linked session has verdict `GO` and no hand-kept build state lists PBI-001, the platform-catalogue Backlog shall show PBI-001 as done. *(FR-113; A-32.)*
-- [ ] Worker close-out: both suites green on the head commit (`python -m unittest discover -s tests`, `node tests/page.test.mjs`); code-review gate passed (`review-agents:code-reviewer` GO).
+- [x] **AC-78** When the latest code-reviewer run naming PBI-001 in a platform-catalogue linked session has verdict `GO` and no hand-kept build state lists PBI-001, the platform-catalogue Backlog shall show PBI-001 as done. *(FR-113; A-32.)*
+- [x] Worker close-out: both suites green on the head commit (`python -m unittest discover -s tests`, `node tests/page.test.mjs`); code-review gate passed (`review-agents:code-reviewer` GO).
 
 ---
 
 ## Evidence
 
-- (written at close-out)
+**Closed out 2026-09-19.** Merged as `f4e92ed` (PR #46, squash; landing resolved squash (declared) / observed squash, level `record`).
+
+- **AC-78** — derivation half met. `exporters/derive.py` derives PBI-001 as done from the latest code-reviewer run's `GO` in a linked session when no hand-kept state lists it (`tests/test_derive.py`, `tests/test_export_sessions.py`), and the exported backlog document carries it. The page half, "the Backlog shall show PBI-001 as done", is **N/A — the owner chose "Hide it entirely" on 2026-09-19 after "Itts very complex and I don't understand it" — accepted by the owner 2026-09-19**. The page shows no derived state, and the switch to derived status stays the owner's (Q-3).
+- **Close-out** — canonical run bound to `76030d8`: backend 441/0, page exit 0 (140 checks), local 430/0. Accounted `code-review-r1` (Opus, fresh) GO, 2 Low (CR-010-1, CR-010-2), follow-ups into PBI-030 by the owner's choice "Merge; fix in PBI-030". An earlier accounted review of the same commit (GO) was refused by the push rail because the builder's reports lacked `evidence_binding`; the owner chose "Re-run one review", and that record is kept under `docs/backlog/reviews/PBI-010/superseded-2026-09-19/`.
+- **AC-DS22** (spec) — nothing is left to check visually, because the page shows nothing of this PBI (the owner's decision above).
+- **Follow-up.** PBI-036's trigger T3.1 and AC-H4 assume a page view of derived state, which no longer exists, so PBI-036 needs re-planning before it can start (the owner is now told about agreement in chat).
 
 ---
 
@@ -62,8 +67,8 @@ Build per owner decision D-9: `engineering-agents:code-writer` under TDD, then `
 
 | Gate | Applicable | Status | Artifact / note |
 |------|------------|--------|-----------------|
-| Spec gate | true | **passed 2026-09-13** | `docs/backlog/specs/pbi-010-derived-status.md` revision 3. Round 1 **CHANGES-REQUIRED** (1 High, 3 Medium, 4 Low) — all applied; round 2 **APPROVE-WITH-NOTES** (4 Low), applied in revision 3. Reviews: `docs/backlog/reviews/PBI-010/spec-review-r1.md`, `-r2.md`. **The gate found the feature's central defect before any code existed:** the design reported *Agrees* exactly when no run named a work item, so a stale "Not started" read as agreement — the precise failure the feature exists to catch. Revision 2 added a distinct **No evidence** outcome, never counted as agreement, and the panel now states when the linked sessions were last active. Round 1 also confirmed the motivating case on real data: with session `7e0c4f3c` linked, every PBI merged without its build state being updated came out runs-ahead, each mapping to a real merged PR. OWNER rows: Q-1 (non-blocking), Q-2 (`CLAUDE.md` grant), Q-3 (blocks flipping the switch to `derived`, not the build), Q-17 (the AC-64 fixture — default: the orchestrator pre-registers a follow-up at finalize). |
-| External-review gate | true | pending | |
-| Code-review gate | true | pending | |
-| No-self-merge gate | always | pending | |
-| BOARD-tidy gate | always | pending | |
+| Spec gate | true | passed 2026-09-13 | spec revision 3 (round 2 APPROVE-WITH-NOTES, notes applied) |
+| External-review gate | true | passed 2026-09-19 | the owner: "Approve the build" |
+| Code-review gate | true | passed 2026-09-19 | Accounted `code-review-r1` GO, 2 Low follow-ups (owner: "Merge; fix in PBI-030") |
+| No-self-merge gate | always | passed 2026-09-19 | PR #46 squash-merged `f4e92ed` under the owner's standing merge authorisation |
+| BOARD-tidy gate | always | passed 2026-09-19 | Done write, ledger deregistered |
